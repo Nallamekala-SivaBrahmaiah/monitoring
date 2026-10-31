@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IMetric extends Document {
-  provider: 'aws' | 'azure';
+  provider: string;
   resourceId: string;
   resourceType: string;
   metricName: string;
@@ -15,7 +15,6 @@ const MetricSchema: Schema<IMetric> = new Schema(
     provider: {
       type: String,
       required: true,
-      enum: ['aws', 'azure'],
       index: true,
     },
     resourceId: {

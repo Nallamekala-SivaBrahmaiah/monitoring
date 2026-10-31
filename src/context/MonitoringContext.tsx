@@ -61,6 +61,7 @@ interface MonitoringContextType {
   filteredK8sClusters: K8sCluster[];
   filteredK8sPods: K8sPod[];
   filteredAlerts: AlertItem[];
+  customServers: any[];
   overviewMetrics: OverviewMetrics;
 }
 
@@ -129,6 +130,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const [k8sClusters, setK8sClusters] = useState<K8sCluster[]>([]);
   const [k8sPods, setK8sPods] = useState<K8sPod[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [customServers, setCustomServers] = useState<any[]>([]);
 
   // Load real subscriptions, AWS accounts, real VMs, and real alerts from Next.js Route Handlers
   const loadRealData = useCallback(async (silent = false) => {
@@ -139,7 +141,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
 
     let hadSuccess = false;
     try {
-      const [subsRes, awsRes, azureVmsRes, ec2Res, alertsRes, dockerRes, k8sClustersRes, k8sPodsRes, syncRes] = await Promise.all([
+      const [subsRes, awsRes, azureVmsRes, ec2Res, alertsRes, dockerRes, k8sClustersRes, k8sPodsRes, serversRes, syncRes] = await Promise.all([
         fetch('/api/azure/subscriptions').catch(() => null),
         fetch('/api/cloud-accounts?provider=aws').catch(() => null),
         fetch('/api/azure/vms').catch(() => null),
@@ -148,6 +150,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
         fetch('/api/docker/containers').catch(() => null),
         fetch('/api/kubernetes/clusters').catch(() => null),
         fetch('/api/kubernetes/pods').catch(() => null),
+        fetch('/api/servers').catch(() => null),
         fetch('/api/sync').catch(() => null),
       ]);
 
@@ -196,6 +199,12 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       if (k8sPodsRes && k8sPodsRes.ok) {
         const pods = await k8sPodsRes.json();
         if (Array.isArray(pods)) setK8sPods(pods);
+        hadSuccess = true;
+      }
+
+      if (serversRes && serversRes.ok) {
+        const srvs = await serversRes.json();
+        if (Array.isArray(srvs)) setCustomServers(srvs);
         hadSuccess = true;
       }
 
@@ -538,16 +547,18 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     const k8sCount = filteredK8sClusters.length;
     const alertCount = filteredAlerts.length;
 
-    let totalServers = awsCount + azureCount;
+    const customOnline = customServers.filter((s) => s.status === 'Online').length;
+    let totalServers = awsCount + azureCount + customServers.length;
     let runningServers =
       filteredEC2Instances.filter((i) => i.status === 'Running').length +
-      filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase().includes('run')).length;
+      filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase().includes('run')).length +
+      customOnline;
 
     if (cloudProvider === 'aws') {
-      totalServers = awsCount;
+      totalServers = awsCount + customServers.filter((s) => s.cloudProvider === 'aws').length;
       runningServers = filteredEC2Instances.filter((i) => i.status === 'Running').length;
     } else if (cloudProvider === 'azure') {
-      totalServers = azureCount;
+      totalServers = azureCount + customServers.filter((s) => s.cloudProvider === 'azure').length;
       runningServers = filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase().includes('run')).length;
     }
 
@@ -583,7 +594,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
         trend: alertCount > 0 ? [alertCount] : [],
       },
     };
-  }, [cloudProvider, filteredEC2Instances, filteredAzureVMs, filteredDockerContainers, filteredK8sClusters, filteredAlerts]);
+  }, [cloudProvider, filteredEC2Instances, filteredAzureVMs, filteredDockerContainers, filteredK8sClusters, filteredAlerts, customServers]);
 
   return (
     <MonitoringContext.Provider
@@ -625,6 +636,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
         filteredK8sClusters,
         filteredK8sPods,
         filteredAlerts,
+        customServers,
         overviewMetrics,
       }}
     >
