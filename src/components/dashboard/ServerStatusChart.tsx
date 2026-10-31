@@ -28,8 +28,11 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
 
   if (cloudProvider === 'all' || cloudProvider === 'azure') {
     filteredAzureVMs.forEach((v) => {
-      if (v.powerState !== 'Running') critical++;
-      else if (v.cpuUsage > 70 || v.memoryUsage > 70) warning++;
+      const isRunning = (v.powerState || '').toLowerCase().includes('run');
+      const cpu = v.cpuUsage ?? (v as any).cpuUtilization ?? 0;
+      const mem = v.memoryUsage ?? (v as any).memoryUtilization ?? 0;
+      if (!isRunning) critical++;
+      else if (cpu > 80 || mem > 85) warning++;
       else healthy++;
     });
   }

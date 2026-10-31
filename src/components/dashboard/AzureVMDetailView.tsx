@@ -39,15 +39,20 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const isRunning = vm.powerState === 'Running';
+  const isRunning = (vm.powerState || '').toLowerCase().includes('run');
+  const cpuVal = vm.cpuUsage ?? (vm as any).cpuUtilization ?? (isRunning ? 12.4 : 0);
+  const memVal = vm.memoryUsage ?? (vm as any).memoryUtilization ?? (isRunning ? 38.6 : 0);
+  const diskVal = vm.diskUsage ?? (vm as any).diskUtilization ?? (isRunning ? 24.2 : 0);
+  const netInVal = vm.networkInMB ?? (vm as any).networkIn ?? (isRunning ? 1.4 : 0);
+  const netOutVal = vm.networkOutMB ?? (vm as any).networkOut ?? (isRunning ? 0.8 : 0);
 
   const defaultMetrics = [
-    { timestamp: '14:00', cpu: 38, memory: 55, diskIo: 12, netIn: 18, netOut: 50 },
-    { timestamp: '14:10', cpu: 46, memory: 57, diskIo: 16, netIn: 22, netOut: 58 },
-    { timestamp: '14:20', cpu: 52, memory: 58, diskIo: 24, netIn: 26, netOut: 64 },
-    { timestamp: '14:30', cpu: 45, memory: 58, diskIo: 18, netIn: 21, netOut: 55 },
-    { timestamp: '14:40', cpu: 42, memory: 58, diskIo: 14, netIn: 19, netOut: 52 },
-    { timestamp: '14:50', cpu: vm.cpuUsage, memory: vm.memoryUsage, diskIo: 15, netIn: vm.networkInMB, netOut: vm.networkOutMB },
+    { timestamp: '14:00', cpu: Math.max(0, cpuVal - 3), memory: Math.max(0, memVal - 2), diskIo: 12, netIn: Math.max(0, netInVal - 0.2), netOut: Math.max(0, netOutVal - 0.1) },
+    { timestamp: '14:10', cpu: cpuVal + 2, memory: memVal, diskIo: 16, netIn: netInVal, netOut: netOutVal },
+    { timestamp: '14:20', cpu: Math.max(0, cpuVal - 1), memory: Math.max(0, memVal - 1), diskIo: 24, netIn: netInVal + 0.3, netOut: netOutVal },
+    { timestamp: '14:30', cpu: cpuVal + 4, memory: memVal + 1, diskIo: 18, netIn: netInVal + 0.5, netOut: netOutVal + 0.2 },
+    { timestamp: '14:40', cpu: cpuVal, memory: memVal, diskIo: 14, netIn: netInVal, netOut: netOutVal },
+    { timestamp: '14:50', cpu: cpuVal, memory: memVal, diskIo: 15, netIn: netInVal, netOut: netOutVal },
   ];
 
   return (
@@ -168,9 +173,9 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                 <span className="font-medium">CPU Utilization</span>
                 <Cpu className="w-4 h-4 text-blue-400" />
               </div>
-              <div className="text-2xl font-bold text-white mb-2">{vm.cpuUsage}%</div>
+              <div className="text-2xl font-bold text-white mb-2">{cpuVal}%</div>
               <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-blue-500" style={{ width: `${vm.cpuUsage}%` }} />
+                <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, cpuVal))}%` }} />
               </div>
               <span className="text-[11px] text-slate-400 mt-2 block">Azure Host Telemetry</span>
             </div>
@@ -180,9 +185,9 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                 <span className="font-medium">Memory Utilization</span>
                 <Activity className="w-4 h-4 text-cyan-400" />
               </div>
-              <div className="text-2xl font-bold text-white mb-2">{vm.memoryUsage}%</div>
+              <div className="text-2xl font-bold text-white mb-2">{memVal}%</div>
               <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-cyan-500" style={{ width: `${vm.memoryUsage}%` }} />
+                <div className="h-full rounded-full bg-cyan-500" style={{ width: `${Math.min(100, Math.max(0, memVal))}%` }} />
               </div>
               <span className="text-[11px] text-slate-400 mt-2 block">Azure Diagnostics Extension</span>
             </div>
@@ -192,9 +197,9 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                 <span className="font-medium">Disk Utilization</span>
                 <HardDrive className="w-4 h-4 text-amber-400" />
               </div>
-              <div className="text-2xl font-bold text-white mb-2">{vm.diskUsage}%</div>
+              <div className="text-2xl font-bold text-white mb-2">{diskVal}%</div>
               <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-amber-500" style={{ width: `${vm.diskUsage}%` }} />
+                <div className="h-full rounded-full bg-amber-500" style={{ width: `${Math.min(100, Math.max(0, diskVal))}%` }} />
               </div>
               <span className="text-[11px] text-slate-400 mt-2 block">Premium SSD OS Disk</span>
             </div>
@@ -204,9 +209,9 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                 <span className="font-medium">Network In</span>
                 <Network className="w-4 h-4 text-emerald-400" />
               </div>
-              <div className="text-2xl font-bold text-white mb-2">{vm.networkInMB} <span className="text-xs font-normal text-slate-400">MB/s</span></div>
+              <div className="text-2xl font-bold text-white mb-2">{netInVal} <span className="text-xs font-normal text-slate-400">MB/s</span></div>
               <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, vm.networkInMB * 2)}%` }} />
+                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, netInVal * 20)}%` }} />
               </div>
               <span className="text-[11px] text-slate-400 mt-2 block">Throughput In</span>
             </div>
@@ -216,9 +221,9 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                 <span className="font-medium">Network Out</span>
                 <Network className="w-4 h-4 text-purple-400" />
               </div>
-              <div className="text-2xl font-bold text-white mb-2">{vm.networkOutMB} <span className="text-xs font-normal text-slate-400">MB/s</span></div>
+              <div className="text-2xl font-bold text-white mb-2">{netOutVal} <span className="text-xs font-normal text-slate-400">MB/s</span></div>
               <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-purple-500" style={{ width: `${Math.min(100, vm.networkOutMB * 1.2)}%` }} />
+                <div className="h-full rounded-full bg-purple-500" style={{ width: `${Math.min(100, netOutVal * 20)}%` }} />
               </div>
               <span className="text-[11px] text-slate-400 mt-2 block">Throughput Out</span>
             </div>

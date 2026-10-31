@@ -13,15 +13,23 @@ export default function RegionsPage() {
   const { cloudProvider, regions, toggleRegion } = useMonitoring();
   const [searchQuery, setSearchQuery] = useState('');
 
-  const displayedRegions = regions.filter((r) => {
-    if (cloudProvider === 'aws' && r.cloud !== 'aws') return false;
-    if (cloudProvider === 'azure' && r.cloud !== 'azure') return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return r.displayName.toLowerCase().includes(q) || r.region.toLowerCase().includes(q);
-    }
-    return true;
-  });
+  const displayedRegions = regions
+    .filter((r) => {
+      if (cloudProvider === 'aws' && r.cloud !== 'aws') return false;
+      if (cloudProvider === 'azure' && r.cloud !== 'azure') return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return r.displayName.toLowerCase().includes(q) || r.region.toLowerCase().includes(q);
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      // Regions with active virtual machines / instances come first
+      if (b.resourceCount !== a.resourceCount) {
+        return b.resourceCount - a.resourceCount;
+      }
+      return a.displayName.localeCompare(b.displayName);
+    });
 
   const monitoredCount = displayedRegions.filter((r) => r.enabled).length;
 
@@ -102,9 +110,17 @@ export default function RegionsPage() {
                             style={{ backgroundColor: reg.color }}
                           />
                         </div>
-                        <span className="text-[11px] text-slate-400">
-                          {reg.displayName} • {reg.resourceCount} Active Resources
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[11px] text-slate-400">{reg.displayName}</span>
+                          <span className="text-slate-600">•</span>
+                          {reg.resourceCount > 0 ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              {reg.resourceCount} Active {reg.resourceCount === 1 ? 'Instance' : 'Instances'}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-500">0 Active Resources</span>
+                          )}
+                        </div>
                       </div>
                     </div>
 

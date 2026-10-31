@@ -111,12 +111,13 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   // Load real subscriptions, AWS accounts, real VMs, and real alerts from Next.js Route Handlers
   const loadRealData = useCallback(async () => {
     try {
-      const [subsRes, awsRes, azureVmsRes, ec2Res, alertsRes] = await Promise.all([
+      const [subsRes, awsRes, azureVmsRes, ec2Res, alertsRes, dockerRes] = await Promise.all([
         fetch('/api/azure/subscriptions').catch(() => null),
         fetch('/api/cloud-accounts?provider=aws').catch(() => null),
         fetch('/api/azure/vms').catch(() => null),
         fetch('/api/aws/ec2').catch(() => null),
         fetch('/api/alerts').catch(() => null),
+        fetch('/api/docker/containers').catch(() => null),
       ]);
 
       if (subsRes && subsRes.ok) {
@@ -142,6 +143,11 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       if (alertsRes && alertsRes.ok) {
         const alts = await alertsRes.json();
         if (Array.isArray(alts)) setAlerts(alts);
+      }
+
+      if (dockerRes && dockerRes.ok) {
+        const containers = await dockerRes.json();
+        if (Array.isArray(containers)) setDockerContainers(containers);
       }
     } catch (e) {
       console.warn('Real data sync note:', e);
@@ -374,6 +380,31 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     });
   }, [cloudProvider, alerts]);
 
+  // Dynamically compute real resource counts for all discovered regions based on actual VMs & EC2
+  const computedRegions: RegionInfo[] = useMemo(() => {
+    return regions.map((reg) => {
+      let count = 0;
+      const normReg = (reg.region || '').toLowerCase().replace(/[\s-_]+/g, '');
+
+      if (reg.cloud === 'azure') {
+        count = azureVMs.filter((v) => {
+          const vReg = (v.region || '').toLowerCase().replace(/[\s-_]+/g, '');
+          return vReg === normReg || (vReg.includes(normReg) || normReg.includes(vReg));
+        }).length;
+      } else if (reg.cloud === 'aws') {
+        count = ec2Instances.filter((e) => {
+          const eReg = (e.region || '').toLowerCase().replace(/[\s-_]+/g, '');
+          return eReg === normReg;
+        }).length;
+      }
+
+      return {
+        ...reg,
+        resourceCount: count,
+      };
+    });
+  }, [regions, azureVMs, ec2Instances]);
+
   // Real Dynamic Overview Metrics (No hardcoded trend arrays or fallback numbers)
   const overviewMetrics = useMemo<OverviewMetrics>(() => {
     const awsCount = filteredEC2Instances.length;
@@ -385,14 +416,14 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     let totalServers = awsCount + azureCount;
     let runningServers =
       filteredEC2Instances.filter((i) => i.status === 'Running').length +
-      filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase() === 'running').length;
+      filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase().includes('run')).length;
 
     if (cloudProvider === 'aws') {
       totalServers = awsCount;
       runningServers = filteredEC2Instances.filter((i) => i.status === 'Running').length;
     } else if (cloudProvider === 'azure') {
       totalServers = azureCount;
-      runningServers = filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase() === 'running').length;
+      runningServers = filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase().includes('run')).length;
     }
 
     return {
@@ -440,7 +471,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
         azureSubscriptions,
         selectedAzureSubId,
         setSelectedAzureSubId,
-        regions,
+        regions: computedRegions,
         toggleRegion,
         selectedRegion,
         setSelectedRegion,
