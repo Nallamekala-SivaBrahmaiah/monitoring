@@ -13,9 +13,7 @@ import {
   Network,
   Shield,
   Terminal,
-  Sparkles,
 } from 'lucide-react';
-import { AiAssistantDrawer } from '@/components/dashboard/AiAssistantDrawer';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -40,7 +38,6 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
   const [activeTab, setActiveTab] = useState<'Overview' | 'Metrics' | 'Disks' | 'Networking'>('Overview');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
 
   const isRunning = (vm.powerState || '').toLowerCase().includes('run');
   const cpuVal = vm.cpuUsage ?? (vm as any).cpuUtilization ?? (isRunning ? 12.4 : 0);
@@ -126,13 +123,6 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={() => setAiDrawerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg shadow-sm shadow-blue-500/25 transition-all"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Troubleshoot with AI</span>
-                </button>
                 <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#18233C] hover:bg-[#202E4E] text-slate-200 border border-[#1E293B] rounded-lg">
                   <Terminal className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Bastion SSH</span>
@@ -289,27 +279,6 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
           </div>
         </main>
       </div>
-
-      {/* Floating AI Assistant Drawer */}
-      <AiAssistantDrawer
-        isOpen={aiDrawerOpen}
-        onClose={() => setAiDrawerOpen(false)}
-        initialContext={{
-          resourceName: vm.name,
-          resourceId: vm.vmId,
-          provider: 'azure',
-          region: vm.region,
-          status: vm.powerState,
-          publicIp: vm.publicIp,
-          metrics: {
-            cpu: cpuVal,
-            memory: memVal,
-            disk: diskVal,
-            netIn: netInVal,
-            netOut: netOutVal,
-          },
-        }}
-      />
     </div>
   );
 }

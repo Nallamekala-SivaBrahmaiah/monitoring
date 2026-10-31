@@ -372,8 +372,6 @@ export interface DynamicRegionResource {
   creationTime?: string;
   startTime?: string;
   runningDuration?: string;
-  estimatedCostDaily?: number;
-  estimatedCostMonthly?: number;
   tags?: Record<string, string>;
   metrics?: {
     cpu?: number;
@@ -390,72 +388,5 @@ export interface DynamicRegionSummary {
   resourceCount: number;
   runningCount: number;
   stoppedCount: number;
-  estimatedDailyCost: number;
-  estimatedMonthlyCost: number;
-  isEstimate: boolean;
   resources: DynamicRegionResource[];
-}
-
-export interface ResourceCostItem {
-  resourceId: string;
-  name: string;
-  type: string;
-  cloudProvider: 'aws' | 'azure';
-  region: string;
-  status: string;
-  dailyCost: number;
-  monthlyCost: number;
-  currency: string;
-  isEstimate: boolean;
-  runningDuration: string;
-  isIdle: boolean;
-  idleReason?: string;
-  potentialMonthlySavings?: number;
-}
-
-export interface CostInsightsData {
-  currency: string;
-  period: string;
-  isEstimate: boolean;
-  estimateNotice?: string;
-  currentPeriodTotal: number;
-  dailyAverage: number;
-  projectedMonthly: number;
-  potentialSavings: number;
-  byRegion: Array<{
-    region: string;
-    displayName: string;
-    cloud: 'aws' | 'azure';
-    amount: number;
-    resourceCount: number;
-    percentage: number;
-  }>;
-  byResource: ResourceCostItem[];
-  idleRecommendations: Array<{
-    resourceId: string;
-    name: string;
-    type: string;
-    region: string;
-    provider: 'aws' | 'azure';
-    reason: string;
-    monthlySavings: number;
-  }>;
-}
-
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: string;
-  context?: {
-    provider?: string;
-    region?: string;
-    resourceId?: string;
-    resourceName?: string;
-    resourceType?: string;
-    status?: string;
-    publicIp?: string;
-    metrics?: Record<string, any>;
-  };
-  suggestions?: string[];
 }

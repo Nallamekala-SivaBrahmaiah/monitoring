@@ -21,9 +21,7 @@ import {
   Settings,
   Terminal,
   ExternalLink,
-  Sparkles,
 } from 'lucide-react';
-import { AiAssistantDrawer } from '@/components/dashboard/AiAssistantDrawer';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -55,7 +53,6 @@ export function EC2InstanceDetailView({ instance }: EC2InstanceDetailViewProps) 
   const [refreshInterval, setRefreshInterval] = useState('10s');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
 
   const handleManualRefresh = () => {
     setIsRefreshing(true);
@@ -185,13 +182,6 @@ export function EC2InstanceDetailView({ instance }: EC2InstanceDetailViewProps) 
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={() => setAiDrawerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg shadow-sm shadow-blue-500/25 transition-all"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Troubleshoot with AI</span>
-                </button>
                 <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#18233C] hover:bg-[#202E4E] text-slate-200 border border-[#1E293B] rounded-lg transition-colors">
                   <Terminal className="w-3.5 h-3.5 text-amber-400" />
                   <span>Connect (SSH)</span>
@@ -832,27 +822,6 @@ export function EC2InstanceDetailView({ instance }: EC2InstanceDetailViewProps) 
           )}
         </main>
       </div>
-
-      {/* Floating AI Assistant Drawer */}
-      <AiAssistantDrawer
-        isOpen={aiDrawerOpen}
-        onClose={() => setAiDrawerOpen(false)}
-        initialContext={{
-          resourceName: instance.name,
-          resourceId: instance.instanceId,
-          provider: 'aws',
-          region: instance.region,
-          status: instance.status,
-          publicIp: instance.publicIp,
-          metrics: {
-            cpu: instance.cpuUsage,
-            memory: instance.memoryUsage,
-            disk: instance.diskUsage,
-            netIn: instance.networkInMB,
-            netOut: instance.networkOutMB,
-          },
-        }}
-      />
     </div>
   );
 }

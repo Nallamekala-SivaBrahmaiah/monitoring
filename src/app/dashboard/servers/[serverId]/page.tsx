@@ -92,6 +92,30 @@ function ServerDetailContent({ params }: ServerDetailProps) {
     }
   };
 
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteServer = async () => {
+    try {
+      setDeleting(true);
+      const isProd = server?.environment === 'Production';
+      const url = `/api/servers/${serverId}${isProd ? '?confirmed=true' : ''}`;
+      const res = await fetch(url, { method: 'DELETE' });
+
+      if (res.ok) {
+        router.push('/dashboard/servers');
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to remove server');
+      }
+    } catch (e: any) {
+      alert(e.message || 'Failed to remove server');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const formatBytes = (bytes: number) => {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -204,7 +228,7 @@ function ServerDetailContent({ params }: ServerDetailProps) {
             </div>
 
             {/* Quick Actions */}
-            <div className="flex items-center gap-2.5 self-start md:self-auto">
+            <div className="flex items-center gap-2.5 self-start md:self-auto flex-wrap">
               <button
                 onClick={handleManualSync}
                 disabled={syncing}
@@ -212,6 +236,15 @@ function ServerDetailContent({ params }: ServerDetailProps) {
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
                 <span>{syncing ? 'Synchronizing SSH...' : 'Sync Live Metrics'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors"
+                title="Disconnect & Remove server from fleet"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Remove Server</span>
               </button>
 
               <button
@@ -799,6 +832,86 @@ function ServerDetailContent({ params }: ServerDetailProps) {
           )}
         </main>
       </div>
+
+      {/* Delete Server Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#111A2E] border border-rose-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Remove Server from Monitoring</h3>
+                <span className="text-xs text-rose-400 font-semibold">{server.environment} Server Node</span>
+              </div>
+            </div>
+
+            {/* Server Details Summary Card */}
+            <div className="bg-[#0D1526] border border-[#1E293B] rounded-xl p-3.5 space-y-2 text-xs">
+              <div className="flex justify-between items-center pb-2 border-b border-[#1E293B]">
+                <span className="text-slate-400">Server Name:</span>
+                <span className="font-bold text-white">{server.name}</span>
+              </div>
+              <div className="flex justify-between items-center pb-2 border-b border-[#1E293B]">
+                <span className="text-slate-400">Host IP / Port:</span>
+                <span className="font-mono text-blue-400 font-semibold">{server.host}:{server.port}</span>
+              </div>
+              <div className="flex justify-between items-center pb-2 border-b border-[#1E293B]">
+                <span className="text-slate-400">Environment & Provider:</span>
+                <span className="text-slate-300">
+                  {server.environment} • <span className="uppercase">{server.cloudProvider}</span> ({server.region})
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Hardware & Status:</span>
+                <span className={`font-semibold ${server.status === 'Online' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {server.status} ({server.hardware?.cpuCores || 1} CPU cores, {formatBytes(server.hardware?.totalMemoryBytes || 0)} RAM)
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Disconnecting will terminate scheduled SSH telemetry collection, stop agent sync, and purge this server node from the monitoring fleet.
+            </p>
+
+            {isProd && (
+              <div className="space-y-2">
+                <p className="text-xs text-rose-400 font-semibold">
+                  To confirm removal of this Production server, type <span className="underline">{server.name}</span>:
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder={server.name}
+                  className="w-full px-3 py-2 bg-[#0D1526] border border-rose-500/30 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-rose-500 font-mono"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText('');
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-[#18233C] text-slate-300 hover:text-white"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleDeleteServer}
+                disabled={deleting || (isProd && deleteConfirmText !== server.name)}
+                className="px-4 py-2 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-500 text-white transition-all disabled:opacity-50"
+              >
+                {deleting ? 'Disconnecting & Removing...' : 'Disconnect & Remove Server'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

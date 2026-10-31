@@ -19,8 +19,6 @@ import {
   Layers,
   X,
   Check,
-  DollarSign,
-  Sparkles,
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { useMonitoring } from '@/context/MonitoringContext';
@@ -60,8 +58,6 @@ export function Sidebar({
     { label: 'Dashboard', href: '/', icon: LayoutDashboard },
     { label: 'Cloud Accounts', href: '/dashboard/cloud-accounts', icon: Cloud },
     { label: 'Regions', href: '/dashboard/regions', icon: Globe },
-    { label: 'Cost Insights', href: '/dashboard/costs', icon: DollarSign },
-    { label: 'AI Assistant', href: '/dashboard/ai-assistant', icon: Sparkles, badge: 'AI' },
     { label: 'Servers', href: '/dashboard/servers', icon: Server },
     { label: 'EC2 Instances', href: '/dashboard/ec2', icon: Cpu },
     { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AppWindow },

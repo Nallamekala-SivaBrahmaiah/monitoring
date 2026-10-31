@@ -2,29 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchResources } from '@/lib/storage';
 import { ALL_AWS_REGIONS, ALL_AZURE_REGIONS } from '@/services/regionDiscoveryService';
 
-// Benchmark hourly costs by VM/Instance size (USD/hour)
-const SIZE_HOURLY_RATES: Record<string, number> = {
-  // Azure sizes
-  standard_d2s_v3: 0.096,
-  standard_b2s: 0.0416,
-  standard_b1s: 0.0104,
-  standard_d4s_v3: 0.192,
-  standard_f2s_v2: 0.085,
-  // AWS sizes
-  't3.nano': 0.0052,
-  't3.micro': 0.0104,
-  't3.small': 0.0208,
-  't3.medium': 0.0416,
-  't3.large': 0.0832,
-  'm5.large': 0.096,
-  'c5.large': 0.085,
-};
 
-function getHourlyRate(size?: string): number {
-  if (!size) return 0.05;
-  const key = size.toLowerCase().replace(/[\s-_]+/g, '_');
-  return SIZE_HOURLY_RATES[key] || 0.08;
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -87,9 +65,6 @@ export async function GET(request: NextRequest) {
       }
 
       const isRunning = (res.status || '').toLowerCase().includes('run');
-      const rate = getHourlyRate(res.size);
-      const dailyCost = Math.round(rate * (isRunning ? 24 : 2) * 100) / 100;
-      const monthlyCost = Math.round(dailyCost * 30 * 100) / 100;
 
       const normResource = {
         id: res._id ? res._id.toString() : res.resourceId,
@@ -106,8 +81,6 @@ export async function GET(request: NextRequest) {
         creationTime: res.createdAt ? new Date(res.createdAt).toLocaleDateString() : 'Available in metadata',
         startTime: isRunning ? 'Active (Current session)' : 'Stopped',
         runningDuration: isRunning ? 'Running continuously (2d 14h)' : 'Offline',
-        estimatedCostDaily: dailyCost,
-        estimatedCostMonthly: monthlyCost,
         tags: res.metadata?.tags || {},
         metrics: {
           cpu: res.metrics?.cpuUtilization !== null && res.metrics?.cpuUtilization !== undefined
@@ -129,12 +102,6 @@ export async function GET(request: NextRequest) {
     const summaries = Array.from(regionMap.values()).map((entry) => {
       const runningCount = entry.resources.filter((r) => r.status === 'Running').length;
       const stoppedCount = entry.resources.length - runningCount;
-      const estimatedDailyCost = Math.round(
-        entry.resources.reduce((sum, r) => sum + (r.estimatedCostDaily || 0), 0) * 100
-      ) / 100;
-      const estimatedMonthlyCost = Math.round(
-        entry.resources.reduce((sum, r) => sum + (r.estimatedCostMonthly || 0), 0) * 100
-      ) / 100;
 
       return {
         region: entry.region,
@@ -143,9 +110,6 @@ export async function GET(request: NextRequest) {
         resourceCount: entry.resources.length,
         runningCount,
         stoppedCount,
-        estimatedDailyCost,
-        estimatedMonthlyCost,
-        isEstimate: true,
         resources: entry.resources,
       };
     });

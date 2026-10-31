@@ -4,6 +4,7 @@ import Server from '@/models/Server';
 import CloudResource from '@/models/CloudResource';
 import { encryptSecret, generateAgentToken } from '@/lib/serverMonitoring/crypto';
 import { collectServerViaSSH } from '@/lib/serverMonitoring/sshCollector';
+import { formatConnectionDiagnostic } from '@/lib/serverMonitoring/errorDiagnostic';
 
 /**
  * GET /api/servers
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
       cloudProvider = 'other',
       region = 'global',
       tags = [],
+      allowOfflineSave = false,
     } = body;
 
     // 1. Input Validation
@@ -90,6 +92,9 @@ export async function POST(request: NextRequest) {
 
     // 2. Initial SSH Verification & Discovery
     let initialSpecs;
+    let isInitialOnline = true;
+    let initialError = null;
+
     try {
       initialSpecs = await collectServerViaSSH({
         host: host.trim(),
@@ -100,13 +105,59 @@ export async function POST(request: NextRequest) {
         timeoutMs: 12000,
       });
     } catch (sshErr: any) {
-      return NextResponse.json(
-        {
-          error: `SSH Authentication / Connectivity verification failed: ${sshErr.message}`,
-          details: 'Please check the IP address, port, username, and private key/password.',
+      const diag = formatConnectionDiagnostic(sshErr, { host, port: parsedPort, authMethod });
+      if (!allowOfflineSave) {
+        return NextResponse.json(
+          {
+            error: diag.message,
+            hint: diag.hint,
+            canSaveOffline: true,
+            rawError: sshErr.message,
+          },
+          { status: 422 }
+        );
+      }
+
+      // If user chose to register offline
+      isInitialOnline = false;
+      initialError = diag.message;
+      initialSpecs = {
+        fingerprint: null,
+        os: {
+          name: 'Linux',
+          version: 'Pending SSH Sync',
+          kernel: 'Unknown',
+          arch: 'x86_64',
+          uptimeSeconds: 0,
+          uptimeFormatted: 'Offline',
         },
-        { status: 422 }
-      );
+        hardware: {
+          cpuCores: 1,
+          cpuModel: 'Pending Sync',
+          totalMemoryBytes: 0,
+          totalDiskBytes: 0,
+        },
+        metrics: {
+          cpu: { usagePercent: 0, loadAvg1m: 0, loadAvg5m: 0, loadAvg15m: 0, cores: 1, timestamp: new Date() },
+          memory: { totalBytes: 0, usedBytes: 0, availableBytes: 0, usagePercent: 0, swapTotalBytes: 0, swapUsedBytes: 0, timestamp: new Date() },
+          disks: [],
+          network: [],
+        },
+        docker: {
+          detected: false,
+          version: 'Pending Sync',
+          containersCount: 0,
+          runningCount: 0,
+          containers: [],
+          images: [],
+        },
+        kubernetes: {
+          detected: false,
+          version: 'Pending Sync',
+          podsCount: 0,
+          pods: [],
+        },
+      };
     }
 
     // 3. Encrypt credentials at rest
@@ -127,9 +178,10 @@ export async function POST(request: NextRequest) {
       cloudProvider,
       region,
       tags: Array.isArray(tags) ? tags : [],
-      status: 'Online',
-      lastConnectedAt: new Date(),
-      lastHeartbeatAt: new Date(),
+      status: isInitialOnline ? 'Online' : 'Offline',
+      lastConnectedAt: isInitialOnline ? new Date() : null,
+      lastHeartbeatAt: isInitialOnline ? new Date() : null,
+      lastError: initialError,
       hostFingerprint: initialSpecs.fingerprint,
       os: initialSpecs.os,
       hardware: initialSpecs.hardware,

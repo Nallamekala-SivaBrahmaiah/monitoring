@@ -11,9 +11,7 @@ import {
   XCircle,
   Search,
   ExternalLink,
-  Sparkles,
   Server,
-  DollarSign,
   RotateCw,
   Layers,
 } from 'lucide-react';
@@ -23,7 +21,6 @@ import { RegionChart } from '@/components/dashboard/RegionChart';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { DynamicRegionSummary } from '@/types/monitoring';
-import { AiAssistantDrawer } from '@/components/dashboard/AiAssistantDrawer';
 
 export default function RegionsPage() {
   const router = useRouter();
@@ -33,8 +30,6 @@ export default function RegionsPage() {
   const [dynamicRegions, setDynamicRegions] = useState<DynamicRegionSummary[]>([]);
   const [loadingDynamic, setLoadingDynamic] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
-  const [aiContext, setAiContext] = useState<any>(null);
 
   const fetchDynamicRegions = async () => {
     try {
@@ -89,20 +84,6 @@ export default function RegionsPage() {
   }, [regions, cloudProvider, searchQuery]);
 
   const monitoredCount = displayedCatalogRegions.filter((r) => r.enabled).length;
-
-  const handleAskAiAboutRegion = (reg: DynamicRegionSummary) => {
-    setAiContext({
-      resourceName: `Region: ${reg.displayName}`,
-      region: reg.region,
-      provider: reg.cloud,
-      status: `${reg.runningCount} Running, ${reg.stoppedCount} Stopped`,
-      metrics: {
-        resourceCount: reg.resourceCount,
-        monthlyCost: reg.estimatedMonthlyCost,
-      },
-    });
-    setAiDrawerOpen(true);
-  };
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col">
@@ -221,11 +202,11 @@ export default function RegionsPage() {
                           </div>
 
                           <div className="text-right">
-                            <span className="text-xs font-bold text-emerald-400 block font-mono">
-                              ${reg.estimatedMonthlyCost.toFixed(2)}/mo
+                            <span className="text-xs font-bold text-sky-400 block font-mono">
+                              {reg.resourceCount} compute nodes
                             </span>
                             <span className="text-[10px] text-slate-500 font-mono">
-                              ${reg.estimatedDailyCost.toFixed(2)}/day
+                              {reg.runningCount} online
                             </span>
                           </div>
                         </div>
@@ -241,14 +222,6 @@ export default function RegionsPage() {
                           </div>
 
                           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => handleAskAiAboutRegion(reg)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg shadow-sm transition-all flex items-center gap-1.5"
-                            >
-                              <Sparkles className="w-3 h-3" />
-                              <span>Ask AI</span>
-                            </button>
-
                             <Link
                               href={`/dashboard/regions/${encodeURIComponent(reg.region)}`}
                               className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-blue-600 hover:text-white text-slate-300 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1"
@@ -371,13 +344,6 @@ export default function RegionsPage() {
           )}
         </main>
       </div>
-
-      {/* Floating AI Assistant Drawer */}
-      <AiAssistantDrawer
-        isOpen={aiDrawerOpen}
-        onClose={() => setAiDrawerOpen(false)}
-        initialContext={aiContext}
-      />
     </div>
   );
 }

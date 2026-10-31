@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { collectServerViaSSH } from '@/lib/serverMonitoring/sshCollector';
+import { formatConnectionDiagnostic } from '@/lib/serverMonitoring/errorDiagnostic';
 
 /**
  * POST /api/servers/test-connection
@@ -7,9 +8,16 @@ import { collectServerViaSSH } from '@/lib/serverMonitoring/sshCollector';
  * Returns operating system and hardware discovery preview.
  */
 export async function POST(request: NextRequest) {
+  let hostStr = '';
+  let portNum = 22;
+  let methodStr = 'password';
+
   try {
     const body = await request.json();
     const { host, port = 22, username, authMethod = 'privateKey', authSecret } = body;
+    hostStr = host || '';
+    portNum = parseInt(port, 10) || 22;
+    methodStr = authMethod;
 
     if (!host || !username || !authSecret) {
       return NextResponse.json(
@@ -18,11 +26,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const parsedPort = parseInt(port, 10) || 22;
-
     const specs = await collectServerViaSSH({
       host: host.trim(),
-      port: parsedPort,
+      port: portNum,
       username: username.trim(),
       authMethod,
       authSecret,
@@ -46,10 +52,13 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err: any) {
+    const diag = formatConnectionDiagnostic(err, { host: hostStr, port: portNum, authMethod: methodStr });
     return NextResponse.json(
       {
         success: false,
-        error: err.message || 'Connection test failed',
+        error: diag.message,
+        hint: diag.hint,
+        rawError: err.message,
       },
       { status: 422 }
     );

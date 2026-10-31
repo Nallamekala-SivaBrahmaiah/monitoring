@@ -25,6 +25,7 @@ import {
   Lock,
   Globe,
   Radio,
+  X,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -157,9 +158,23 @@ export default function ServersPage() {
   });
 
   const [testingConnection, setTestingConnection] = useState<boolean>(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message?: string; error?: string; preview?: any } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message?: string; error?: string; hint?: string; preview?: any } | null>(null);
   const [submittingServer, setSubmittingServer] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // User notification feedback toast
+  const [feedbackToast, setFeedbackToast] = useState<{
+    type: 'success' | 'error' | 'info';
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const showNotification = (type: 'success' | 'error' | 'info', title: string, message: string) => {
+    setFeedbackToast({ type, title, message });
+    setTimeout(() => {
+      setFeedbackToast(null);
+    }, 6000);
+  };
 
   // Fetch servers from backend
   const fetchServers = async () => {
@@ -188,6 +203,7 @@ export default function ServersPage() {
       const res = await fetch(`/api/servers/${id}/refresh`, { method: 'POST' });
       if (res.ok) {
         await fetchServers();
+        showNotification('success', 'Telemetry Synchronized', 'Real-time metrics refreshed via SSH probe.');
       }
     } catch (e) {
       console.warn('Refresh error:', e);
@@ -225,8 +241,8 @@ export default function ServersPage() {
   };
 
   // Submit Add Server Form
-  const handleAddServerSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddServerSubmit = async (e?: React.FormEvent, allowOfflineSave: boolean = false) => {
+    if (e) e.preventDefault();
     try {
       setSubmittingServer(true);
       setSubmitError(null);
@@ -242,15 +258,20 @@ export default function ServersPage() {
         body: JSON.stringify({
           ...formData,
           tags: tagArray,
+          allowOfflineSave,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to add server');
+        setSubmitError(data.error + (data.hint ? `\n💡 Suggestion: ${data.hint}` : ''));
+        return;
       }
 
       setShowAddModal(false);
+      const serverName = formData.name;
+      const serverHost = formData.host;
+
       // Reset form
       setFormData({
         name: '',
@@ -265,6 +286,21 @@ export default function ServersPage() {
         tags: 'web, api',
       });
       setTestResult(null);
+
+      if (allowOfflineSave) {
+        showNotification(
+          'info',
+          'Server Registered in Offline Mode',
+          `Server "${serverName}" (${serverHost}) added. Telemetry will sync automatically once network/SSH access is established.`
+        );
+      } else {
+        showNotification(
+          'success',
+          'Server Successfully Connected',
+          `Server "${serverName}" (${serverHost}) connected and added to monitoring fleet.`
+        );
+      }
+
       await fetchServers();
     } catch (err: any) {
       setSubmitError(err.message || 'Server registration failed');
@@ -299,15 +335,22 @@ export default function ServersPage() {
       const res = await fetch(url, { method: 'DELETE' });
 
       if (res.ok) {
+        const removedName = deleteTarget.name;
+        const removedHost = deleteTarget.host;
         setDeleteTarget(null);
         setDeleteConfirmText('');
+        showNotification(
+          'info',
+          'Server Disconnected and Removed',
+          `Server "${removedName}" (${removedHost}) was successfully disconnected and removed from monitoring fleet.`
+        );
         await fetchServers();
       } else {
         const err = await res.json();
-        alert(err.error || 'Failed to remove server');
+        showNotification('error', 'Failed to Remove Server', err.error || 'Server deletion failed');
       }
     } catch (e: any) {
-      alert(e.message || 'Failed to remove server');
+      showNotification('error', 'Error', e.message || 'Failed to remove server');
     } finally {
       setDeleting(false);
     }
@@ -356,6 +399,39 @@ export default function ServersPage() {
         <Header />
 
         <main className="p-4 lg:p-7 space-y-6">
+          {/* Action Notification Toast Banner */}
+          {feedbackToast && (
+            <div
+              className={`p-4 rounded-xl border flex items-center justify-between gap-3 shadow-lg animate-fade-in backdrop-blur-md transition-all ${
+                feedbackToast.type === 'success'
+                  ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-200'
+                  : feedbackToast.type === 'error'
+                  ? 'bg-rose-950/80 border-rose-500/40 text-rose-200'
+                  : 'bg-sky-950/80 border-sky-500/40 text-sky-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                {feedbackToast.type === 'success' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                ) : feedbackToast.type === 'error' ? (
+                  <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+                ) : (
+                  <Radio className="w-5 h-5 text-sky-400 shrink-0 animate-pulse" />
+                )}
+                <div>
+                  <strong className="block text-xs font-bold text-white tracking-wide">{feedbackToast.title}</strong>
+                  <p className="text-xs text-slate-300 mt-0.5">{feedbackToast.message}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setFeedbackToast(null)}
+                className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Top Breadcrumb & Title */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -1042,20 +1118,43 @@ export default function ServersPage() {
               {/* Connection Test Results Preview */}
               {testResult && (
                 <div
-                  className={`p-3.5 rounded-xl border text-xs ${
+                  className={`p-4 rounded-xl border text-xs space-y-2.5 ${
                     testResult.success
-                      ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
-                      : 'bg-rose-950/30 border-rose-500/30 text-rose-300'
+                      ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                      : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
                   }`}
                 >
-                  <div className="flex items-center gap-2 font-bold">
+                  <div className="flex items-start gap-2.5">
                     {testResult.success ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                     ) : (
-                      <AlertCircle className="w-4 h-4 text-rose-400" />
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                     )}
-                    <span>{testResult.message || testResult.error}</span>
+                    <div className="flex-1">
+                      <strong className="block font-bold">{testResult.message || testResult.error}</strong>
+                      {testResult.hint && (
+                        <div className="mt-2 text-[11px] text-slate-300 bg-[#0B1120]/90 p-3 rounded-lg border border-slate-700/60 leading-relaxed">
+                          <strong className="text-amber-400 block mb-0.5">💡 Configuration Diagnosis & Solution:</strong>
+                          <span>{testResult.hint}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
+
+                  {!testResult.success && (
+                    <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-rose-800/40">
+                      <span className="text-[11px] text-slate-400">
+                        Want to register this server now and establish connectivity later?
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleAddServerSubmit(undefined, true)}
+                        className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold transition-colors shrink-0"
+                      >
+                        Add Server in Offline Mode
+                      </button>
+                    </div>
+                  )}
 
                   {testResult.preview && (
                     <div className="mt-2.5 pt-2.5 border-t border-emerald-800/40 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
@@ -1091,9 +1190,23 @@ export default function ServersPage() {
               )}
 
               {submitError && (
-                <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{submitError}</span>
+                <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                    <span className="whitespace-pre-line leading-relaxed">{submitError}</span>
+                  </div>
+                  <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-rose-800/40">
+                    <span className="text-[11px] text-slate-400">
+                      You can save this server into inventory now and troubleshoot SSH access later.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleAddServerSubmit(undefined, true)}
+                      className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold transition-colors shrink-0"
+                    >
+                      Save as Offline Server
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1224,13 +1337,36 @@ export default function ServersPage() {
               </div>
               <div>
                 <h3 className="text-base font-bold text-white">Remove Server from Monitoring</h3>
-                <span className="text-xs text-rose-400 font-semibold">{deleteTarget.environment} Server</span>
+                <span className="text-xs text-rose-400 font-semibold">{deleteTarget.environment} Server Node</span>
+              </div>
+            </div>
+
+            {/* Server Details Summary Card */}
+            <div className="bg-[#0D1526] border border-[#1E293B] rounded-xl p-3.5 space-y-2 text-xs">
+              <div className="flex justify-between items-center pb-2 border-b border-[#1E293B]">
+                <span className="text-slate-400">Server Name:</span>
+                <span className="font-bold text-white">{deleteTarget.name}</span>
+              </div>
+              <div className="flex justify-between items-center pb-2 border-b border-[#1E293B]">
+                <span className="text-slate-400">Host IP / Port:</span>
+                <span className="font-mono text-blue-400 font-semibold">{deleteTarget.host}:{deleteTarget.port}</span>
+              </div>
+              <div className="flex justify-between items-center pb-2 border-b border-[#1E293B]">
+                <span className="text-slate-400">Environment & Provider:</span>
+                <span className="text-slate-300">
+                  {deleteTarget.environment} • <span className="uppercase">{deleteTarget.cloudProvider}</span> ({deleteTarget.region})
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Current Health:</span>
+                <span className={`font-semibold ${deleteTarget.status === 'Online' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {deleteTarget.status} ({deleteTarget.hardware?.cpuCores || 1} CPU cores, {formatBytes(deleteTarget.hardware?.totalMemoryBytes || 0)} RAM)
+                </span>
               </div>
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              Are you sure you want to stop monitoring <strong className="text-white">{deleteTarget.name}</strong> ({deleteTarget.host})?
-              All historical telemetry and inventory mirrors for this node will be removed.
+              Disconnecting will terminate scheduled SSH telemetry collection, stop agent sync, and purge this server node from the monitoring fleet.
             </p>
 
             {deleteTarget.environment === 'Production' && (
@@ -1264,7 +1400,7 @@ export default function ServersPage() {
                 disabled={deleting || (deleteTarget.environment === 'Production' && deleteConfirmText !== deleteTarget.name)}
                 className="px-4 py-2 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-500 text-white transition-all disabled:opacity-50"
               >
-                {deleting ? 'Removing...' : 'Confirm Remove'}
+                {deleting ? 'Disconnecting & Removing...' : 'Disconnect & Remove Server'}
               </button>
             </div>
           </div>

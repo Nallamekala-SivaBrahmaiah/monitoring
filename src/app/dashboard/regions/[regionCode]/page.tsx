@@ -8,11 +8,9 @@ import {
   Globe,
   MapPin,
   Server,
-  Sparkles,
   RotateCw,
   Search,
   Filter,
-  DollarSign,
   Terminal,
   Activity,
   Layers,
@@ -24,7 +22,6 @@ import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { AwsLogo, AzureLogo, AzureVmIcon } from '@/components/icons/CloudIcons';
 import { DynamicRegionSummary, DynamicRegionResource } from '@/types/monitoring';
-import { AiAssistantDrawer } from '@/components/dashboard/AiAssistantDrawer';
 
 function RegionDetailContent({ params }: { params: Promise<{ regionCode: string }> }) {
   const resolvedParams = use(params);
@@ -35,9 +32,7 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [sortBy, setSortBy] = useState<'name' | 'status' | 'cost'>('name');
-  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
-  const [aiContext, setAiContext] = useState<any>(null);
+  const [sortBy, setSortBy] = useState<'name' | 'status'>('name');
 
   const fetchRegionDetails = async () => {
     try {
@@ -77,37 +72,9 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
       .sort((a, b) => {
         if (sortBy === 'name') return a.name.localeCompare(b.name);
         if (sortBy === 'status') return a.status.localeCompare(b.status);
-        if (sortBy === 'cost') return (b.estimatedCostMonthly || 0) - (a.estimatedCostMonthly || 0);
         return 0;
       });
   }, [regionData, search, statusFilter, sortBy]);
-
-  const handleAskAiAboutRegion = () => {
-    setAiContext({
-      resourceName: `Region: ${regionData?.displayName || regionCode}`,
-      region: regionData?.region || regionCode,
-      provider: regionData?.cloud || 'azure',
-      status: `${regionData?.runningCount || 0} Running, ${regionData?.stoppedCount || 0} Stopped`,
-      metrics: {
-        totalResources: regionData?.resourceCount || 0,
-        estimatedMonthlyCost: regionData?.estimatedMonthlyCost || 0,
-      },
-    });
-    setAiDrawerOpen(true);
-  };
-
-  const handleTroubleshootResource = (r: DynamicRegionResource) => {
-    setAiContext({
-      resourceName: r.name,
-      resourceId: r.resourceId,
-      provider: r.cloudProvider,
-      region: r.region,
-      status: r.status,
-      publicIp: r.publicIp,
-      metrics: r.metrics,
-    });
-    setAiDrawerOpen(true);
-  };
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col">
@@ -144,14 +111,6 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
 
             <div className="flex items-center gap-3">
               <button
-                onClick={handleAskAiAboutRegion}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg shadow-sm shadow-blue-500/25 transition-all"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Ask AI About This Region</span>
-              </button>
-
-              <button
                 onClick={fetchRegionDetails}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors"
               >
@@ -183,20 +142,19 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
             </div>
 
             <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 shadow-sm">
-              <span className="text-xs text-slate-400 block mb-1">Daily Spend (Est.)</span>
-              <div className="text-2xl font-bold text-sky-400 tracking-tight">
-                ${regionData?.estimatedDailyCost.toFixed(2) || '0.00'}
+              <span className="text-xs text-slate-400 block mb-1">Provider Infrastructure</span>
+              <div className="text-2xl font-bold text-sky-400 tracking-tight uppercase">
+                {regionData?.cloud || 'Cloud'}
               </div>
-              <span className="text-[11px] text-slate-400 mt-1 block">Based on VM running hours</span>
+              <span className="text-[11px] text-slate-400 mt-1 block">Live cloud platform</span>
             </div>
 
             <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 shadow-sm">
-              <span className="text-xs text-slate-400 block mb-1">Monthly Projected Cost</span>
+              <span className="text-xs text-slate-400 block mb-1">Telemetry Status</span>
               <div className="text-2xl font-bold text-emerald-400 tracking-tight">
-                ${regionData?.estimatedMonthlyCost.toFixed(2) || '0.00'}{' '}
-                <span className="text-xs font-normal text-slate-400">USD</span>
+                Active
               </div>
-              <span className="text-[11px] text-slate-400 mt-1 block">30-day projected run rate</span>
+              <span className="text-[11px] text-slate-400 mt-1 block">Real-time sync enabled</span>
             </div>
           </div>
 
@@ -243,7 +201,6 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
                 >
                   <option value="name">Sort by Name</option>
                   <option value="status">Sort by Status</option>
-                  <option value="cost">Sort by Cost</option>
                 </select>
               </div>
             </div>
@@ -260,7 +217,6 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
                     <th className="py-3 px-4">Public IP</th>
                     <th className="py-3 px-4">Operating System</th>
                     <th className="py-3 px-4">Running Duration</th>
-                    <th className="py-3 px-4">Est. Cost (Mo)</th>
                     <th className="py-3 px-4">Tags</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
@@ -309,9 +265,6 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
                         <td className="py-3 px-4 font-mono text-emerald-400">{r.publicIp || '-'}</td>
                         <td className="py-3 px-4 text-slate-300">{r.os || 'Linux'}</td>
                         <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">{r.runningDuration}</td>
-                        <td className="py-3 px-4 font-mono font-bold text-emerald-400">
-                          ${r.estimatedCostMonthly?.toFixed(2) || '0.00'}
-                        </td>
 
                         <td className="py-3 px-4">
                           <div className="flex flex-wrap gap-1 max-w-[140px]">
@@ -332,15 +285,6 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
 
                         <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleTroubleshootResource(r)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg shadow-sm transition-all flex items-center gap-1"
-                              title="Troubleshoot with AI"
-                            >
-                              <Sparkles className="w-3 h-3" />
-                              <span>AI Help</span>
-                            </button>
-
                             <Link
                               href={`/dashboard/azure-vms/${r.resourceId}`}
                               className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-[#202E4E] text-slate-200 rounded-lg border border-[#1E293B] transition-colors"
@@ -355,7 +299,7 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
 
                   {filteredResources.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="py-8 text-center text-slate-400">
+                      <td colSpan={10} className="py-8 text-center text-slate-400">
                         {loading
                           ? 'Loading resources in this region...'
                           : 'No resources found in this region matching current filter.'}
@@ -368,13 +312,6 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
           </div>
         </main>
       </div>
-
-      {/* Floating AI Assistant Drawer */}
-      <AiAssistantDrawer
-        isOpen={aiDrawerOpen}
-        onClose={() => setAiDrawerOpen(false)}
-        initialContext={aiContext}
-      />
     </div>
   );
 }
