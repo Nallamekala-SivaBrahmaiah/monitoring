@@ -1,41 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import CloudResource from '@/models/CloudResource';
-
-
+import { fetchResources } from '@/lib/storage';
 
 export async function GET(request: NextRequest) {
   try {
-    await connectToDatabase();
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search')?.toLowerCase();
-    const subscriptionId = searchParams.get('subscriptionId');
-    const region = searchParams.get('region');
-    const status = searchParams.get('status')?.toLowerCase();
+    const search = searchParams.get('search')?.toLowerCase() || null;
+    const subscriptionId = searchParams.get('subscriptionId') || null;
+    const region = searchParams.get('region') || null;
+    const status = searchParams.get('status')?.toLowerCase() || null;
 
-    const query: any = { provider: 'azure', resourceType: 'vm' };
+    const resources = await fetchResources({
+      provider: 'azure',
+      resourceType: 'vm',
+      subscriptionId,
+      region,
+      search,
+    });
 
-    if (subscriptionId && subscriptionId !== 'all') {
-      query.subscriptionId = subscriptionId;
-    }
-    if (region && region !== 'all') {
-      query.region = region;
-    }
-    if (status && status !== 'all') {
-      query.status = { $regex: new RegExp(`^${status}$`, 'i') };
-    }
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { resourceId: { $regex: search, $options: 'i' } },
-      ];
-    }
-
-    const resources = await CloudResource.find(query).lean();
+    const filtered = status && status !== 'all'
+      ? resources.filter((r) => r.status?.toLowerCase() === status)
+      : resources;
 
     return NextResponse.json(
-      resources.map((r: any) => ({
-        id: r._id.toString(),
+      filtered.map((r: any) => ({
+        id: r._id ? r._id.toString() : r.resourceId,
         vmId: r.resourceId,
         name: r.name,
         resourceGroup: r.resourceGroup || 'default-rg',
@@ -43,13 +31,13 @@ export async function GET(request: NextRequest) {
         region: r.region,
         vmSize: r.size || 'Standard_B2s',
         powerState: r.status,
-        privateIp: r.privateIp || '10.0.0.4',
+        privateIp: r.privateIp || '-',
         publicIp: r.publicIp || '-',
-        cpuUtilization: r.metrics?.cpuUtilization,
-        memoryUtilization: r.metrics?.memoryUtilization,
-        diskUtilization: r.metrics?.diskUtilization,
-        networkIn: r.metrics?.networkIn,
-        networkOut: r.metrics?.networkOut,
+        cpuUtilization: r.metrics?.cpuUtilization !== undefined ? r.metrics.cpuUtilization : null,
+        memoryUtilization: r.metrics?.memoryUtilization !== undefined ? r.metrics.memoryUtilization : null,
+        diskUtilization: r.metrics?.diskUtilization !== undefined ? r.metrics.diskUtilization : null,
+        networkIn: r.metrics?.networkIn !== undefined ? r.metrics.networkIn : null,
+        networkOut: r.metrics?.networkOut !== undefined ? r.metrics.networkOut : null,
         tags: r.metadata?.tags || {},
       }))
     );

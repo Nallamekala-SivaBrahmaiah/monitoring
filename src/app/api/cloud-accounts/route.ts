@@ -1,30 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import CloudAccount from '@/models/CloudAccount';
-import { validateAzureCredentials } from '@/lib/azure/credentials';
-import { discoverAzureRegions } from '@/lib/azure/regions';
+import { fetchAccounts, upsertAccount } from '@/lib/storage';
 import { saveAzureSubscription } from '@/lib/azure/subscriptions';
 import { validateAWSCredentials } from '@/lib/aws/credentials';
 import { discoverAWSRegions } from '@/lib/aws/regions';
 
-
-
 export async function GET(request: NextRequest) {
   try {
-    await connectToDatabase();
     const { searchParams } = new URL(request.url);
-    const provider = searchParams.get('provider');
+    const provider = searchParams.get('provider') || undefined;
 
-    const query: any = {};
-    if (provider && provider !== 'all') {
-      query.provider = provider;
-    }
-
-    const accounts = await CloudAccount.find(query).lean();
+    const accounts = await fetchAccounts(provider);
 
     return NextResponse.json(
       accounts.map((acc: any) => ({
-        id: acc._id.toString(),
+        id: acc._id ? acc._id.toString() : acc.subscriptionId || acc.accountId,
         accountName: acc.accountName,
         accountId: acc.accountId || acc.subscriptionId,
         subscriptionId: acc.subscriptionId,
@@ -47,7 +36,6 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await connectToDatabase();
     const body = await request.json();
     const { provider } = body;
 
@@ -90,33 +78,31 @@ export async function POST(request: NextRequest) {
       const allCodes = discoveredRegs.map((r) => r.code);
       const enabled = regions && regions.length > 0 ? regions : allCodes.length > 0 ? allCodes : ['us-east-1'];
 
-      const account = await CloudAccount.findOneAndUpdate(
-        { provider: 'aws', accountId: callerAccount },
-        {
-          provider: 'aws',
-          accountName,
-          accountId: callerAccount,
-          roleArn,
-          accessKeyId,
-          secretAccessKey,
-          authType: roleArn ? 'iam_role' : 'access_keys',
-          status: 'Connected',
-          availableRegions: allCodes,
-          selectedRegions: enabled,
-          lastSyncAt: new Date(),
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
+      const accountData = {
+        provider: 'aws',
+        accountName,
+        accountId: callerAccount,
+        roleArn,
+        accessKeyId,
+        secretAccessKey,
+        authType: roleArn ? 'iam_role' : 'access_keys',
+        status: 'Connected',
+        availableRegions: allCodes,
+        selectedRegions: enabled,
+        lastSyncAt: new Date(),
+      };
+
+      const account = await upsertAccount(accountData);
 
       return NextResponse.json(
         {
-          id: account._id.toString(),
+          id: account._id ? account._id.toString() : account.accountId,
           accountName: account.accountName,
           accountId: account.accountId,
           roleArn: account.roleArn,
           status: account.status,
           enabledRegions: account.selectedRegions,
-          resourcesCount: account.resourcesCount,
+          resourcesCount: account.resourcesCount || 0,
           lastSync: 'Just now',
         },
         { status: 201 }

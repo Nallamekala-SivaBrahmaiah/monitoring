@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from '@/lib/mongodb';
-import CloudResource from '@/models/CloudResource';
-
+import { fetchResourceById } from '@/lib/storage';
 
 export async function GET(
   request: NextRequest,
@@ -10,19 +8,14 @@ export async function GET(
   const { vmId } = await context.params;
 
   try {
-    await connectToDatabase();
-    const vm = await CloudResource.findOne({
-      provider: 'azure',
-      resourceType: 'vm',
-      $or: [{ resourceId: vmId }, { _id: vmId.match(/^[0-9a-fA-F]{24}$/) ? vmId : undefined }],
-    }).lean();
+    const vm = await fetchResourceById(vmId);
 
     if (!vm) {
       return NextResponse.json({ error: 'Azure Virtual Machine not found' }, { status: 404 });
     }
 
     return NextResponse.json({
-      id: vm._id.toString(),
+      id: vm._id ? vm._id.toString() : vm.resourceId,
       vmId: vm.resourceId,
       name: vm.name,
       resourceGroup: vm.resourceGroup || 'default-rg',
@@ -32,11 +25,11 @@ export async function GET(
       powerState: vm.status,
       privateIp: vm.privateIp || '-',
       publicIp: vm.publicIp || '-',
-      cpuUtilization: vm.metrics?.cpuUtilization,
-      memoryUtilization: vm.metrics?.memoryUtilization,
-      diskUtilization: vm.metrics?.diskUtilization,
-      networkIn: vm.metrics?.networkIn,
-      networkOut: vm.metrics?.networkOut,
+      cpuUtilization: vm.metrics?.cpuUtilization !== undefined ? vm.metrics.cpuUtilization : null,
+      memoryUtilization: vm.metrics?.memoryUtilization !== undefined ? vm.metrics.memoryUtilization : null,
+      diskUtilization: vm.metrics?.diskUtilization !== undefined ? vm.metrics.diskUtilization : null,
+      networkIn: vm.metrics?.networkIn !== undefined ? vm.metrics.networkIn : null,
+      networkOut: vm.metrics?.networkOut !== undefined ? vm.metrics.networkOut : null,
       tags: vm.metadata?.tags || {},
       metadata: vm.metadata,
     });

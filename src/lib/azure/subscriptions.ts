@@ -1,9 +1,12 @@
-import connectToDatabase from '@/lib/mongodb';
-import CloudAccount, { ICloudAccount } from '@/models/CloudAccount';
-import CloudResource from '@/models/CloudResource';
 import { validateAzureCredentials } from './credentials';
 import { discoverAzureRegions } from './regions';
 import { discoverAllAzureResources } from './resources';
+import {
+  upsertAccount,
+  fetchAccounts,
+  removeAccount,
+  bulkUpsertResources,
+} from '@/lib/storage';
 
 export interface SaveAzureSubscriptionInput {
   subscriptionName: string;
@@ -15,17 +18,15 @@ export interface SaveAzureSubscriptionInput {
 }
 
 export async function saveAzureSubscription(input: SaveAzureSubscriptionInput) {
-  await connectToDatabase();
-
   const { subscriptionName, subscriptionId, tenantId, clientId, clientSecret, selectedRegions } = input;
 
-  // 1. Validate credentials
+  // 1. Validate credentials with real Azure SDK
   const valResult = await validateAzureCredentials(subscriptionId, tenantId, clientId, clientSecret);
   if (!valResult.success) {
     throw new Error(valResult.error || 'Failed to validate Azure credentials');
   }
 
-  // 2. Discover all regions
+  // 2. Discover all regions via ARM Locations API
   const regionsList = await discoverAzureRegions(subscriptionId, { tenantId, clientId, clientSecret });
   const allRegionCodes = regionsList.map((r) => r.code);
 
@@ -33,24 +34,23 @@ export async function saveAzureSubscription(input: SaveAzureSubscriptionInput) {
   const enabledRegions =
     selectedRegions && selectedRegions.length > 0 ? selectedRegions : allRegionCodes;
 
-  // 3. Upsert account in MongoDB
-  const account = await CloudAccount.findOneAndUpdate(
-    { provider: 'azure', subscriptionId },
-    {
-      provider: 'azure',
-      accountName: subscriptionName || valResult.displayName || 'Azure Subscription',
-      subscriptionId,
-      tenantId,
-      clientId,
-      clientSecret, // Hidden by select: false
-      authType: 'service_principal',
-      status: 'Connected',
-      availableRegions: allRegionCodes,
-      selectedRegions: enabledRegions,
-      lastSyncAt: new Date(),
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  );
+  // 3. Upsert account into resilient storage (MongoDB with automatic persistent fallback)
+  const accountData = {
+    provider: 'azure',
+    accountName: subscriptionName || valResult.displayName || 'Azure Subscription',
+    subscriptionId,
+    tenantId,
+    clientId,
+    clientSecret, // Kept safe server-side
+    authType: 'service_principal',
+    status: 'Connected',
+    availableRegions: allRegionCodes,
+    selectedRegions: enabledRegions,
+    resourcesCount: 0,
+    lastSyncAt: new Date(),
+  };
+
+  const account = await upsertAccount(accountData);
 
   // 4. Trigger resource discovery in background
   discoverAndPersistAzureResources(subscriptionId, { tenantId, clientId, clientSecret }, enabledRegions).catch(
@@ -58,7 +58,7 @@ export async function saveAzureSubscription(input: SaveAzureSubscriptionInput) {
   );
 
   return {
-    id: account._id.toString(),
+    id: account._id ? account._id.toString() : `sub-${subscriptionId}`,
     subscriptionName: account.accountName,
     subscriptionId: account.subscriptionId,
     tenantId: account.tenantId,
@@ -68,17 +68,16 @@ export async function saveAzureSubscription(input: SaveAzureSubscriptionInput) {
     availableRegions: account.availableRegions,
     selectedRegions: account.selectedRegions,
     enabledRegions: account.selectedRegions,
-    resourcesCount: account.resourcesCount,
+    resourcesCount: account.resourcesCount || 0,
     lastSync: 'Just now',
   };
 }
 
 export async function getAzureSubscriptions() {
-  await connectToDatabase();
-  const accounts = await CloudAccount.find({ provider: 'azure' }).lean();
+  const accounts = await fetchAccounts('azure');
 
   return accounts.map((acc: any) => ({
-    id: acc._id.toString(),
+    id: acc._id ? acc._id.toString() : acc.subscriptionId,
     subscriptionName: acc.accountName,
     subscriptionId: acc.subscriptionId,
     tenantId: acc.tenantId,
@@ -94,19 +93,17 @@ export async function getAzureSubscriptions() {
 }
 
 export async function disconnectAzureSubscription(subscriptionId: string) {
-  await connectToDatabase();
-  await CloudAccount.deleteOne({ provider: 'azure', subscriptionId });
-  await CloudResource.deleteMany({ provider: 'azure', subscriptionId });
+  await removeAccount('azure', subscriptionId);
   return { success: true };
 }
 
 export async function updateAzureSubscriptionRegions(subscriptionId: string, regions: string[]) {
-  await connectToDatabase();
-  const account = await CloudAccount.findOne({ provider: 'azure', subscriptionId }).select('+clientSecret');
+  const accounts = await fetchAccounts('azure');
+  const account = accounts.find((a) => a.subscriptionId === subscriptionId);
   if (!account) throw new Error('Subscription not found');
 
   account.selectedRegions = regions;
-  await account.save();
+  await upsertAccount(account);
 
   if (account.clientSecret && account.tenantId && account.clientId) {
     discoverAndPersistAzureResources(
@@ -120,8 +117,8 @@ export async function updateAzureSubscriptionRegions(subscriptionId: string, reg
 }
 
 export async function refreshAzureSubscription(subscriptionId: string) {
-  await connectToDatabase();
-  const account = await CloudAccount.findOne({ provider: 'azure', subscriptionId }).select('+clientSecret');
+  const accounts = await fetchAccounts('azure');
+  const account = accounts.find((a) => a.subscriptionId === subscriptionId);
   if (!account || !account.clientSecret || !account.tenantId || !account.clientId) {
     throw new Error('Azure subscription credentials not available');
   }
@@ -140,37 +137,24 @@ export async function discoverAndPersistAzureResources(
   credentials: { tenantId: string; clientId: string; clientSecret: string },
   regions: string[]
 ) {
-  await connectToDatabase();
   const resources = await discoverAllAzureResources(subscriptionId, credentials, regions);
 
-  // Update MongoDB resources
-  const bulkOps = resources.map((r) => ({
-    updateOne: {
-      filter: { resourceId: r.resourceId, provider: 'azure' },
-      update: {
-        $set: {
-          ...r,
-          provider: 'azure',
-          subscriptionId,
-        },
-      },
-      upsert: true,
-    },
+  // Bulk upsert into resilient storage
+  const formattedResources = resources.map((r) => ({
+    ...r,
+    provider: 'azure',
+    subscriptionId,
   }));
 
-  if (bulkOps.length > 0) {
-    await CloudResource.bulkWrite(bulkOps as any);
-  }
+  await bulkUpsertResources(formattedResources);
 
-  // Update count and lastSync on CloudAccount
-  await CloudAccount.updateOne(
-    { provider: 'azure', subscriptionId },
-    {
-      $set: {
-        resourcesCount: resources.length,
-        lastSyncAt: new Date(),
-        status: 'Connected',
-      },
-    }
-  );
+  // Update count and lastSync on account
+  const accounts = await fetchAccounts('azure');
+  const account = accounts.find((a) => a.subscriptionId === subscriptionId);
+  if (account) {
+    account.resourcesCount = resources.length;
+    account.lastSyncAt = new Date();
+    account.status = 'Connected';
+    await upsertAccount(account);
+  }
 }
