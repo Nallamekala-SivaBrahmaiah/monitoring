@@ -210,7 +210,10 @@ export async function fetchResources(query: {
   const hasMongo = await checkMongo();
   if (hasMongo) {
     try {
-      const mongoQ: any = {};
+      const mongoQ: any = {
+        isDeleted: { $ne: true },
+        status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
+      };
       if (query.provider && query.provider !== 'all') mongoQ.provider = query.provider;
       if (query.resourceType && query.resourceType !== 'all') mongoQ.resourceType = query.resourceType;
       if (query.region && query.region !== 'all') mongoQ.region = query.region;
@@ -229,7 +232,7 @@ export async function fetchResources(query: {
   }
 
   const store = getFileStore();
-  let list = store.resources;
+  let list = store.resources.filter((r) => !r.isDeleted && !['Terminated', 'terminated', 'deleted', 'Deleted'].includes(r.status));
   if (query.provider && query.provider !== 'all') {
     list = list.filter((r) => r.provider === query.provider);
   }

@@ -9,7 +9,7 @@ export interface ICloudResource extends Document {
   accountId?: string;
   region: string;
   resourceGroup?: string;
-  status: 'Running' | 'Stopped' | 'Terminated' | 'Pending' | 'Healthy' | 'Degraded';
+  status: string;
   size?: string;
   privateIp?: string;
   publicIp?: string;
@@ -22,6 +22,10 @@ export interface ICloudResource extends Document {
     lastUpdated: Date;
   };
   metadata: Record<string, any>;
+  isDeleted?: boolean;
+  deletedAt?: Date | null;
+  metricSource?: string;
+  lastSyncAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -91,6 +95,23 @@ const CloudResourceSchema: Schema<ICloudResource> = new Schema(
     metadata: {
       type: Schema.Types.Mixed,
       default: {},
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    metricSource: {
+      type: String,
+      default: 'Cloud Provider',
+    },
+    lastSyncAt: {
+      type: Date,
+      default: Date.now,
     },
   },
   {

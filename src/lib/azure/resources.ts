@@ -146,7 +146,7 @@ export async function discoverAllAzureResources(
             }
 
             // Real Azure Monitor metrics
-            const vmMetrics = await fetchAzureVMMetrics(item.id, token);
+            const vmMetrics = await fetchAzureVMMetrics(item.id, token, size);
             metrics = {
               ...vmMetrics,
               lastUpdated: new Date(),

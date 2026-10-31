@@ -19,6 +19,8 @@ import {
   Layers,
   X,
   Check,
+  DollarSign,
+  Sparkles,
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { useMonitoring } from '@/context/MonitoringContext';
@@ -49,10 +51,17 @@ export function Sidebar({
       ? activeAlertsCount
       : filteredAlerts.filter((a) => a.status === 'active').length;
 
-  const navItems = [
+  const navItems: Array<{
+    label: string;
+    href: string;
+    icon: any;
+    badge?: number | string;
+  }> = [
     { label: 'Dashboard', href: '/', icon: LayoutDashboard },
     { label: 'Cloud Accounts', href: '/dashboard/cloud-accounts', icon: Cloud },
     { label: 'Regions', href: '/dashboard/regions', icon: Globe },
+    { label: 'Cost Insights', href: '/dashboard/costs', icon: DollarSign },
+    { label: 'AI Assistant', href: '/dashboard/ai-assistant', icon: Sparkles, badge: 'AI' },
     { label: 'Servers', href: '/dashboard/servers', icon: Server },
     { label: 'EC2 Instances', href: '/dashboard/ec2', icon: Cpu },
     { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AppWindow },
@@ -133,8 +142,16 @@ export function Sidebar({
                 />
                 <span className="truncate">{item.label}</span>
               </div>
-              {item.badge !== undefined && item.badge > 0 && (
-                <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold text-white bg-red-500 rounded-full shadow-sm">
+              {item.badge !== undefined && (
+                <span
+                  className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold rounded-full shadow-sm ${
+                    typeof item.badge === 'string'
+                      ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white'
+                      : typeof item.badge === 'number' && item.badge > 0
+                      ? 'bg-rose-500 text-white'
+                      : 'hidden'
+                  }`}
+                >
                   {item.badge}
                 </span>
               )}

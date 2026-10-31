@@ -6,9 +6,18 @@ export interface AzureMonitorMetricsResult {
   networkOut: number | null;
 }
 
+const VM_SIZE_RAM_BYTES: Record<string, number> = {
+  standard_b1s: 1 * 1024 * 1024 * 1024,
+  standard_b2s: 4 * 1024 * 1024 * 1024,
+  standard_d2s_v3: 8 * 1024 * 1024 * 1024,
+  standard_d4s_v3: 16 * 1024 * 1024 * 1024,
+  standard_f2s_v2: 4 * 1024 * 1024 * 1024,
+};
+
 export async function fetchAzureVMMetrics(
   resourceUri: string,
-  token: string
+  token: string,
+  vmSize?: string
 ): Promise<AzureMonitorMetricsResult> {
   const result: AzureMonitorMetricsResult = {
     cpuUtilization: null,
@@ -62,7 +71,9 @@ export async function fetchAzureVMMetrics(
       if (name === 'Percentage CPU' && lastPoint.average !== null && lastPoint.average !== undefined) {
         result.cpuUtilization = Math.round(lastPoint.average * 10) / 10;
       } else if (name === 'Available Memory Bytes' && lastPoint.average !== null && lastPoint.average !== undefined) {
-        const memPercent = Math.round((1 - lastPoint.average / (8 * 1024 * 1024 * 1024)) * 100);
+        const sizeKey = (vmSize || 'standard_d2s_v3').toLowerCase().replace(/[\s-_]+/g, '_');
+        const totalRam = VM_SIZE_RAM_BYTES[sizeKey] || (8 * 1024 * 1024 * 1024);
+        const memPercent = Math.round((1 - lastPoint.average / totalRam) * 100);
         result.memoryUtilization = Math.max(0, Math.min(100, memPercent));
       } else if (name === 'Disk Read Bytes' || name === 'Disk Write Bytes') {
         const bytes = lastPoint.total ?? lastPoint.average ?? 0;

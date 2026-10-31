@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import {
-  Calendar,
   Cloud,
   MapPin,
   Bell,
@@ -14,8 +13,9 @@ import {
   Layers,
   AlertCircle,
   ExternalLink,
+  Clock,
 } from 'lucide-react';
-import { CloudProvider, TimeRange } from '@/types/monitoring';
+import { CloudProvider } from '@/types/monitoring';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 
@@ -36,28 +36,23 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
     regions,
     selectedRegion,
     setSelectedRegion,
-    timeRange,
-    setTimeRange,
     isLive,
     setIsLive,
     isRefreshing,
     triggerRefresh,
+    lastRefreshedAt,
+    refreshError,
+    refreshInterval,
     filteredAlerts,
+    syncStatus,
+    isSyncing,
+    syncNow,
   } = useMonitoring();
 
-  const [openTimeMenu, setOpenTimeMenu] = useState(false);
   const [openCloudMenu, setOpenCloudMenu] = useState(false);
   const [openAccountMenu, setOpenAccountMenu] = useState(false);
   const [openRegionMenu, setOpenRegionMenu] = useState(false);
   const [openAlertsMenu, setOpenAlertsMenu] = useState(false);
-
-  const timeOptions: { label: string; value: TimeRange }[] = [
-    { label: 'Last 15m', value: '15m' },
-    { label: 'Last 1 Hour', value: '1h' },
-    { label: 'Last 6 Hours', value: '6h' },
-    { label: 'Last 24 Hours', value: '24h' },
-    { label: 'Last 7 Days', value: '7d' },
-  ];
 
   const cloudOptions: { label: string; value: CloudProvider; icon: React.ReactNode }[] = [
     { label: 'All Clouds', value: 'all', icon: <Cloud className="w-3.5 h-3.5 text-blue-400" /> },
@@ -77,11 +72,15 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
   const activeAlerts = filteredAlerts.filter((a) => a.status === 'active');
 
   const closeAllMenus = () => {
-    setOpenTimeMenu(false);
     setOpenCloudMenu(false);
     setOpenAccountMenu(false);
     setOpenRegionMenu(false);
     setOpenAlertsMenu(false);
+  };
+
+  const formatRefreshTime = (date: Date | null) => {
+    if (!date) return 'just now';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
   return (
@@ -117,11 +116,12 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
 
       {/* Filter and Status Controls */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Refresh Button */}
+        {/* Manual Refresh Button */}
         <button
           onClick={triggerRefresh}
-          title="Refresh dashboard metrics"
-          className="p-1.5 rounded-lg bg-[#111A2E] hover:bg-[#18233C] border border-[#1E293B] text-slate-300 hover:text-white transition-colors"
+          disabled={isRefreshing}
+          title={`Refresh latest infrastructure data (Auto-refresh: every ${refreshInterval}s)`}
+          className="p-1.5 rounded-lg bg-[#111A2E] hover:bg-[#18233C] border border-[#1E293B] text-slate-300 hover:text-white transition-colors disabled:opacity-50"
         >
           <RotateCw
             className={`w-3.5 h-3.5 text-blue-400 ${
@@ -130,43 +130,30 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
           />
         </button>
 
-        {/* 1. Time Range Selector */}
-        <div className="relative">
-          <button
-            onClick={() => {
-              const prev = openTimeMenu;
-              closeAllMenus();
-              setOpenTimeMenu(!prev);
-            }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-200 bg-[#111A2E] hover:bg-[#18233C] border border-[#1E293B] rounded-lg transition-colors shadow-sm"
+        {/* Real-Time Auto-Refresh & Latest Data Status */}
+        {isRefreshing ? (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-sky-300 bg-sky-950/40 border border-sky-800/50 rounded-lg">
+            <RotateCw className="w-3.5 h-3.5 animate-spin text-sky-400" />
+            <span className="hidden sm:inline">Refreshing latest data...</span>
+            <span className="sm:hidden">Refreshing...</span>
+          </div>
+        ) : refreshError ? (
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-amber-300 bg-amber-950/40 border border-amber-800/50 rounded-lg cursor-help"
+            title={refreshError}
           >
-            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-            <span>
-              {timeOptions.find((o) => o.value === timeRange)?.label || 'Last 1 Hour'}
-            </span>
-            <ChevronDown className="w-3 h-3 text-slate-400" />
-          </button>
-
-          {openTimeMenu && (
-            <div className="absolute right-0 mt-1.5 w-36 bg-[#111A2E] border border-[#1E293B] rounded-lg shadow-xl py-1 z-30">
-              {timeOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => {
-                    setTimeRange(opt.value);
-                    setOpenTimeMenu(false);
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-left text-slate-300 hover:text-white hover:bg-[#18233C]"
-                >
-                  <span>{opt.label}</span>
-                  {timeRange === opt.value && (
-                    <Check className="w-3.5 h-3.5 text-blue-500" />
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+            <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+            <span>Cached {formatRefreshTime(lastRefreshedAt)}</span>
+          </div>
+        ) : (
+          <div
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-300 bg-[#111A2E] border border-[#1E293B] rounded-lg"
+            title={`Automatic refresh active every ${refreshInterval}s. Always displaying latest infrastructure data.`}
+          >
+            <Clock className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Updated {formatRefreshTime(lastRefreshedAt)}</span>
+          </div>
+        )}
 
         {/* 2. Global Cloud Provider Filter */}
         <div className="relative">
@@ -415,6 +402,43 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
           />
           <span>{isLive ? 'Live' : 'Paused'}</span>
         </button>
+
+        {/* 6b. Real Infrastructure Sync Button & Freshness Pill */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => syncNow()}
+            disabled={isSyncing}
+            title={
+              syncStatus.lastSyncAt
+                ? `Last synchronized: ${new Date(syncStatus.lastSyncAt).toLocaleString()}`
+                : 'Synchronize live infrastructure from AWS, Azure, Docker & Kubernetes'
+            }
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+              isSyncing
+                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 cursor-wait'
+                : 'bg-[#131F37] hover:bg-[#1A2A4A] text-slate-200 border-slate-700/80 hover:border-slate-500 shadow-sm'
+            }`}
+          >
+            <RotateCw className={`w-3.5 h-3.5 text-sky-400 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span className="hidden md:inline">{isSyncing ? 'Syncing...' : 'Sync Infrastructure'}</span>
+            <span className="md:hidden">{isSyncing ? 'Sync...' : 'Sync'}</span>
+          </button>
+
+          {syncStatus.lastSyncAt && (
+            <div
+              className={`hidden lg:flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border ${
+                syncStatus.status === 'stale'
+                  ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+              }`}
+              title={`Last sync: ${new Date(syncStatus.lastSyncAt).toLocaleTimeString()} (${syncStatus.lastSyncAt})`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${syncStatus.status === 'stale' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+              <span>{syncStatus.freshness}</span>
+            </div>
+          )}
+        </div>
+
 
         {/* 7. Notification Bell with Dropdown */}
         <div className="relative">

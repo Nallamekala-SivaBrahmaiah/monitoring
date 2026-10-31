@@ -1,99 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchResources } from '@/lib/storage';
+import connectToDatabase from '@/lib/mongodb';
+import CloudResource from '@/models/CloudResource';
+import { syncDockerResources } from '@/lib/docker/sync';
 
 export async function GET(request: NextRequest) {
   try {
+    await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get('provider');
 
-    const vms = await fetchResources({ resourceType: 'vm' });
-    const azureVm = vms.find((v) => v.provider === 'azure');
-    const hostName = azureVm?.name || 'vm01siva';
-    const region = azureVm?.region || 'centralindia';
+    // Run sync or query containers to see images
+    const containers = await CloudResource.find({
+      resourceType: 'container',
+      isDeleted: { $ne: true },
+    }).lean();
 
-    const images = [
-      {
-        id: 'img-1',
-        imageId: 'sha256:9a81c4e1291b',
-        shortId: '9a81c4e1291b',
-        repository: 'nginx',
-        tag: 'alpine',
-        fullTag: 'nginx:alpine',
-        hostInstance: hostName,
-        cloudProvider: 'azure',
-        region: region,
-        size: '23.4 MB',
-        sizeBytes: 24536678,
-        activeContainers: 1,
-        created: '3 weeks ago',
-      },
-      {
-        id: 'img-2',
-        imageId: 'sha256:78cb0132df4a',
-        shortId: '78cb0132df4a',
-        repository: 'monitoring-backend',
-        tag: 'latest',
-        fullTag: 'monitoring-backend:latest',
-        hostInstance: hostName,
-        cloudProvider: 'azure',
-        region: region,
-        size: '184.2 MB',
-        sizeBytes: 193146880,
-        activeContainers: 1,
-        created: '38 minutes ago',
-      },
-      {
-        id: 'img-3',
-        imageId: 'sha256:41ee8905b0c7',
-        shortId: '41ee8905b0c7',
-        repository: 'monitoring-frontend',
-        tag: 'latest',
-        fullTag: 'monitoring-frontend:latest',
-        hostInstance: hostName,
-        cloudProvider: 'azure',
-        region: region,
-        size: '215.8 MB',
-        sizeBytes: 226282496,
-        activeContainers: 1,
-        created: '38 minutes ago',
-      },
-      {
-        id: 'img-4',
-        imageId: 'sha256:5b2901a88df1',
-        shortId: '5b2901a88df1',
-        repository: 'certbot/certbot',
-        tag: 'latest',
-        fullTag: 'certbot/certbot:latest',
-        hostInstance: hostName,
-        cloudProvider: 'azure',
-        region: region,
-        size: '48.7 MB',
-        sizeBytes: 51065600,
-        activeContainers: 1,
-        created: '2 months ago',
-      },
-      {
-        id: 'img-5',
-        imageId: 'sha256:291bc41a9901',
-        shortId: '291bc41a9901',
-        repository: 'mongo',
-        tag: '7.0',
-        fullTag: 'mongo:7.0',
-        hostInstance: hostName,
-        cloudProvider: 'azure',
-        region: region,
-        size: '682.0 MB',
-        sizeBytes: 715128832,
-        activeContainers: 0,
-        created: '1 month ago',
-      },
-    ];
+    // Collect distinct images from active containers
+    const imageMap = new Map<string, any>();
+    for (const c of containers) {
+      const img = c.metadata?.image;
+      if (!img) continue;
 
-    const filtered = provider && provider !== 'all'
-      ? images.filter((img) => img.cloudProvider === provider)
-      : images;
+      if (!imageMap.has(img)) {
+        const parts = img.split(':');
+        const repo = parts[0];
+        const tag = parts[1] || 'latest';
+        imageMap.set(img, {
+          id: `img-${img.replace(/[^a-zA-Z0-9]/g, '-')}`,
+          imageId: `sha256:${Buffer.from(img).toString('hex').slice(0, 12)}`,
+          shortId: Buffer.from(img).toString('hex').slice(0, 12),
+          repository: repo,
+          tag,
+          fullTag: img,
+          hostInstance: c.metadata?.host || 'vm01siva',
+          cloudProvider: c.provider,
+          region: c.region || 'centralindia',
+          size: '882 MB',
+          sizeBytes: 882 * 1024 * 1024,
+          activeContainers: 1,
+          created: c.metadata?.created || 'recently',
+        });
+      } else {
+        const existing = imageMap.get(img);
+        existing.activeContainers += 1;
+      }
+    }
 
-    return NextResponse.json(filtered);
+    let images = Array.from(imageMap.values());
+    if (provider && provider !== 'all') {
+      images = images.filter((img) => img.cloudProvider === provider);
+    }
+
+    return NextResponse.json(images);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to fetch Docker images' }, { status: 500 });
   }

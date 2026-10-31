@@ -236,6 +236,28 @@ export interface AzureVirtualMachine {
   };
 }
 
+export interface MetricDetail {
+  value: number | null;
+  unit: string;
+  source: 'Azure Monitor' | 'AWS CloudWatch' | 'Docker Engine API' | 'Linux Guest' | 'Kubernetes metrics-server' | string;
+  timestamp: string;
+  status: 'Available' | 'Unavailable';
+  explanation?: string;
+}
+
+export interface SyncStatusInfo {
+  lastSyncAt: string | null;
+  status: 'synced' | 'syncing' | 'stale' | 'error' | 'idle';
+  freshness: string;
+  error?: string | null;
+  resourcesCount: {
+    aws: number;
+    azure: number;
+    docker: number;
+    kubernetes: number;
+  };
+}
+
 export interface DockerContainer {
   id: string;
   containerId: string;
@@ -245,15 +267,20 @@ export interface DockerContainer {
   hostId: string;
   cloudProvider: 'aws' | 'azure';
   region: string;
-  status: 'Running' | 'Stopped' | 'Restarting' | 'Paused';
-  cpuUsage: number; // Percentage 0-100
-  memoryUsage: number; // Percentage 0-100
+  status: 'Running' | 'Stopped' | 'Restarting' | 'Paused' | 'Exited';
+  cpuUsage: number | null; // Percentage 0-100 or null if unavailable
+  memoryUsage: number | null; // Percentage 0-100 or null if unavailable
+  memoryUsageRaw?: string;
   memoryLimit: string;
   diskIO: string;
   networkTraffic: string;
   restartCount: number;
   uptime: string;
   created: string;
+  publishedPorts?: string;
+  healthStatus?: string;
+  metricSource?: string;
+  lastUpdated?: string;
 }
 
 export interface K8sCluster {
@@ -277,8 +304,8 @@ export interface K8sNode {
   cloudProvider: 'aws' | 'azure';
   status: 'Ready' | 'NotReady';
   role: 'control-plane' | 'worker';
-  cpuUsage: number;
-  memoryUsage: number;
+  cpuUsage: number | null;
+  memoryUsage: number | null;
   kubeletVersion: string;
   osImage: string;
   podsCount: number;
@@ -286,17 +313,29 @@ export interface K8sNode {
 
 export interface K8sPod {
   id: string;
+  podUid?: string;
   name: string;
   namespace: string;
   cluster: string;
   node: string;
   cloudProvider: 'aws' | 'azure';
-  status: 'Running' | 'Pending' | 'Failed' | 'CrashLoopBackOff';
-  cpuUsage: number; // Percentage
-  memoryUsage: number; // Percentage
+  status: 'Running' | 'Pending' | 'Succeeded' | 'Failed' | 'Unknown' | 'CrashLoopBackOff' | 'ImagePullBackOff' | 'ContainerCreating';
+  cpuUsage: number | null; // Percentage
+  memoryUsage: number | null; // Percentage
+  cpuMetricStatus?: 'Available' | 'Unavailable';
+  memoryMetricStatus?: 'Available' | 'Unavailable';
+  metricSource?: string;
   restartCount: number;
+  ready?: string;
   age: string;
   ip: string;
+  creationTimestamp?: string;
+  requestsAndLimits?: {
+    cpuRequest?: string;
+    cpuLimit?: string;
+    memoryRequest?: string;
+    memoryLimit?: string;
+  };
 }
 
 export interface K8sNamespace {
@@ -316,4 +355,107 @@ export interface K8sDeployment {
   upToDateReplicas: number;
   availableReplicas: number;
   age: string;
+}
+
+export interface DynamicRegionResource {
+  id: string;
+  resourceId: string;
+  name: string;
+  cloudProvider: 'aws' | 'azure';
+  region: string;
+  status: string;
+  type: string;
+  size: string;
+  privateIp?: string;
+  publicIp?: string;
+  os?: string;
+  creationTime?: string;
+  startTime?: string;
+  runningDuration?: string;
+  estimatedCostDaily?: number;
+  estimatedCostMonthly?: number;
+  tags?: Record<string, string>;
+  metrics?: {
+    cpu?: number;
+    memory?: number;
+    disk?: number;
+    network?: string;
+  };
+}
+
+export interface DynamicRegionSummary {
+  region: string;
+  displayName: string;
+  cloud: 'aws' | 'azure';
+  resourceCount: number;
+  runningCount: number;
+  stoppedCount: number;
+  estimatedDailyCost: number;
+  estimatedMonthlyCost: number;
+  isEstimate: boolean;
+  resources: DynamicRegionResource[];
+}
+
+export interface ResourceCostItem {
+  resourceId: string;
+  name: string;
+  type: string;
+  cloudProvider: 'aws' | 'azure';
+  region: string;
+  status: string;
+  dailyCost: number;
+  monthlyCost: number;
+  currency: string;
+  isEstimate: boolean;
+  runningDuration: string;
+  isIdle: boolean;
+  idleReason?: string;
+  potentialMonthlySavings?: number;
+}
+
+export interface CostInsightsData {
+  currency: string;
+  period: string;
+  isEstimate: boolean;
+  estimateNotice?: string;
+  currentPeriodTotal: number;
+  dailyAverage: number;
+  projectedMonthly: number;
+  potentialSavings: number;
+  byRegion: Array<{
+    region: string;
+    displayName: string;
+    cloud: 'aws' | 'azure';
+    amount: number;
+    resourceCount: number;
+    percentage: number;
+  }>;
+  byResource: ResourceCostItem[];
+  idleRecommendations: Array<{
+    resourceId: string;
+    name: string;
+    type: string;
+    region: string;
+    provider: 'aws' | 'azure';
+    reason: string;
+    monthlySavings: number;
+  }>;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  context?: {
+    provider?: string;
+    region?: string;
+    resourceId?: string;
+    resourceName?: string;
+    resourceType?: string;
+    status?: string;
+    publicIp?: string;
+    metrics?: Record<string, any>;
+  };
+  suggestions?: string[];
 }

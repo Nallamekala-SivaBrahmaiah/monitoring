@@ -36,7 +36,14 @@ interface DockerImageItem {
 }
 
 export default function DockerPage() {
-  const { cloudProvider, filteredDockerContainers, triggerRefresh, isRefreshing } = useMonitoring();
+  const {
+    cloudProvider,
+    filteredDockerContainers,
+    triggerRefresh,
+    isRefreshing,
+    syncNow,
+    isSyncing,
+  } = useMonitoring();
 
   const [activeTab, setActiveTab] = useState<'containers' | 'images'>('containers');
   const [search, setSearch] = useState('');
@@ -60,7 +67,7 @@ export default function DockerPage() {
       }
     }
     loadImages();
-  }, []);
+  }, [filteredDockerContainers]);
 
   const containers = useMemo(() => {
     return filteredDockerContainers.filter((c) => {
@@ -130,11 +137,12 @@ export default function DockerPage() {
               </div>
 
               <button
-                onClick={triggerRefresh}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors"
+                onClick={() => syncNow()}
+                disabled={isSyncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors disabled:opacity-50"
               >
-                <RotateCw className={`w-3.5 h-3.5 text-blue-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-                <span>Sync</span>
+                <RotateCw className={`w-3.5 h-3.5 text-sky-400 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Syncing...' : 'Sync Containers'}</span>
               </button>
             </div>
           </div>
@@ -281,30 +289,38 @@ export default function DockerPage() {
                             </span>
                           </td>
                           <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <span className="w-8 font-semibold text-white">
-                                {c.cpuUsage}%
-                              </span>
-                              <div className="w-12 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
-                                <div
-                                  className="h-full rounded-full bg-blue-500"
-                                  style={{ width: `${Math.min(100, Math.max(0, c.cpuUsage))}%` }}
-                                />
+                            {c.cpuUsage !== null && c.cpuUsage !== undefined ? (
+                              <div className="flex items-center gap-2">
+                                <span className="w-8 font-semibold text-white">
+                                  {c.cpuUsage}%
+                                </span>
+                                <div className="w-12 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full bg-blue-500"
+                                    style={{ width: `${Math.min(100, Math.max(0, c.cpuUsage))}%` }}
+                                  />
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <span className="text-slate-500 italic text-[11px]">Unavailable</span>
+                            )}
                           </td>
                           <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <span className="w-8 font-semibold text-white">
-                                {c.memoryUsage}%
-                              </span>
-                              <div className="w-12 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
-                                <div
-                                  className="h-full rounded-full bg-cyan-500"
-                                  style={{ width: `${Math.min(100, Math.max(0, c.memoryUsage))}%` }}
-                                />
+                            {c.memoryUsage !== null && c.memoryUsage !== undefined ? (
+                              <div className="flex items-center gap-2">
+                                <span className="w-8 font-semibold text-white">
+                                  {c.memoryUsage}%
+                                </span>
+                                <div className="w-12 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full bg-cyan-500"
+                                    style={{ width: `${Math.min(100, Math.max(0, c.memoryUsage))}%` }}
+                                  />
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <span className="text-slate-500 italic text-[11px]">Unavailable</span>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-slate-400 font-mono">{c.memoryLimit}</td>
                           <td className="py-3 px-4 text-slate-300 font-mono">{c.diskIO}</td>

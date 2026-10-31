@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   CloudProvider,
   TimeRange,
@@ -14,6 +14,7 @@ import {
   K8sPod,
   AlertItem,
   OverviewMetrics,
+  SyncStatusInfo,
 } from '@/types/monitoring';
 
 import { ALL_AWS_REGIONS, ALL_AZURE_REGIONS } from '@/services/regionDiscoveryService';
@@ -37,6 +38,13 @@ interface MonitoringContextType {
   setIsLive: (live: boolean) => void;
   isRefreshing: boolean;
   triggerRefresh: () => void;
+  refreshInterval: number;
+  setRefreshInterval: (sec: number) => void;
+  lastRefreshedAt: Date | null;
+  refreshError: string | null;
+  syncStatus: SyncStatusInfo;
+  isSyncing: boolean;
+  syncNow: (provider?: string) => Promise<void>;
 
   // Account management
   addAwsAccount: (acc: Omit<AWSAccount, 'id' | 'resourcesCount' | 'lastSync' | 'status'>) => Promise<boolean>;
@@ -99,6 +107,20 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [isLive, setIsLive] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [refreshInterval, setRefreshInterval] = useState<number>(30); // 30 seconds default auto-refresh
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatusInfo>({
+    lastSyncAt: null,
+    status: 'idle',
+    freshness: 'Initializing...',
+    resourcesCount: { aws: 0, azure: 0, docker: 0, kubernetes: 0 },
+  });
+
+  // Concurrency and debounce guards
+  const isFetchingRef = useRef<boolean>(false);
+  const lastFetchTimestampRef = useRef<number>(0);
 
   // Real discovered infrastructure
   const [azureVMs, setAzureVMs] = useState<AzureVirtualMachine[]>([]);
@@ -109,53 +131,140 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
   // Load real subscriptions, AWS accounts, real VMs, and real alerts from Next.js Route Handlers
-  const loadRealData = useCallback(async () => {
+  const loadRealData = useCallback(async (silent = false) => {
+    // Prevent overlapping / duplicate simultaneous API calls
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    if (!silent) setIsRefreshing(true);
+
+    let hadSuccess = false;
     try {
-      const [subsRes, awsRes, azureVmsRes, ec2Res, alertsRes, dockerRes] = await Promise.all([
+      const [subsRes, awsRes, azureVmsRes, ec2Res, alertsRes, dockerRes, k8sClustersRes, k8sPodsRes, syncRes] = await Promise.all([
         fetch('/api/azure/subscriptions').catch(() => null),
         fetch('/api/cloud-accounts?provider=aws').catch(() => null),
         fetch('/api/azure/vms').catch(() => null),
         fetch('/api/aws/ec2').catch(() => null),
         fetch('/api/alerts').catch(() => null),
         fetch('/api/docker/containers').catch(() => null),
+        fetch('/api/kubernetes/clusters').catch(() => null),
+        fetch('/api/kubernetes/pods').catch(() => null),
+        fetch('/api/sync').catch(() => null),
       ]);
 
       if (subsRes && subsRes.ok) {
         const subs = await subsRes.json();
         if (Array.isArray(subs)) setAzureSubscriptions(subs);
+        hadSuccess = true;
       }
 
       if (awsRes && awsRes.ok) {
         const accs = await awsRes.json();
         if (Array.isArray(accs)) setAwsAccounts(accs);
+        hadSuccess = true;
       }
 
       if (azureVmsRes && azureVmsRes.ok) {
         const vms = await azureVmsRes.json();
         if (Array.isArray(vms)) setAzureVMs(vms);
+        hadSuccess = true;
       }
 
       if (ec2Res && ec2Res.ok) {
         const ec2 = await ec2Res.json();
         if (Array.isArray(ec2)) setEc2Instances(ec2);
+        hadSuccess = true;
       }
 
       if (alertsRes && alertsRes.ok) {
         const alts = await alertsRes.json();
         if (Array.isArray(alts)) setAlerts(alts);
+        hadSuccess = true;
       }
 
       if (dockerRes && dockerRes.ok) {
         const containers = await dockerRes.json();
         if (Array.isArray(containers)) setDockerContainers(containers);
+        hadSuccess = true;
       }
-    } catch (e) {
+
+      if (k8sClustersRes && k8sClustersRes.ok) {
+        const clusters = await k8sClustersRes.json();
+        if (Array.isArray(clusters)) setK8sClusters(clusters);
+        hadSuccess = true;
+      }
+
+      if (k8sPodsRes && k8sPodsRes.ok) {
+        const pods = await k8sPodsRes.json();
+        if (Array.isArray(pods)) setK8sPods(pods);
+        hadSuccess = true;
+      }
+
+      if (syncRes && syncRes.ok) {
+        const syncData = await syncRes.json();
+        if (syncData && syncData.status) setSyncStatus(syncData);
+        hadSuccess = true;
+      }
+
+      if (hadSuccess) {
+        setLastRefreshedAt(new Date());
+        setRefreshError(null);
+        lastFetchTimestampRef.current = Date.now();
+      } else {
+        // If all requests failed, preserve existing cached data and flag stale/error
+        setRefreshError('Network timeout or server unavailable. Preserving latest cached data.');
+      }
+    } catch (e: any) {
       console.warn('Real data sync note:', e);
+      setRefreshError('Failed to refresh latest data; displaying cached infrastructure.');
+    } finally {
+      isFetchingRef.current = false;
+      if (!silent) {
+        setTimeout(() => setIsRefreshing(false), 300);
+      } else {
+        setIsRefreshing(false);
+      }
     }
   }, []);
 
+  // Initial load on page mount
   useEffect(() => {
     loadRealData();
+  }, [loadRealData]);
+
+  // Periodic automatic refresh every 30 seconds (configurable)
+  useEffect(() => {
+    if (!isLive || refreshInterval <= 0) return;
+    const interval = setInterval(() => {
+      loadRealData(true);
+    }, refreshInterval * 1000);
+    return () => clearInterval(interval);
+  }, [isLive, refreshInterval, loadRealData]);
+
+  // Tab visibility and focus listener: auto-refresh when user returns to tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const elapsed = Date.now() - lastFetchTimestampRef.current;
+        if (elapsed > 10000) {
+          loadRealData(false);
+        }
+      }
+    };
+
+    const handleFocus = () => {
+      const elapsed = Date.now() - lastFetchTimestampRef.current;
+      if (elapsed > 10000) {
+        loadRealData(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [loadRealData]);
 
   // Set cloud provider with strict isolation and filter reset
@@ -192,6 +301,22 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     setIsRefreshing(true);
     await loadRealData();
     setTimeout(() => setIsRefreshing(false), 600);
+  };
+
+  const syncNow = async (provider?: string) => {
+    setIsSyncing(true);
+    try {
+      await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: provider || 'all' }),
+      });
+      await loadRealData();
+    } catch (e) {
+      console.warn('Reconciliation sync error:', e);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // Add AWS Account
@@ -481,6 +606,13 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
         setIsLive,
         isRefreshing,
         triggerRefresh,
+        refreshInterval,
+        setRefreshInterval,
+        lastRefreshedAt,
+        refreshError,
+        syncStatus,
+        isSyncing,
+        syncNow,
         addAwsAccount,
         addAzureSubscription,
         updateAwsAccountRegions,

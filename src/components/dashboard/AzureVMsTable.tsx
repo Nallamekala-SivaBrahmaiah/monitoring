@@ -219,11 +219,11 @@ export function AzureVMsTable({
           <tbody className="divide-y divide-[#1E293B]/60 font-medium">
             {paginatedVMs.map((vm) => {
               const isRunning = (vm.powerState || '').toLowerCase().includes('run');
-              const cpuVal = vm.cpuUsage ?? (vm as any).cpuUtilization ?? (isRunning ? 12.4 : 0);
-              const memVal = vm.memoryUsage ?? (vm as any).memoryUtilization ?? (isRunning ? 38.6 : 0);
-              const diskVal = vm.diskUsage ?? (vm as any).diskUtilization ?? (isRunning ? 24.2 : 0);
-              const netInVal = vm.networkInMB ?? (vm as any).networkIn ?? (isRunning ? 1.4 : 0);
-              const netOutVal = vm.networkOutMB ?? (vm as any).networkOut ?? (isRunning ? 0.8 : 0);
+              const cpuVal = vm.cpuUsage ?? (vm as any).cpuUtilization ?? null;
+              const memVal = vm.memoryUsage ?? (vm as any).memoryUtilization ?? null;
+              const diskVal = vm.diskUsage ?? (vm as any).diskUtilization ?? null;
+              const netInVal = vm.networkInMB ?? (vm as any).networkIn ?? null;
+              const netOutVal = vm.networkOutMB ?? (vm as any).networkOut ?? null;
 
               return (
                 <tr
@@ -270,51 +270,72 @@ export function AzureVMsTable({
                   </td>
 
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-9 font-semibold text-slate-200">
-                        {cpuVal}%
-                      </span>
-                      <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${getUsageColor(
-                            cpuVal
-                          )}`}
-                          style={{ width: `${Math.min(100, Math.max(0, cpuVal))}%` }}
-                        />
+                    {cpuVal !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {cpuVal}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${getUsageColor(
+                              cpuVal
+                            )}`}
+                            style={{ width: `${Math.min(100, Math.max(0, cpuVal))}%` }}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <span className="text-slate-500 text-xs italic">Unavailable</span>
+                    )}
                   </td>
 
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-9 font-semibold text-slate-200">
-                        {memVal}%
-                      </span>
-                      <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-cyan-500"
-                          style={{ width: `${Math.min(100, Math.max(0, memVal))}%` }}
-                        />
+                    {memVal !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {memVal}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-cyan-500"
+                            style={{ width: `${Math.min(100, Math.max(0, memVal))}%` }}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60"
+                        title="Guest OS memory requires Azure Monitor Agent (AMA) extension on the VM"
+                      >
+                        Unavailable
+                      </span>
+                    )}
                   </td>
 
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-9 font-semibold text-slate-200">
-                        {diskVal}%
-                      </span>
-                      <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-amber-500"
-                          style={{ width: `${Math.min(100, Math.max(0, diskVal))}%` }}
-                        />
+                    {diskVal !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {diskVal}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-amber-500"
+                            style={{ width: `${Math.min(100, Math.max(0, diskVal))}%` }}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <span className="text-slate-500 text-xs italic">Unavailable</span>
+                    )}
                   </td>
 
-                  <td className="py-3 px-4 text-slate-300 font-mono">
-                    {netInVal} MB/s / {netOutVal} MB/s
+                  <td className="py-3 px-4 text-slate-300 font-mono text-xs">
+                    {netInVal !== null && netOutVal !== null ? (
+                      `${netInVal} MB / ${netOutVal} MB`
+                    ) : (
+                      <span className="text-slate-500">-</span>
+                    )}
                   </td>
 
                   <td className="py-3 px-4 font-mono text-emerald-400">

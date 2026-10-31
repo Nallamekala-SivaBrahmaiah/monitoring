@@ -297,49 +297,66 @@ export function EC2InstancesTable({
 
                   {/* CPU Usage */}
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-9 font-semibold text-slate-200">
-                        {inst.cpuUsage}%
-                      </span>
-                      <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${getUsageColor(
-                            inst.cpuUsage
-                          )}`}
-                          style={{ width: `${inst.cpuUsage}%` }}
-                        />
+                    {inst.cpuUsage !== null && inst.cpuUsage !== undefined ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {inst.cpuUsage}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${getUsageColor(
+                              inst.cpuUsage
+                            )}`}
+                            style={{ width: `${Math.min(100, Math.max(0, inst.cpuUsage))}%` }}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <span className="text-slate-500 text-xs italic">Unavailable</span>
+                    )}
                   </td>
 
                   {/* Memory */}
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-9 font-semibold text-slate-200">
-                        {inst.memoryUsage}%
-                      </span>
-                      <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-blue-500"
-                          style={{ width: `${inst.memoryUsage}%` }}
-                        />
+                    {inst.memoryUsage !== null && inst.memoryUsage !== undefined ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {inst.memoryUsage}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-blue-500"
+                            style={{ width: `${Math.min(100, Math.max(0, inst.memoryUsage))}%` }}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60"
+                        title="Guest OS memory requires Amazon CloudWatch Agent installed on the EC2 instance"
+                      >
+                        Unavailable
+                      </span>
+                    )}
                   </td>
 
                   {/* Disk */}
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-9 font-semibold text-slate-200">
-                        {inst.diskUsage}%
-                      </span>
-                      <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-amber-500"
-                          style={{ width: `${inst.diskUsage}%` }}
-                        />
+                    {inst.diskUsage !== null && inst.diskUsage !== undefined ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {inst.diskUsage}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-amber-500"
+                            style={{ width: `${Math.min(100, Math.max(0, inst.diskUsage))}%` }}
+                          />
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <span className="text-slate-500 text-xs italic">Unavailable</span>
+                    )}
                   </td>
 
                   {/* Network In/Out */}

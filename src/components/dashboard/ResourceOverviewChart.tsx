@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -10,9 +10,8 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Activity, RotateCw } from 'lucide-react';
 import { MetricType, ResourceMetricPoint } from '@/types/monitoring';
-import { mockPerformanceMetrics } from '@/mock/monitoringData';
 import { useMonitoring } from '@/context/MonitoringContext';
 
 interface ResourceOverviewChartProps {
@@ -22,13 +21,61 @@ interface ResourceOverviewChartProps {
 
 export function ResourceOverviewChart({
   initialMetric = 'CPU',
-  data = mockPerformanceMetrics,
+  data,
 }: ResourceOverviewChartProps) {
-  const { cloudProvider } = useMonitoring();
+  const { cloudProvider, isRefreshing } = useMonitoring();
   const [selectedMetric, setSelectedMetric] = useState<MetricType>(initialMetric);
+  const [livePoints, setLivePoints] = useState<ResourceMetricPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (data) return;
+    let isMounted = true;
+
+    async function loadTelemetry() {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/dashboard/metrics?provider=${cloudProvider}`);
+        if (res.ok) {
+          const list = await res.json();
+          if (Array.isArray(list) && isMounted) {
+            const mapped: ResourceMetricPoint[] = list.map((item: any) => {
+              const date = new Date(item.timestamp || Date.now());
+              const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const metricVal =
+                selectedMetric === 'CPU'
+                  ? (item.cpu ?? (item.metricName === 'CPU' ? item.value : 0))
+                  : selectedMetric === 'Memory'
+                  ? (item.memory ?? (item.metricName === 'Memory' ? item.value : 0))
+                  : selectedMetric === 'Disk'
+                  ? (item.disk ?? (item.metricName === 'Disk' ? item.value : 0))
+                  : (item.networkIn ?? 0);
+
+              const num = typeof metricVal === 'number' ? Math.round(metricVal) : 0;
+              return {
+                time: timeStr,
+                aws: item.provider === 'aws' ? num : 0,
+                azure: item.provider === 'azure' ? num : 0,
+              };
+            });
+            setLivePoints(mapped);
+          }
+        }
+      } catch (e) {
+        console.warn('Real telemetry fetch note:', e);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadTelemetry();
+    return () => {
+      isMounted = false;
+    };
+  }, [cloudProvider, selectedMetric, isRefreshing, data]);
 
   const metricTabs: MetricType[] = ['CPU', 'Memory', 'Disk', 'Network'];
-  const chartData = data[selectedMetric] || data['CPU'];
+  const chartData = data ? (data[selectedMetric] || data['CPU'] || []) : livePoints;
 
   const showAws = cloudProvider === 'all' || cloudProvider === 'aws';
   const showAzure = cloudProvider === 'all' || cloudProvider === 'azure';
@@ -91,98 +138,108 @@ export function ResourceOverviewChart({
 
       {/* Recharts Area/Line Chart */}
       <div className="w-full h-56 min-h-[220px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
-            data={chartData}
-            margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-          >
-            <defs>
-              <linearGradient id="awsGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#FF9900" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#FF9900" stopOpacity={0.0} />
-              </linearGradient>
-              <linearGradient id="azureGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#0089D6" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#0089D6" stopOpacity={0.0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="#1E293B"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="time"
-              stroke="#64748B"
-              fontSize={11}
-              tickLine={false}
-              axisLine={{ stroke: '#1E293B' }}
-            />
-            <YAxis
-              stroke="#64748B"
-              fontSize={11}
-              domain={[0, 100]}
-              ticks={[0, 25, 50, 75, 100]}
-              tickFormatter={(v) => `${v}%`}
-              tickLine={false}
-              axisLine={false}
-            />
-            <Tooltip
-              content={({ active, payload, label }) => {
-                if (active && payload && payload.length) {
-                  return (
-                    <div className="bg-[#0D1526]/95 border border-[#1E293B] backdrop-blur-md px-3 py-2 rounded-lg shadow-xl text-xs">
-                      <p className="text-slate-400 font-semibold mb-1">{label}</p>
-                      <div className="space-y-1">
-                        {payload
-                          .filter((p) => (showAws && p.dataKey === 'aws') || (showAzure && p.dataKey === 'azure'))
-                          .map((p, idx) => (
-                            <div key={idx} className="flex items-center gap-2">
-                              <span
-                                className="w-2 h-2 rounded-full"
-                                style={{ backgroundColor: p.stroke }}
-                              />
-                              <span className="text-slate-300">
-                                {p.dataKey === 'aws' ? 'AWS' : 'Azure'}:
-                              </span>
-                              <span className="font-bold text-white">
-                                {p.value}%
-                              </span>
-                            </div>
-                          ))}
+        {chartData.length === 0 ? (
+          <div className="w-full h-full flex flex-col items-center justify-center text-center p-6 space-y-2 bg-[#0D1526]/50 rounded-lg border border-[#1E293B]/60">
+            <Activity className="w-8 h-8 text-slate-600" />
+            <p className="text-xs text-slate-300 font-semibold">No Live Telemetry Collected Yet</p>
+            <p className="text-[11px] text-slate-500 max-w-xs">
+              Synchronize connected AWS or Azure infrastructure to stream real-time {selectedMetric} metrics.
+            </p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart
+              data={chartData}
+              margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="awsGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#FF9900" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#FF9900" stopOpacity={0.0} />
+                </linearGradient>
+                <linearGradient id="azureGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#0089D6" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#0089D6" stopOpacity={0.0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="#1E293B"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="time"
+                stroke="#64748B"
+                fontSize={11}
+                tickLine={false}
+                axisLine={{ stroke: '#1E293B' }}
+              />
+              <YAxis
+                stroke="#64748B"
+                fontSize={11}
+                domain={[0, 100]}
+                ticks={[0, 25, 50, 75, 100]}
+                tickFormatter={(v) => `${v}%`}
+                tickLine={false}
+                axisLine={false}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (active && payload && payload.length) {
+                    return (
+                      <div className="bg-[#0D1526]/95 border border-[#1E293B] backdrop-blur-md px-3 py-2 rounded-lg shadow-xl text-xs">
+                        <p className="text-slate-400 font-semibold mb-1">{label}</p>
+                        <div className="space-y-1">
+                          {payload
+                            .filter((p) => (showAws && p.dataKey === 'aws') || (showAzure && p.dataKey === 'azure'))
+                            .map((p, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <span
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: p.stroke }}
+                                />
+                                <span className="text-slate-300">
+                                  {p.dataKey === 'aws' ? 'AWS' : 'Azure'}:
+                                </span>
+                                <span className="font-bold text-white">
+                                  {p.value}%
+                                </span>
+                              </div>
+                            ))}
+                        </div>
                       </div>
-                    </div>
-                  );
-                }
-                return null;
-              }}
-            />
-            {showAws && (
-              <Area
-                type="monotone"
-                dataKey="aws"
-                stroke="#FF9900"
-                strokeWidth={2.5}
-                fillOpacity={1}
-                fill="url(#awsGradient)"
-                dot={{ r: 4, fill: '#FF9900', strokeWidth: 1, stroke: '#111A2E' }}
-                activeDot={{ r: 6, fill: '#FF9900', stroke: '#fff', strokeWidth: 2 }}
+                    );
+                  }
+                  return null;
+                }}
               />
-            )}
-            {showAzure && (
-              <Area
-                type="monotone"
-                dataKey="azure"
-                stroke="#0089D6"
-                strokeWidth={2.5}
-                fillOpacity={1}
-                fill="url(#azureGradient)"
-                dot={{ r: 4, fill: '#0089D6', strokeWidth: 1, stroke: '#111A2E' }}
-                activeDot={{ r: 6, fill: '#0089D6', stroke: '#fff', strokeWidth: 2 }}
-              />
-            )}
-          </AreaChart>
-        </ResponsiveContainer>
+              {showAws && (
+                <Area
+                  type="monotone"
+                  dataKey="aws"
+                  stroke="#FF9900"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#awsGradient)"
+                  dot={{ r: 4, fill: '#FF9900', strokeWidth: 1, stroke: '#111A2E' }}
+                  activeDot={{ r: 6, fill: '#FF9900', stroke: '#fff', strokeWidth: 2 }}
+                />
+              )}
+              {showAzure && (
+                <Area
+                  type="monotone"
+                  dataKey="azure"
+                  stroke="#0089D6"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#azureGradient)"
+                  dot={{ r: 4, fill: '#0089D6', strokeWidth: 1, stroke: '#111A2E' }}
+                  activeDot={{ r: 6, fill: '#0089D6', stroke: '#fff', strokeWidth: 2 }}
+                />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
