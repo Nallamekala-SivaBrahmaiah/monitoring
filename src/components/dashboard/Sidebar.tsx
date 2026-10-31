@@ -1,0 +1,253 @@
+'use client';
+
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import {
+  LayoutDashboard,
+  Cloud,
+  Globe,
+  Server,
+  Cpu,
+  Boxes,
+  Activity,
+  AlertTriangle,
+  BellRing,
+  Settings,
+  LogOut,
+  AppWindow,
+  Layers,
+  X,
+  Check,
+} from 'lucide-react';
+import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
+import { useMonitoring } from '@/context/MonitoringContext';
+
+interface SidebarProps {
+  activeAlertsCount?: number;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
+}
+
+export function Sidebar({
+  activeAlertsCount,
+  mobileOpen = false,
+  onCloseMobile,
+}: SidebarProps) {
+  const pathname = usePathname();
+  const {
+    cloudProvider,
+    setCloudProvider,
+    filteredAlerts,
+  } = useMonitoring();
+
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [loggedOutToast, setLoggedOutToast] = useState(false);
+
+  const alertBadgeCount =
+    activeAlertsCount !== undefined
+      ? activeAlertsCount
+      : filteredAlerts.filter((a) => a.status === 'active').length;
+
+  const navItems = [
+    { label: 'Dashboard', href: '/', icon: LayoutDashboard },
+    { label: 'Cloud Accounts', href: '/dashboard/cloud-accounts', icon: Cloud },
+    { label: 'Regions', href: '/dashboard/regions', icon: Globe },
+    { label: 'Servers', href: '/dashboard/servers', icon: Server },
+    { label: 'EC2 Instances', href: '/dashboard/ec2', icon: Cpu },
+    { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AppWindow },
+    { label: 'Docker Containers', href: '/dashboard/docker', icon: Boxes },
+    { label: 'Kubernetes', href: '/dashboard/kubernetes', icon: Layers },
+    { label: 'Metrics Explorer', href: '/dashboard/metrics', icon: Activity },
+    {
+      label: 'Alerts',
+      href: '/dashboard/alerts',
+      icon: AlertTriangle,
+      badge: alertBadgeCount,
+    },
+    { label: 'Notification Channels', href: '/dashboard/notifications', icon: BellRing },
+    { label: 'Settings', href: '/dashboard/settings', icon: Settings },
+  ];
+
+  const handleLogout = () => {
+    setShowLogoutConfirm(false);
+    setLoggedOutToast(true);
+    setTimeout(() => {
+      setLoggedOutToast(false);
+    }, 3000);
+  };
+
+  const sidebarContent = (
+    <div className="flex flex-col h-full bg-[#111A2E] border-r border-[#1E293B] text-slate-300 w-64 select-none">
+      {/* Brand Header */}
+      <div className="p-5 flex items-center justify-between border-b border-[#1E293B]/70">
+        <Link href="/" className="flex items-center gap-3 group">
+          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 shadow-lg shadow-blue-500/25 group-hover:scale-105 transition-transform">
+            <Cloud className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h1 className="font-bold text-white text-base tracking-tight leading-snug">
+              Multi-Cloud
+              <br />
+              Monitoring
+            </h1>
+            <p className="text-[10px] text-slate-400 font-medium tracking-wide">
+              Observe • Monitor • Alert
+            </p>
+          </div>
+        </Link>
+        {mobileOpen && (
+          <button
+            onClick={onCloseMobile}
+            className="lg:hidden p-1 text-slate-400 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+
+      {/* Navigation List */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive =
+            pathname === item.href ||
+            (item.href !== '/' && pathname.startsWith(item.href));
+
+          return (
+            <Link
+              key={item.label}
+              href={item.href}
+              onClick={onCloseMobile}
+              className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                isActive
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-semibold'
+                  : 'text-slate-400 hover:text-slate-100 hover:bg-[#18233C]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Icon
+                  className={`w-4 h-4 ${
+                    isActive ? 'text-white' : 'text-slate-400'
+                  }`}
+                />
+                <span className="truncate">{item.label}</span>
+              </div>
+              {item.badge !== undefined && item.badge > 0 && (
+                <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold text-white bg-red-500 rounded-full shadow-sm">
+                  {item.badge}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Multi-Cloud Support Quick Switcher Box */}
+      <div className="px-4 py-3 mx-3 mb-2 rounded-xl bg-[#0D1526]/80 border border-[#1E293B]">
+        <div className="text-[11px] font-medium text-slate-400 text-center mb-2">
+          Multi-Cloud Support
+        </div>
+        <div className="flex items-center justify-around gap-2">
+          <button
+            onClick={() => setCloudProvider(cloudProvider === 'aws' ? 'all' : 'aws')}
+            title="Filter by AWS"
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+              cloudProvider === 'aws'
+                ? 'bg-[#FF9900]/20 border border-[#FF9900]/50 text-white shadow'
+                : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
+            }`}
+          >
+            <AwsLogo className="w-5 h-4" />
+            <span>AWS</span>
+          </button>
+          <div className="h-4 w-px bg-slate-700/60" />
+          <button
+            onClick={() => setCloudProvider(cloudProvider === 'azure' ? 'all' : 'azure')}
+            title="Filter by Azure"
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+              cloudProvider === 'azure'
+                ? 'bg-[#0089D6]/20 border border-[#0089D6]/50 text-white shadow'
+                : 'text-[#5EA0EF] hover:text-white hover:bg-[#18233C]'
+            }`}
+          >
+            <AzureLogo className="w-3.5 h-3.5" />
+            <span>Azure</span>
+          </button>
+        </div>
+      </div>
+
+      {/* User Profile Footer */}
+      <div className="p-3 border-t border-[#1E293B] bg-[#0E1628]/60 relative">
+        <div className="flex items-center justify-between px-2 py-1">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow">
+              S
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-slate-200 leading-tight">
+                Siva Brahmaiah
+              </span>
+              <span className="text-[11px] text-slate-400">Admin</span>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowLogoutConfirm(true)}
+          className="w-full mt-2 flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-md transition-colors"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          <span>Logout</span>
+        </button>
+
+        {/* Logout Confirmation Dialog */}
+        {showLogoutConfirm && (
+          <div className="absolute inset-x-2 bottom-2 p-3 bg-[#111A2E] border border-[#1E293B] rounded-xl shadow-2xl z-50 text-xs">
+            <p className="font-semibold text-white mb-2">Confirm Logout?</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleLogout}
+                className="flex-1 py-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded text-center"
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 py-1 bg-[#18233C] hover:bg-[#202E4E] text-slate-300 font-semibold rounded text-center"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {loggedOutToast && (
+          <div className="absolute inset-x-2 bottom-2 p-2 bg-emerald-600/90 text-white text-xs font-semibold rounded-lg text-center shadow-lg">
+            ✓ Logged out successfully (Demo Mode)
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <aside className="hidden lg:flex fixed top-0 left-0 bottom-0 z-30 w-64">
+        {sidebarContent}
+      </aside>
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={onCloseMobile}
+          />
+          <div className="fixed top-0 bottom-0 left-0 w-64 z-50">
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

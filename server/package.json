@@ -1,0 +1,26 @@
+{
+  "name": "multi-cloud-monitoring-backend",
+  "version": "1.0.0",
+  "description": "Multi-Cloud Monitoring Platform Node.js Express REST API backend with AWS SDK, Azure SDK, MongoDB, and Prometheus",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch": "^3.550.0",
+    "@aws-sdk/client-ec2": "^3.550.0",
+    "@aws-sdk/client-sts": "^3.550.0",
+    "@azure/arm-compute": "^22.0.0",
+    "@azure/arm-resources": "^5.2.0",
+    "@azure/identity": "^4.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.3.2",
+    "prom-client": "^15.1.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
