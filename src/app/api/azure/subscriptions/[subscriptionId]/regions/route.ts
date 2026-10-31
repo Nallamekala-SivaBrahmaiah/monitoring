@@ -1,28 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ALL_AZURE_REGIONS } from '@/services/regionDiscoveryService';
-import { mockAzureSubscriptions } from '@/mock/monitoringData';
 
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ subscriptionId: string }> }
 ) {
   const { subscriptionId } = await context.params;
-  const sub = mockAzureSubscriptions.find(
-    (s) => s.id === subscriptionId || s.subscriptionId === subscriptionId
-  );
 
-  const selectedRegionsSet = new Set(sub?.enabledRegions || ['eastus', 'westeurope']);
-
+  // By default, discover all supported Azure locations and enable ALL of them
   const regions = ALL_AZURE_REGIONS.map((r) => ({
     ...r,
-    enabled: selectedRegionsSet.has(r.code),
+    enabled: true, // Selected by default
   }));
 
   return NextResponse.json({
     success: true,
     subscriptionId,
-    totalRegions: regions.length,
-    selectedCount: selectedRegionsSet.size,
+    totalCount: regions.length,
+    selectedCount: regions.length,
     regions,
   });
 }

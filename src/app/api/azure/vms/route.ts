@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mockAzureVMs } from '@/mock/monitoringData';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -8,28 +7,22 @@ export async function GET(request: NextRequest) {
   const region = searchParams.get('region');
   const status = searchParams.get('status')?.toLowerCase();
 
-  let vms = [...mockAzureVMs];
-
-  if (subscriptionId && subscriptionId !== 'all') {
-    vms = vms.filter((v) => v.subscriptionId === subscriptionId);
+  // Try proxying to backend which has live Azure SDK discoveries
+  try {
+    const backendUrl = process.env.BACKEND_API_URL || 'http://127.0.0.1:5000';
+    const qs = searchParams.toString();
+    const res = await fetch(`${backendUrl}/api/azure/vms${qs ? `?${qs}` : ''}`, {
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const liveVMs = await res.json();
+      return NextResponse.json(liveVMs);
+    }
+  } catch (err) {
+    // Backend offline or unreachable
   }
 
-  if (region && region !== 'all') {
-    vms = vms.filter((v) => v.region === region);
-  }
-
-  if (status && status !== 'all') {
-    vms = vms.filter((v) => v.powerState.toLowerCase() === status);
-  }
-
-  if (search) {
-    vms = vms.filter(
-      (v) =>
-        v.name.toLowerCase().includes(search) ||
-        v.resourceGroup.toLowerCase().includes(search) ||
-        v.vmId.toLowerCase().includes(search)
-    );
-  }
-
-  return NextResponse.json(vms);
+  // Fallback to empty real state
+  return NextResponse.json([]);
 }

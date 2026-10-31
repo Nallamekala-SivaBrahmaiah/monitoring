@@ -28,6 +28,7 @@ import {
 } from '@/services/regionDiscoveryService';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { DiscoveredRegion, AWSAccount, AzureSubscription } from '@/types/monitoring';
+import { testAzureConnection } from '@/services/api';
 
 export default function CloudAccountsPage() {
   const {
@@ -50,9 +51,11 @@ export default function CloudAccountsPage() {
   const [validationSuccess, setValidationSuccess] = useState<boolean | null>(null);
   const [validationMsg, setValidationMsg] = useState('');
 
-  // Dynamic discovered regions state
+  // Dynamic discovered regions state - All regions enabled by default
   const [discoveredAwsRegions, setDiscoveredAwsRegions] = useState<DiscoveredRegion[]>(ALL_AWS_REGIONS);
-  const [discoveredAzureRegions, setDiscoveredAzureRegions] = useState<DiscoveredRegion[]>(ALL_AZURE_REGIONS);
+  const [discoveredAzureRegions, setDiscoveredAzureRegions] = useState<DiscoveredRegion[]>(
+    ALL_AZURE_REGIONS.map((r) => ({ ...r, enabled: true }))
+  );
   const [loadingAwsDiscovery, setLoadingAwsDiscovery] = useState(false);
   const [loadingAzureDiscovery, setLoadingAzureDiscovery] = useState(false);
   const [awsDiscoveryError, setAwsDiscoveryError] = useState<string | null>(null);
@@ -64,10 +67,10 @@ export default function CloudAccountsPage() {
     accountId: '',
     roleArn: '',
     externalId: '',
-    regions: ['us-east-1', 'us-west-2'],
+    regions: ALL_AWS_REGIONS.map((r) => r.code),
   });
 
-  // Azure Form State
+  // Azure Form State - All supported regions selected by default
   const [azureForm, setAzureForm] = useState({
     subscriptionName: '',
     subscriptionId: '',
@@ -75,7 +78,7 @@ export default function CloudAccountsPage() {
     clientId: '',
     clientSecret: '',
     authType: 'client_secret' as 'client_secret' | 'managed_identity',
-    regions: ['eastus', 'westeurope'],
+    regions: ALL_AZURE_REGIONS.map((r) => r.code),
   });
 
   const handleValidateAws = async () => {
@@ -130,7 +133,7 @@ export default function CloudAccountsPage() {
         accountId: '',
         roleArn: '',
         externalId: '',
-        regions: ['us-east-1', 'us-west-2'],
+        regions: ALL_AWS_REGIONS.map((r) => r.code),
       });
       setValidationSuccess(null);
       setEditingAccountId(null);
@@ -138,52 +141,83 @@ export default function CloudAccountsPage() {
   };
 
   const handleValidateAzure = async () => {
+    if (!azureForm.subscriptionId || !azureForm.tenantId || !azureForm.clientId || !azureForm.clientSecret) {
+      setValidationSuccess(false);
+      setValidationMsg('Validation failed: Subscription ID, Tenant ID, Client ID, and Client Secret are all required.');
+      return;
+    }
+
     setValidating(true);
     setValidationSuccess(null);
-    setValidationMsg('Validating Azure credentials & querying Resource Manager Locations API...');
+    setValidationMsg('Authenticating with Azure Active Directory and verifying subscription access...');
 
     try {
-      const discovered = await fetchAzureRegions(azureForm.subscriptionId);
-      setDiscoveredAzureRegions(discovered);
+      const res = await testAzureConnection({
+        subscriptionId: azureForm.subscriptionId,
+        tenantId: azureForm.tenantId,
+        clientId: azureForm.clientId,
+        clientSecret: azureForm.clientSecret,
+      });
 
-      if (!azureForm.subscriptionId || !azureForm.tenantId) {
+      if (!res.success) {
         setValidating(false);
         setValidationSuccess(false);
-        setValidationMsg('Validation failed: Subscription ID and Tenant ID are required.');
+        setValidationMsg(res.error || 'Azure validation failed: Access Denied or Invalid Credentials');
         return;
       }
+
+      // Discover all real supported regions
+      const discovered = await fetchAzureRegions(azureForm.subscriptionId);
+      const allEnabled = discovered.map((r) => ({ ...r, enabled: true }));
+      setDiscoveredAzureRegions(allEnabled);
+
+      // Select ALL regions by default
+      setAzureForm((prev) => ({
+        ...prev,
+        regions: discovered.map((r) => r.code),
+      }));
+
       setValidating(false);
       setValidationSuccess(true);
       setValidationMsg(
-        `Azure OAuth2 token granted: Discovered ${discovered.length} locations across global geographies.`
+        `✓ Azure Service Principal authenticated! Verified subscription "${res.subscription?.displayName || azureForm.subscriptionId}". Discovered ${discovered.length} locations (All enabled by default).`
       );
     } catch (err: any) {
       setValidating(false);
       setValidationSuccess(false);
-      setValidationMsg(`Discovery warning: ${err.message || 'Could not query Azure Locations.'}`);
+      setValidationMsg(`Azure Connection Error: ${err.message || 'Could not verify Azure subscription.'}`);
     }
   };
 
   const handleSaveAzure = async () => {
-    if (!azureForm.subscriptionName || !azureForm.subscriptionId) return;
-
-    if (editingSubId) {
-      updateAzureSubscriptionRegions(editingSubId, azureForm.regions);
-      setActiveModal('none');
-      setEditingSubId(null);
+    if (!azureForm.subscriptionName || !azureForm.subscriptionId || !azureForm.tenantId || !azureForm.clientId) {
+      setValidationSuccess(false);
+      setValidationMsg('Please fill in Subscription Name, Subscription ID, Tenant ID, and Client ID.');
       return;
     }
 
-    const ok = await addAzureSubscription({
-      subscriptionName: azureForm.subscriptionName,
-      subscriptionId: azureForm.subscriptionId,
-      tenantId: azureForm.tenantId,
-      clientId: azureForm.clientId,
-      authType: azureForm.authType,
-      enabledRegions: azureForm.regions,
-    });
+    setValidating(true);
+    setValidationMsg('Connecting subscription and discovering cloud resources...');
 
-    if (ok) {
+    try {
+      if (editingSubId) {
+        await updateAzureSubscriptionRegions(editingSubId, azureForm.regions);
+        setActiveModal('none');
+        setEditingSubId(null);
+        setValidating(false);
+        return;
+      }
+
+      await addAzureSubscription({
+        subscriptionName: azureForm.subscriptionName,
+        subscriptionId: azureForm.subscriptionId,
+        tenantId: azureForm.tenantId,
+        clientId: azureForm.clientId,
+        clientSecret: azureForm.clientSecret,
+        authType: azureForm.authType,
+        enabledRegions: azureForm.regions,
+      });
+
       setActiveModal('none');
       setAzureForm({
         subscriptionName: '',
@@ -192,10 +226,15 @@ export default function CloudAccountsPage() {
         clientId: '',
         clientSecret: '',
         authType: 'client_secret',
-        regions: ['eastus', 'westeurope'],
+        regions: ALL_AZURE_REGIONS.map((r) => r.code),
       });
       setValidationSuccess(null);
       setEditingSubId(null);
+    } catch (err: any) {
+      setValidationSuccess(false);
+      setValidationMsg(err.message || 'Failed to save Azure subscription.');
+    } finally {
+      setValidating(false);
     }
   };
 
@@ -526,9 +565,9 @@ export default function CloudAccountsPage() {
 
           {/* Modal: Connect / Manage AWS Account */}
           {activeModal === 'aws' && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-              <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl w-full max-w-2xl p-6 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
-                <div className="flex items-center justify-between border-b border-[#1E293B] pb-3 flex-shrink-0">
+            <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-black/75 backdrop-blur-sm flex justify-center items-start">
+              <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl w-full max-w-4xl p-6 space-y-4 shadow-2xl my-8">
+                <div className="flex items-center justify-between border-b border-[#1E293B] pb-3">
                   <div className="flex items-center gap-2.5">
                     <AwsLogo className="w-6 h-5" />
                     <div>
@@ -551,7 +590,7 @@ export default function CloudAccountsPage() {
                   </button>
                 </div>
 
-                <div className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
+                <div className="space-y-4 text-xs">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-slate-300 font-semibold block mb-1">
@@ -689,9 +728,9 @@ export default function CloudAccountsPage() {
 
           {/* Modal: Connect / Manage Azure Subscription */}
           {activeModal === 'azure' && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-              <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl w-full max-w-2xl p-6 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
-                <div className="flex items-center justify-between border-b border-[#1E293B] pb-3 flex-shrink-0">
+            <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-black/75 backdrop-blur-sm flex justify-center items-start">
+              <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl w-full max-w-4xl p-6 space-y-4 shadow-2xl my-8">
+                <div className="flex items-center justify-between border-b border-[#1E293B] pb-3">
                   <div className="flex items-center gap-2.5">
                     <AzureLogo className="w-5 h-5" />
                     <div>
@@ -714,7 +753,7 @@ export default function CloudAccountsPage() {
                   </button>
                 </div>
 
-                <div className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
+                <div className="space-y-4 text-xs">
                   <div>
                     <label className="text-slate-300 font-semibold block mb-1">
                       Subscription Name

@@ -1,95 +1,12 @@
 /**
  * Azure SDK Service
- * Handles Azure Compute VM discovery and Azure Monitor telemetry.
+ * Handles live Azure Authentication, ARM Location Discovery,
+ * Resource Discovery via Azure Resource Manager, and Azure Monitor Metrics Telemetry.
  */
 
-const { ComputeManagementClient } = require('@azure/arm-compute');
 const { ClientSecretCredential } = require('@azure/identity');
 
-const mockAzureVMs = [
-  {
-    id: 'vm-01',
-    vmId: 'vm-eastus-01',
-    name: 'az-prod-api-01',
-    subscriptionId: 'sub-azure-01',
-    subscriptionName: 'Corporate Azure Enterprise',
-    resourceGroup: 'rg-production-eastus',
-    region: 'eastus',
-    vmSize: 'Standard_D4s_v5',
-    powerState: 'Running',
-    cpuUsage: 44,
-    memoryUsage: 58,
-    diskUsage: 50,
-    networkInMB: 24,
-    networkOutMB: 65,
-    uptime: '19d 8h',
-    os: 'Ubuntu 22.04 LTS',
-    privateIp: '10.240.1.10',
-    publicIp: '20.120.44.18',
-  },
-  {
-    id: 'vm-02',
-    vmId: 'vm-eastus-02',
-    name: 'az-prod-api-02',
-    subscriptionId: 'sub-azure-01',
-    subscriptionName: 'Corporate Azure Enterprise',
-    resourceGroup: 'rg-production-eastus',
-    region: 'eastus',
-    vmSize: 'Standard_D4s_v5',
-    powerState: 'Running',
-    cpuUsage: 48,
-    memoryUsage: 62,
-    diskUsage: 54,
-    networkInMB: 28,
-    networkOutMB: 72,
-    uptime: '19d 8h',
-    os: 'Ubuntu 22.04 LTS',
-    privateIp: '10.240.1.11',
-    publicIp: '20.120.44.19',
-  },
-  {
-    id: 'vm-03',
-    vmId: 'vm-westeu-01',
-    name: 'az-analytics-node-01',
-    subscriptionId: 'sub-azure-01',
-    subscriptionName: 'Corporate Azure Enterprise',
-    resourceGroup: 'rg-analytics-westeu',
-    region: 'westeurope',
-    vmSize: 'Standard_E8s_v5',
-    powerState: 'Running',
-    cpuUsage: 62,
-    memoryUsage: 74,
-    diskUsage: 68,
-    networkInMB: 35,
-    networkOutMB: 94,
-    uptime: '25d 14h',
-    os: 'Red Hat Enterprise Linux 9.1',
-    privateIp: '10.242.2.8',
-    publicIp: '51.144.18.90',
-  },
-  {
-    id: 'vm-04',
-    vmId: 'vm-westeu-02',
-    name: 'az-analytics-node-02',
-    subscriptionId: 'sub-azure-02',
-    subscriptionName: 'Azure Analytics & AI Dev',
-    resourceGroup: 'rg-analytics-dev',
-    region: 'eastus2',
-    vmSize: 'Standard_D8s_v5',
-    powerState: 'Running',
-    cpuUsage: 55,
-    memoryUsage: 69,
-    diskUsage: 45,
-    networkInMB: 18,
-    networkOutMB: 42,
-    uptime: '4d 2h',
-    os: 'Ubuntu 22.04 LTS',
-    privateIp: '10.245.1.15',
-    publicIp: '20.84.19.102',
-  },
-];
-
-// Full catalog of Azure Global Locations categorized by geography
+// Comprehensive full Azure Global Locations Catalog
 const ALL_AZURE_REGIONS_CATALOG = [
   // Americas
   { name: 'East US (Virginia)', code: 'eastus', status: 'available', geography: 'Americas' },
@@ -141,9 +58,55 @@ const ALL_AZURE_REGIONS_CATALOG = [
   { name: 'South Africa North (Johannesburg)', code: 'southafricanorth', status: 'available', geography: 'Middle East & Africa' },
 ];
 
+// Active discovered live resources cache (only populated when actual Azure subscription connects)
+let liveDiscoveredResources = [];
+let liveDiscoveredVMs = [];
+
+/**
+ * Validates Azure Service Principal Credentials against the Subscription
+ */
+async function validateAzureCredentials({ subscriptionId, tenantId, clientId, clientSecret }) {
+  if (!subscriptionId || !tenantId || !clientId || !clientSecret) {
+    throw new Error('Subscription ID, Tenant ID, Client ID, and Client Secret are required.');
+  }
+
+  try {
+    const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+    const token = await credential.getToken('https://management.azure.com/.default');
+
+    if (!token || !token.token) {
+      throw new Error('Failed to acquire authentication token from Azure Active Directory.');
+    }
+
+    const res = await fetch(`https://management.azure.com/subscriptions/${subscriptionId}?api-version=2020-01-01`, {
+      headers: {
+        Authorization: `Bearer ${token.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      const msg = errJson.error?.message || `Azure returned HTTP ${res.status}: ${res.statusText}`;
+      throw new Error(msg);
+    }
+
+    const subData = await res.json();
+    return {
+      success: true,
+      subscriptionId: subData.subscriptionId,
+      displayName: subData.displayName || 'Azure Subscription',
+      state: subData.state || 'Enabled',
+    };
+  } catch (err) {
+    throw new Error(`Azure Authentication Error: ${err.message}`);
+  }
+}
+
 /**
  * Dynamically discover Azure locations using Azure Resource Manager Locations API
  * GET /subscriptions/{subscriptionId}/locations
+ * Selects all supported regions by default.
  */
 async function describeAzureLocations(options = {}) {
   const { subscriptionId, tenantId, clientId, clientSecret } = options;
@@ -174,36 +137,254 @@ async function describeAzureLocations(options = {}) {
                 code: loc.name,
                 status: 'available',
                 geography: loc.metadata?.geographyGroup || (catalogMatch ? catalogMatch.geography : 'Global'),
-                enabled: true,
+                enabled: true, // Select All Regions by default
               };
             });
 
             return {
               success: true,
+              totalCount: discovered.length,
               regions: discovered,
             };
           }
         }
       }
     } catch (err) {
-      console.warn(`[Azure Service] Live ARM Locations query note: ${err.message}. Using dynamic Azure catalog.`);
+      console.warn(`[Azure Service] Live ARM Locations API note: ${err.message}`);
     }
   }
 
-  // Fallback to comprehensive dynamic Azure catalog (all 38+ regions)
+  // Comprehensive catalog with ALL regions enabled by default
   return {
     success: true,
+    totalCount: ALL_AZURE_REGIONS_CATALOG.length,
     regions: ALL_AZURE_REGIONS_CATALOG.map((r) => ({
       ...r,
-      enabled: ['eastus', 'westeurope'].includes(r.code),
+      enabled: true, // All regions enabled by default
     })),
   };
 }
 
+/**
+ * Discovers all supported Azure resources in the subscription across all selected regions
+ * Uses Azure Resource Manager Resources API with pagination (nextLink)
+ */
+async function discoverAllAzureResources(options = {}) {
+  const { subscriptionId, tenantId, clientId, clientSecret, selectedRegions } = options;
+
+  if (!subscriptionId || !tenantId || !clientId || !clientSecret) {
+    return { resources: [], vms: [], count: 0 };
+  }
+
+  const credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+  const token = await credential.getToken('https://management.azure.com/.default');
+
+  if (!token || !token.token) {
+    throw new Error('Unable to authenticate with Azure to discover resources.');
+  }
+
+  const bearerHeader = { Authorization: `Bearer ${token.token}`, 'Content-Type': 'application/json' };
+  let url = `https://management.azure.com/subscriptions/${subscriptionId}/resources?api-version=2021-04-01`;
+
+  let rawResources = [];
+
+  // Follow pagination tokens until all pages are retrieved
+  while (url) {
+    const res = await fetch(url, { headers: bearerHeader });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(`Failed to list Azure resources: ${err.error?.message || res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (Array.isArray(data.value)) {
+      rawResources.push(...data.value);
+    }
+    url = data.nextLink || null;
+  }
+
+  // Filter by selected regions if specified
+  const enabledRegionSet = Array.isArray(selectedRegions) && selectedRegions.length > 0
+    ? new Set(selectedRegions)
+    : null;
+
+  if (enabledRegionSet) {
+    rawResources = rawResources.filter((r) => enabledRegionSet.has(r.location));
+  }
+
+  const discoveredResources = [];
+  const discoveredVMs = [];
+
+  for (const item of rawResources) {
+    const resourceTypeRaw = item.type;
+    let mappedType = 'other';
+
+    if (resourceTypeRaw === 'Microsoft.Compute/virtualMachines') mappedType = 'virtual-machine';
+    else if (resourceTypeRaw === 'Microsoft.Compute/virtualMachineScaleSets') mappedType = 'vmss';
+    else if (resourceTypeRaw === 'Microsoft.Compute/disks') mappedType = 'disk';
+    else if (resourceTypeRaw === 'Microsoft.Network/networkInterfaces') mappedType = 'network-interface';
+    else if (resourceTypeRaw === 'Microsoft.Network/publicIPAddresses') mappedType = 'public-ip';
+    else if (resourceTypeRaw === 'Microsoft.Network/loadBalancers') mappedType = 'load-balancer';
+    else if (resourceTypeRaw === 'Microsoft.Network/virtualNetworks') mappedType = 'virtual-network';
+    else if (resourceTypeRaw === 'Microsoft.ContainerService/managedClusters') mappedType = 'cluster';
+    else if (resourceTypeRaw === 'Microsoft.Storage/storageAccounts') mappedType = 'storage-account';
+
+    // Extract Resource Group from resource ID
+    const rgMatch = item.id.match(/resourceGroups\/([^\/]+)/i);
+    const resourceGroup = rgMatch ? rgMatch[1] : 'default-rg';
+
+    const normalizedResource = {
+      provider: 'azure',
+      subscriptionId,
+      region: item.location,
+      resourceType: mappedType,
+      resourceId: item.id,
+      name: item.name,
+      status: 'Active',
+      metadata: {
+        rawType: item.type,
+        resourceGroup,
+        tags: item.tags || {},
+      },
+    };
+
+    discoveredResources.push(normalizedResource);
+
+    // If resource is a Virtual Machine, fetch instance view and real metrics
+    if (mappedType === 'virtual-machine') {
+      try {
+        let powerState = 'Unknown';
+        let vmSize = 'Unknown';
+        let os = 'Linux';
+        let privateIp = 'N/A';
+        let publicIp = 'N/A';
+
+        // 1. Fetch VM Instance View for actual Power State & Sizing
+        const vmDetailRes = await fetch(
+          `https://management.azure.com${item.id}?$expand=instanceView&api-version=2023-09-01`,
+          { headers: bearerHeader }
+        );
+
+        if (vmDetailRes.ok) {
+          const vmDetail = await vmDetailRes.json();
+          vmSize = vmDetail.properties?.hardwareProfile?.vmSize || 'Standard_D2s_v3';
+          os = vmDetail.properties?.storageProfile?.osDisk?.osType || 'Linux';
+
+          const statuses = vmDetail.properties?.instanceView?.statuses || [];
+          const powerStatus = statuses.find((s) => s.code && s.code.startsWith('PowerState/'));
+          if (powerStatus) {
+            powerState = powerStatus.displayStatus?.replace('VM ', '') || powerStatus.code.replace('PowerState/', '');
+          }
+
+          // Try resolving Network Interface IP
+          const nics = vmDetail.properties?.networkProfile?.networkInterfaces || [];
+          if (nics.length > 0 && nics[0].id) {
+            const nicRes = await fetch(`https://management.azure.com${nics[0].id}?api-version=2023-09-01`, {
+              headers: bearerHeader,
+            });
+            if (nicRes.ok) {
+              const nicData = await nicRes.json();
+              const ipConfigs = nicData.properties?.ipConfigurations || [];
+              if (ipConfigs.length > 0) {
+                privateIp = ipConfigs[0].properties?.privateIPAddress || 'N/A';
+                if (ipConfigs[0].properties?.publicIPAddress?.id) {
+                  const pipRes = await fetch(
+                    `https://management.azure.com${ipConfigs[0].properties.publicIPAddress.id}?api-version=2023-09-01`,
+                    { headers: bearerHeader }
+                  );
+                  if (pipRes.ok) {
+                    const pipData = await pipRes.json();
+                    publicIp = pipData.properties?.ipAddress || 'N/A';
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // 2. Query Azure Monitor Metrics API for Real Telemetry
+        let cpuUsage = null;
+        let memoryUsage = null;
+        let diskUsage = null;
+        let networkInMB = null;
+        let networkOutMB = null;
+
+        const metricsRes = await fetch(
+          `https://management.azure.com${item.id}/providers/Microsoft.Insights/metrics?api-version=2018-01-01&metricnames=Percentage CPU,Available Memory Bytes,Disk Read Bytes,Disk Write Bytes,Network In Total,Network Out Total&timespan=PT1H&interval=PT5M&aggregation=Average`,
+          { headers: bearerHeader }
+        );
+
+        if (metricsRes.ok) {
+          const metricsData = await metricsRes.json();
+          if (Array.isArray(metricsData.value)) {
+            for (const m of metricsData.value) {
+              const name = m.name?.value;
+              const points = m.timeseries?.[0]?.data || [];
+              const validPoints = points.filter((p) => p.average !== undefined && p.average !== null);
+              const latest = validPoints.length > 0 ? validPoints[validPoints.length - 1].average : null;
+
+              if (name === 'Percentage CPU' && latest !== null) {
+                cpuUsage = Math.round(latest);
+              } else if (name === 'Available Memory Bytes' && latest !== null) {
+                memoryUsage = Math.round(latest / (1024 * 1024));
+              } else if (name === 'Disk Read Bytes' && latest !== null) {
+                diskUsage = Math.round((latest / (1024 * 1024)) * 10) / 10;
+              } else if (name === 'Network In Total' && latest !== null) {
+                networkInMB = Math.round((latest / (1024 * 1024)) * 10) / 10;
+              } else if (name === 'Network Out Total' && latest !== null) {
+                networkOutMB = Math.round((latest / (1024 * 1024)) * 10) / 10;
+              }
+            }
+          }
+        }
+
+        const vmObject = {
+          id: item.name,
+          vmId: item.id,
+          name: item.name,
+          subscriptionId,
+          subscriptionName: options.subscriptionName || 'Azure Subscription',
+          resourceGroup,
+          region: item.location,
+          vmSize,
+          powerState: powerState === 'running' ? 'Running' : powerState,
+          cpuUsage, // null if unavailable ("Metric unavailable")
+          memoryUsage, // null if unavailable
+          diskUsage, // null if unavailable
+          networkInMB, // null if unavailable
+          networkOutMB, // null if unavailable
+          uptime: 'Active',
+          os,
+          privateIp,
+          publicIp,
+        };
+
+        discoveredVMs.push(vmObject);
+      } catch (vmErr) {
+        console.warn(`Could not fetch details for VM ${item.name}:`, vmErr.message);
+      }
+    }
+  }
+
+  // Update live memory cache
+  liveDiscoveredResources = discoveredResources;
+  liveDiscoveredVMs = discoveredVMs;
+
+  return {
+    resources: discoveredResources,
+    vms: discoveredVMs,
+    count: discoveredResources.length,
+    vmCount: discoveredVMs.length,
+  };
+}
+
+/**
+ * Returns real Azure VMs filtered by subscription, region, status, search
+ */
 async function getAzureVMs(options = {}) {
   const { subscriptionId, region, status, search, enabledRegions } = options;
 
-  let vms = [...mockAzureVMs];
+  let vms = [...liveDiscoveredVMs];
 
   if (subscriptionId && subscriptionId !== 'all') {
     vms = vms.filter((v) => v.subscriptionId === subscriptionId);
@@ -213,31 +394,43 @@ async function getAzureVMs(options = {}) {
     vms = vms.filter((v) => v.region === region);
   }
 
-  // Filter out any VMs in unselected regions
   if (Array.isArray(enabledRegions) && enabledRegions.length > 0) {
     const enabledSet = new Set(enabledRegions);
     vms = vms.filter((v) => enabledSet.has(v.region));
   }
 
   if (status && status !== 'all') {
-    vms = vms.filter((v) => v.powerState.toLowerCase() === status.toLowerCase());
+    vms = vms.filter((v) => (v.powerState || '').toLowerCase() === status.toLowerCase());
   }
 
   if (search) {
     const q = search.toLowerCase();
-    vms = vms.filter((v) => v.name.toLowerCase().includes(q) || v.vmId.toLowerCase().includes(q));
+    vms = vms.filter((v) => (v.name && v.name.toLowerCase().includes(q)) || (v.vmId && v.vmId.toLowerCase().includes(q)));
   }
 
   return vms;
 }
 
 async function getAzureVMById(vmId) {
-  return mockAzureVMs.find((v) => v.vmId === vmId || v.id === vmId) || null;
+  return liveDiscoveredVMs.find((v) => v.vmId === vmId || v.id === vmId) || null;
+}
+
+function clearDiscoveredAzureResources(subscriptionId) {
+  if (subscriptionId) {
+    liveDiscoveredResources = liveDiscoveredResources.filter((r) => r.subscriptionId !== subscriptionId);
+    liveDiscoveredVMs = liveDiscoveredVMs.filter((v) => v.subscriptionId !== subscriptionId);
+  } else {
+    liveDiscoveredResources = [];
+    liveDiscoveredVMs = [];
+  }
 }
 
 module.exports = {
+  validateAzureCredentials,
   describeAzureLocations,
+  discoverAllAzureResources,
   getAzureVMs,
   getAzureVMById,
+  clearDiscoveredAzureResources,
   ALL_AZURE_REGIONS_CATALOG,
 };

@@ -6,6 +6,7 @@ const CloudAccountSchema = new mongoose.Schema(
       type: String,
       required: true,
       enum: ['aws', 'azure'],
+      index: true,
     },
     accountName: {
       type: String,
@@ -14,6 +15,7 @@ const CloudAccountSchema = new mongoose.Schema(
     // AWS specific
     accountId: {
       type: String,
+      index: true,
     },
     roleArn: {
       type: String,
@@ -24,12 +26,17 @@ const CloudAccountSchema = new mongoose.Schema(
     // Azure specific
     subscriptionId: {
       type: String,
+      index: true,
     },
     tenantId: {
       type: String,
     },
     clientId: {
       type: String,
+    },
+    clientSecret: {
+      type: String,
+      select: false, // Hidden from frontend JSON responses by default for security
     },
     authType: {
       type: String,
@@ -53,6 +60,10 @@ const CloudAccountSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    resourcesCount: {
+      type: Number,
+      default: 0,
+    },
     monitoringEnabled: {
       type: Boolean,
       default: true,
@@ -64,5 +75,8 @@ const CloudAccountSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+CloudAccountSchema.index({ provider: 1, subscriptionId: 1 });
+CloudAccountSchema.index({ provider: 1, accountId: 1 });
 
 module.exports = mongoose.model('CloudAccount', CloudAccountSchema);

@@ -130,3 +130,59 @@ export async function getAlerts(severity?: string): Promise<AlertItem[]> {
   }
   return alerts;
 }
+
+export async function getAzureVMs(params?: {
+  search?: string;
+  region?: string;
+  status?: string;
+  subscriptionId?: string;
+}): Promise<any[]> {
+  const query = new URLSearchParams();
+  if (params?.search) query.set('search', params.search);
+  if (params?.region && params.region !== 'all') query.set('region', params.region);
+  if (params?.status && params.status !== 'all') query.set('status', params.status);
+  if (params?.subscriptionId && params.subscriptionId !== 'all') query.set('subscriptionId', params.subscriptionId);
+
+  const queryString = query.toString() ? `?${query.toString()}` : '';
+  return fetchJson<any[]>(`/api/azure/vms${queryString}`, []);
+}
+
+export async function getAzureVMById(vmId: string): Promise<any | null> {
+  return fetchJson<any | null>(`/api/azure/vms/${vmId}`, null);
+}
+
+export async function testAzureConnection(credentials: {
+  subscriptionId: string;
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+}): Promise<{ success: boolean; message?: string; error?: string; subscription?: any }> {
+  try {
+    const url = API_BASE_URL ? `${API_BASE_URL}/api/azure/test-connection` : '/api/azure/test-connection';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `HTTP ${res.status}: ${res.statusText}`);
+    }
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Connection test failed' };
+  }
+}
+
+export async function refreshAzureSubscription(subscriptionId: string): Promise<{ success: boolean; count?: number; error?: string }> {
+  try {
+    const url = API_BASE_URL
+      ? `${API_BASE_URL}/api/azure/subscriptions/${subscriptionId}/refresh`
+      : `/api/azure/subscriptions/${subscriptionId}/refresh`;
+    const res = await fetch(url, { method: 'POST' });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Refresh failed' };
+  }
+}
+

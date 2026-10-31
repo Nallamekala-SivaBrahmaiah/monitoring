@@ -184,9 +184,9 @@ export function RegionSelector({
         </div>
       )}
 
-      {/* Scrollable Region Cards Grid */}
+      {/* Naturally Expanding Region Cards Grid - No Internal Scrollbar */}
       {!isLoading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
           {filteredRegions.map((region) => {
             const isSelected = selectedCodes.includes(region.code);
 

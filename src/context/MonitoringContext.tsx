@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
 import {
   CloudProvider,
   TimeRange,
@@ -15,18 +15,6 @@ import {
   AlertItem,
   OverviewMetrics,
 } from '@/types/monitoring';
-import {
-  mockAwsAccounts,
-  mockAzureSubscriptions,
-  mockRegionsList,
-  mockEC2Instances,
-  mockAzureVMs,
-  mockDockerContainers,
-  mockK8sClusters,
-  mockK8sPods,
-  mockRecentAlerts,
-  mockOverviewMetrics,
-} from '@/mock/monitoringData';
 
 import { ALL_AWS_REGIONS, ALL_AZURE_REGIONS } from '@/services/regionDiscoveryService';
 
@@ -52,13 +40,13 @@ interface MonitoringContextType {
 
   // Account management
   addAwsAccount: (acc: Omit<AWSAccount, 'id' | 'resourcesCount' | 'lastSync' | 'status'>) => Promise<boolean>;
-  addAzureSubscription: (sub: Omit<AzureSubscription, 'id' | 'resourcesCount' | 'lastSync' | 'status'>) => Promise<boolean>;
+  addAzureSubscription: (sub: Omit<AzureSubscription, 'id' | 'resourcesCount' | 'lastSync' | 'status'> & { clientSecret?: string }) => Promise<boolean>;
   updateAwsAccountRegions: (id: string, regions: string[]) => void;
-  updateAzureSubscriptionRegions: (id: string, regions: string[]) => void;
+  updateAzureSubscriptionRegions: (id: string, regions: string[]) => Promise<void>;
   disconnectAwsAccount: (id: string) => void;
-  disconnectAzureSubscription: (id: string) => void;
+  disconnectAzureSubscription: (id: string) => Promise<void>;
 
-  // Dynamic filtered resources
+  // Dynamic filtered real resources
   filteredEC2Instances: EC2InstanceDetail[];
   filteredAzureVMs: AzureVirtualMachine[];
   filteredDockerContainers: DockerContainer[];
@@ -70,31 +58,26 @@ interface MonitoringContextType {
 
 const MonitoringContext = createContext<MonitoringContextType | undefined>(undefined);
 
+// Initial real catalog of supported regions (All enabled by default)
 const allDiscoveredRegionsList: RegionInfo[] = [
-  ...ALL_AWS_REGIONS.map((r) => {
-    const existing = mockRegionsList.find((m) => m.region === r.code && m.cloud === 'aws');
-    return {
-      id: `reg-aws-${r.code}`,
-      region: r.code,
-      displayName: r.name,
-      cloud: 'aws' as const,
-      enabled: existing ? existing.enabled : (r.enabled ?? false),
-      resourceCount: existing ? existing.resourceCount : 0,
-      color: existing ? existing.color : '#F97316',
-    };
-  }),
-  ...ALL_AZURE_REGIONS.map((r) => {
-    const existing = mockRegionsList.find((m) => m.region === r.code && m.cloud === 'azure');
-    return {
-      id: `reg-azure-${r.code}`,
-      region: r.code,
-      displayName: r.name,
-      cloud: 'azure' as const,
-      enabled: existing ? existing.enabled : (r.enabled ?? false),
-      resourceCount: existing ? existing.resourceCount : 0,
-      color: existing ? existing.color : '#0089D6',
-    };
-  }),
+  ...ALL_AWS_REGIONS.map((r) => ({
+    id: `reg-aws-${r.code}`,
+    region: r.code,
+    displayName: r.name,
+    cloud: 'aws' as const,
+    enabled: true,
+    resourceCount: 0,
+    color: '#F97316',
+  })),
+  ...ALL_AZURE_REGIONS.map((r) => ({
+    id: `reg-azure-${r.code}`,
+    region: r.code,
+    displayName: r.name,
+    cloud: 'azure' as const,
+    enabled: true,
+    resourceCount: 0,
+    color: '#0089D6',
+  })),
 ];
 
 export function MonitoringProvider({ children }: { children: React.ReactNode }) {
@@ -106,15 +89,54 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     return 'all';
   });
 
-  const [awsAccounts, setAwsAccounts] = useState<AWSAccount[]>(mockAwsAccounts);
+  // Zero dummy data - starts strictly empty until user connects real cloud accounts
+  const [awsAccounts, setAwsAccounts] = useState<AWSAccount[]>([]);
   const [selectedAwsAccountId, setSelectedAwsAccountId] = useState<string>('all');
-  const [azureSubscriptions, setAzureSubscriptions] = useState<AzureSubscription[]>(mockAzureSubscriptions);
+  const [azureSubscriptions, setAzureSubscriptions] = useState<AzureSubscription[]>([]);
   const [selectedAzureSubId, setSelectedAzureSubId] = useState<string>('all');
   const [regions, setRegions] = useState<RegionInfo[]>(allDiscoveredRegionsList);
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [isLive, setIsLive] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  // Real discovered infrastructure
+  const [azureVMs, setAzureVMs] = useState<AzureVirtualMachine[]>([]);
+  const [ec2Instances, setEc2Instances] = useState<EC2InstanceDetail[]>([]);
+  const [dockerContainers] = useState<DockerContainer[]>([]);
+  const [k8sClusters] = useState<K8sCluster[]>([]);
+  const [k8sPods] = useState<K8sPod[]>([]);
+  const [alerts] = useState<AlertItem[]>([]);
+
+  // Load real subscriptions and real VMs from backend
+  const loadRealData = useCallback(async () => {
+    try {
+      const [subsRes, vmsRes] = await Promise.all([
+        fetch('/api/azure/subscriptions').catch(() => null),
+        fetch('/api/azure/vms').catch(() => null),
+      ]);
+
+      if (subsRes && subsRes.ok) {
+        const subs = await subsRes.json();
+        if (Array.isArray(subs)) {
+          setAzureSubscriptions(subs);
+        }
+      }
+
+      if (vmsRes && vmsRes.ok) {
+        const vms = await vmsRes.json();
+        if (Array.isArray(vms)) {
+          setAzureVMs(vms);
+        }
+      }
+    } catch (e) {
+      console.warn('Real data sync note:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRealData();
+  }, [loadRealData]);
 
   // Set cloud provider with strict isolation and filter reset
   const setCloudProvider = (p: CloudProvider) => {
@@ -124,7 +146,6 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     }
 
     if (p === 'aws') {
-      // Invalidate and reset any Azure selections
       setSelectedAzureSubId('all');
       setSelectedRegion((prev) => {
         if (prev === 'all') return 'all';
@@ -132,7 +153,6 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
         return reg && reg.cloud === 'azure' ? 'all' : prev;
       });
     } else if (p === 'azure') {
-      // Invalidate and reset any AWS selections
       setSelectedAwsAccountId('all');
       setSelectedRegion((prev) => {
         if (prev === 'all') return 'all';
@@ -142,23 +162,22 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     }
   };
 
-  // Toggle enable/disable region
   const toggleRegion = (regionId: string) => {
     setRegions((prev) =>
       prev.map((r) => (r.id === regionId ? { ...r, enabled: !r.enabled } : r))
     );
   };
 
-  const triggerRefresh = () => {
+  const triggerRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 800);
+    await loadRealData();
+    setTimeout(() => setIsRefreshing(false), 600);
   };
 
   // Add AWS Account
   const addAwsAccount = async (
     data: Omit<AWSAccount, 'id' | 'resourcesCount' | 'lastSync' | 'status'>
   ) => {
-    // Validate role ARN format
     if (!data.roleArn.startsWith('arn:aws:iam::')) {
       return false;
     }
@@ -166,46 +185,70 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       ...data,
       id: `acc-aws-${Date.now()}`,
       status: 'Connected',
-      resourcesCount: data.enabledRegions.length * 3,
+      resourcesCount: 0,
       lastSync: 'Just now',
     };
     setAwsAccounts((prev) => [...prev, newAcc]);
     return true;
   };
 
-  // Add Azure Subscription
+  // Add Real Azure Subscription
   const addAzureSubscription = async (
-    data: Omit<AzureSubscription, 'id' | 'resourcesCount' | 'lastSync' | 'status'>
+    data: Omit<AzureSubscription, 'id' | 'resourcesCount' | 'lastSync' | 'status'> & { clientSecret?: string }
   ) => {
-    const newSub: AzureSubscription = {
-      ...data,
-      id: `sub-azure-${Date.now()}`,
-      status: 'Connected',
-      resourcesCount: data.enabledRegions.length * 2,
-      lastSync: 'Just now',
-    };
-    setAzureSubscriptions((prev) => [...prev, newSub]);
-    return true;
+    try {
+      const res = await fetch('/api/azure/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `HTTP ${res.status}: Failed to save subscription`);
+      }
+
+      const created = await res.json();
+      setAzureSubscriptions((prev) => [...prev.filter((s) => s.subscriptionId !== created.subscriptionId), created]);
+
+      // Automatically trigger real resource discovery
+      await loadRealData();
+      return true;
+    } catch (e: any) {
+      console.error('Subscription save failed:', e.message);
+      throw e;
+    }
   };
 
   const updateAwsAccountRegions = (id: string, newRegions: string[]) => {
     setAwsAccounts((prev) =>
       prev.map((acc) =>
         acc.id === id || acc.accountId === id
-          ? { ...acc, enabledRegions: newRegions, resourcesCount: newRegions.length * 3 }
+          ? { ...acc, enabledRegions: newRegions }
           : acc
       )
     );
   };
 
-  const updateAzureSubscriptionRegions = (id: string, newRegions: string[]) => {
+  const updateAzureSubscriptionRegions = async (id: string, newRegions: string[]) => {
     setAzureSubscriptions((prev) =>
       prev.map((sub) =>
         sub.id === id || sub.subscriptionId === id
-          ? { ...sub, enabledRegions: newRegions, resourcesCount: newRegions.length * 2 }
+          ? { ...sub, enabledRegions: newRegions, selectedRegions: newRegions }
           : sub
       )
     );
+
+    try {
+      await fetch(`/api/azure/subscriptions/${id}/regions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regions: newRegions }),
+      });
+      await loadRealData();
+    } catch (e) {
+      console.warn('Update regions note:', e);
+    }
   };
 
   const disconnectAwsAccount = (id: string) => {
@@ -214,167 +257,150 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     );
   };
 
-  const disconnectAzureSubscription = (id: string) => {
+  const disconnectAzureSubscription = async (id: string) => {
     setAzureSubscriptions((prev) =>
-      prev.map((sub) => (sub.id === id ? { ...sub, status: 'Disconnected' } : sub))
+      prev.map((sub) => (sub.id === id || sub.subscriptionId === id ? { ...sub, status: 'Disconnected' } : sub))
     );
+
+    try {
+      await fetch(`/api/azure/subscriptions/${id}/disconnect`, { method: 'POST' });
+      await loadRealData();
+    } catch (e) {
+      console.warn('Disconnect note:', e);
+    }
   };
 
-  // Filtered EC2 instances - strictly respects user's selected regions
+  // Filtered EC2 instances - Real data only
   const filteredEC2Instances = useMemo(() => {
     if (cloudProvider === 'azure') return [];
-
     const connectedAws = awsAccounts.filter((a) => a.status === 'Connected');
     if (connectedAws.length === 0) return [];
 
     const targetAccounts =
       selectedAwsAccountId === 'all'
         ? connectedAws
-        : connectedAws.filter(
-            (a) => a.id === selectedAwsAccountId || a.accountId === selectedAwsAccountId
-          );
+        : connectedAws.filter((a) => a.id === selectedAwsAccountId || a.accountId === selectedAwsAccountId);
 
     const activeSelectedRegions = new Set(targetAccounts.flatMap((a) => a.enabledRegions));
 
-    return mockEC2Instances.filter((inst) => {
-      // Must be from an enabled/selected region
-      if (!activeSelectedRegions.has(inst.region)) {
-        return false;
-      }
-      // Account filter
-      if (selectedAwsAccountId !== 'all' && inst.accountId !== selectedAwsAccountId) {
-        return false;
-      }
-      // Region filter
-      if (selectedRegion !== 'all' && inst.region !== selectedRegion) {
-        return false;
-      }
+    return ec2Instances.filter((inst) => {
+      if (activeSelectedRegions.size > 0 && !activeSelectedRegions.has(inst.region)) return false;
+      if (selectedAwsAccountId !== 'all' && inst.accountId !== selectedAwsAccountId) return false;
+      if (selectedRegion !== 'all' && inst.region !== selectedRegion) return false;
       return true;
     });
-  }, [cloudProvider, awsAccounts, selectedAwsAccountId, selectedRegion]);
+  }, [cloudProvider, awsAccounts, ec2Instances, selectedAwsAccountId, selectedRegion]);
 
-  // Filtered Azure VMs - strictly respects user's selected regions
+  // Filtered Azure VMs - Real data only
   const filteredAzureVMs = useMemo(() => {
     if (cloudProvider === 'aws') return [];
-
     const connectedSubs = azureSubscriptions.filter((s) => s.status === 'Connected');
     if (connectedSubs.length === 0) return [];
 
     const targetSubs =
       selectedAzureSubId === 'all'
         ? connectedSubs
-        : connectedSubs.filter(
-            (s) => s.id === selectedAzureSubId || s.subscriptionId === selectedAzureSubId
-          );
+        : connectedSubs.filter((s) => s.id === selectedAzureSubId || s.subscriptionId === selectedAzureSubId);
 
     const activeSelectedRegions = new Set(targetSubs.flatMap((s) => s.enabledRegions));
 
-    return mockAzureVMs.filter((vm) => {
-      // Must be from an enabled/selected region
-      if (!activeSelectedRegions.has(vm.region)) {
-        return false;
-      }
-      // Subscription filter
-      if (selectedAzureSubId !== 'all' && vm.subscriptionId !== selectedAzureSubId) {
-        return false;
-      }
-      // Region filter
-      if (selectedRegion !== 'all' && vm.region !== selectedRegion) {
-        return false;
-      }
+    return azureVMs.filter((vm) => {
+      if (activeSelectedRegions.size > 0 && !activeSelectedRegions.has(vm.region)) return false;
+      if (selectedAzureSubId !== 'all' && vm.subscriptionId !== selectedAzureSubId) return false;
+      if (selectedRegion !== 'all' && vm.region !== selectedRegion) return false;
       return true;
     });
-  }, [cloudProvider, azureSubscriptions, selectedAzureSubId, selectedRegion]);
+  }, [cloudProvider, azureSubscriptions, azureVMs, selectedAzureSubId, selectedRegion]);
 
   // Filtered Docker containers
   const filteredDockerContainers = useMemo(() => {
-    return mockDockerContainers.filter((c) => {
+    return dockerContainers.filter((c) => {
       if (cloudProvider === 'aws' && c.cloudProvider !== 'aws') return false;
       if (cloudProvider === 'azure' && c.cloudProvider !== 'azure') return false;
       if (selectedRegion !== 'all' && c.region !== selectedRegion) return false;
       return true;
     });
-  }, [cloudProvider, selectedRegion]);
+  }, [cloudProvider, dockerContainers, selectedRegion]);
 
   // Filtered K8s Clusters
   const filteredK8sClusters = useMemo(() => {
-    return mockK8sClusters.filter((c) => {
+    return k8sClusters.filter((c) => {
       if (cloudProvider === 'aws' && c.cloudProvider !== 'aws') return false;
       if (cloudProvider === 'azure' && c.cloudProvider !== 'azure') return false;
       if (selectedRegion !== 'all' && c.region !== selectedRegion) return false;
       return true;
     });
-  }, [cloudProvider, selectedRegion]);
+  }, [cloudProvider, k8sClusters, selectedRegion]);
 
   // Filtered K8s Pods
   const filteredK8sPods = useMemo(() => {
-    return mockK8sPods.filter((p) => {
+    return k8sPods.filter((p) => {
       if (cloudProvider === 'aws' && p.cloudProvider !== 'aws') return false;
       if (cloudProvider === 'azure' && p.cloudProvider !== 'azure') return false;
       return true;
     });
-  }, [cloudProvider]);
+  }, [cloudProvider, k8sPods]);
 
   // Filtered Alerts
   const filteredAlerts = useMemo(() => {
-    return mockRecentAlerts.filter((a) => {
-      if (cloudProvider === 'aws' && a.provider === 'azure') return false;
-      if (cloudProvider === 'azure' && a.provider === 'aws') return false;
+    return alerts.filter((a) => {
+      if (cloudProvider === 'aws' && a.provider !== 'aws') return false;
+      if (cloudProvider === 'azure' && a.provider !== 'azure') return false;
       return true;
     });
-  }, [cloudProvider]);
+  }, [cloudProvider, alerts]);
 
-  // Dynamically calculate overview metrics based on current filters
+  // Real Dynamic Overview Metrics (No hardcoded trend arrays or fallback numbers)
   const overviewMetrics = useMemo<OverviewMetrics>(() => {
     const awsCount = filteredEC2Instances.length;
     const azureCount = filteredAzureVMs.length;
     const dockerCount = filteredDockerContainers.length;
     const k8sCount = filteredK8sClusters.length;
-    const alertCount = filteredAlerts.filter((a) => a.status === 'active').length;
+    const alertCount = filteredAlerts.length;
 
     let totalServers = awsCount + azureCount;
     let runningServers =
       filteredEC2Instances.filter((i) => i.status === 'Running').length +
-      filteredAzureVMs.filter((v) => v.powerState === 'Running').length;
+      filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase() === 'running').length;
 
     if (cloudProvider === 'aws') {
       totalServers = awsCount;
       runningServers = filteredEC2Instances.filter((i) => i.status === 'Running').length;
     } else if (cloudProvider === 'azure') {
       totalServers = azureCount;
-      runningServers = filteredAzureVMs.filter((v) => v.powerState === 'Running').length;
+      runningServers = filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase() === 'running').length;
     }
 
     return {
       awsResources: {
         total: cloudProvider === 'azure' ? 0 : awsCount,
-        changeText: '+1 new',
-        trend: [8, 9, 10, 10, 11, awsCount],
+        changeText: awsCount > 0 ? '+0 new' : '0 new',
+        trend: awsCount > 0 ? [awsCount] : [],
       },
       azureResources: {
         total: cloudProvider === 'aws' ? 0 : azureCount,
-        changeText: '+0 new',
-        trend: [7, 7, 8, 8, 8, azureCount],
+        changeText: azureCount > 0 ? '+0 new' : '0 new',
+        trend: azureCount > 0 ? [azureCount] : [],
       },
       totalServers: {
         total: totalServers,
         runningText: `${runningServers} running`,
-        trend: [16, 17, 18, 19, 19, totalServers],
+        trend: totalServers > 0 ? [totalServers] : [],
       },
       dockerContainers: {
         total: dockerCount,
-        runningText: `${dockerCount > 0 ? dockerCount : 0} running`,
-        trend: [10, 11, 12, 13, 14, dockerCount],
+        runningText: `${dockerCount} running`,
+        trend: dockerCount > 0 ? [dockerCount] : [],
       },
       k8sClusters: {
         total: k8sCount,
         healthyText: `${k8sCount} healthy`,
-        trend: [1, 1, 2, 2, 2, k8sCount],
+        trend: k8sCount > 0 ? [k8sCount] : [],
       },
       activeAlerts: {
         total: alertCount,
         newText: `${alertCount} new`,
-        trend: [1, 2, 1, 3, 2, alertCount],
+        trend: alertCount > 0 ? [alertCount] : [],
       },
     };
   }, [cloudProvider, filteredEC2Instances, filteredAzureVMs, filteredDockerContainers, filteredK8sClusters, filteredAlerts]);

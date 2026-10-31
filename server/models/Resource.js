@@ -10,9 +10,11 @@ const ResourceSchema = new mongoose.Schema(
     },
     accountId: {
       type: String, // AWS account ID
+      index: true,
     },
     subscriptionId: {
       type: String, // Azure subscription ID
+      index: true,
     },
     region: {
       type: String,
@@ -22,11 +24,12 @@ const ResourceSchema = new mongoose.Schema(
     resourceType: {
       type: String,
       required: true,
-      enum: ['ec2', 'virtual-machine', 'container', 'cluster', 'pod', 'database'],
+      index: true,
     },
     resourceId: {
       type: String,
       required: true,
+      index: true,
     },
     name: {
       type: String,
@@ -43,7 +46,13 @@ const ResourceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Method to build provider MongoDB query
+// High-performance composite indexes
+ResourceSchema.index({ provider: 1, subscriptionId: 1 });
+ResourceSchema.index({ provider: 1, accountId: 1 });
+ResourceSchema.index({ provider: 1, region: 1 });
+ResourceSchema.index({ provider: 1, resourceType: 1 });
+
+// Static query builder
 ResourceSchema.statics.buildProviderQuery = function (provider, extraFilters = {}) {
   const query = { ...extraFilters };
   if (provider === 'aws') {
