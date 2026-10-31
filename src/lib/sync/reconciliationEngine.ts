@@ -5,6 +5,7 @@ import { discoverAllAzureResources } from '@/lib/azure/resources';
 import { discoverEC2InstancesInRegion } from '@/lib/aws/ec2';
 import { syncDockerResources } from '@/lib/docker/sync';
 import { syncKubernetesResources } from '@/lib/kubernetes/sync';
+import { syncAllRegisteredServers } from '@/lib/serverMonitoring/serverSync';
 
 export interface ReconciliationResult {
   success: boolean;
@@ -231,6 +232,17 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
       k8sCount = k8sResult.clusters.length;
     } catch (k8sErr: any) {
       const msg = `Kubernetes synchronization error: ${k8sErr.message || k8sErr}`;
+      console.warn(msg);
+      errors.push(msg);
+    }
+
+    // -------------------------------------------------------------
+    // 5. RECONCILE REGISTERED SSH SERVERS & TELEMETRY
+    // -------------------------------------------------------------
+    try {
+      await syncAllRegisteredServers();
+    } catch (serverErr: any) {
+      const msg = `Server synchronization error: ${serverErr.message || serverErr}`;
       console.warn(msg);
       errors.push(msg);
     }

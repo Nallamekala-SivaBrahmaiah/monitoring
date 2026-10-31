@@ -12,6 +12,12 @@ import {
   Activity,
   Tag,
   HardDrive,
+  Server as ServerIcon,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  HelpCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -27,12 +33,36 @@ interface DockerImageItem {
   tag: string;
   fullTag: string;
   hostInstance: string;
-  cloudProvider: 'aws' | 'azure';
+  hostId: string;
+  hostIp: string;
+  cloudProvider: 'aws' | 'azure' | 'other';
   region: string;
   size: string;
   sizeBytes: number;
   activeContainers: number;
   created: string;
+  metricSource?: string;
+  lastUpdated?: string;
+  dockerVersion?: string;
+}
+
+interface DockerHostItem {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  cloudProvider: string;
+  region: string;
+  serverStatus: string;
+  dockerDetected: boolean;
+  dockerStatus: 'running' | 'permission_denied' | 'not_installed' | 'daemon_stopped' | 'error';
+  dockerStatusMessage: string;
+  dockerVersion: string;
+  containersCount: number;
+  runningCount: number;
+  imagesCount: number;
+  lastSyncedAt?: string;
+  lastError?: string;
 }
 
 export default function DockerPage() {
@@ -50,24 +80,45 @@ export default function DockerPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [images, setImages] = useState<DockerImageItem[]>([]);
   const [loadingImages, setLoadingImages] = useState(false);
+  const [hosts, setHosts] = useState<DockerHostItem[]>([]);
+  const [loadingHosts, setLoadingHosts] = useState(false);
+
+  // Load Docker hosts status
+  const loadHosts = async () => {
+    try {
+      setLoadingHosts(true);
+      const res = await fetch('/api/docker/hosts');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setHosts(data);
+      }
+    } catch (e) {
+      console.warn('Failed to load docker hosts:', e);
+    } finally {
+      setLoadingHosts(false);
+    }
+  };
+
+  // Load Docker images from backend
+  const loadImages = async () => {
+    try {
+      setLoadingImages(true);
+      const res = await fetch('/api/docker/images');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setImages(data);
+      }
+    } catch (e) {
+      console.warn('Failed to load docker images:', e);
+    } finally {
+      setLoadingImages(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadImages() {
-      try {
-        setLoadingImages(true);
-        const res = await fetch('/api/docker/images');
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) setImages(data);
-        }
-      } catch (e) {
-        console.warn('Failed to load docker images:', e);
-      } finally {
-        setLoadingImages(false);
-      }
-    }
     loadImages();
-  }, [filteredDockerContainers]);
+    loadHosts();
+  }, [filteredDockerContainers, isSyncing]);
 
   const containers = useMemo(() => {
     return filteredDockerContainers.filter((c) => {
@@ -75,7 +126,8 @@ export default function DockerPage() {
         c.name.toLowerCase().includes(search.toLowerCase()) ||
         c.image.toLowerCase().includes(search.toLowerCase()) ||
         c.hostInstance.toLowerCase().includes(search.toLowerCase()) ||
-        c.containerId.toLowerCase().includes(search.toLowerCase());
+        c.containerId.toLowerCase().includes(search.toLowerCase()) ||
+        (c.hostIp && c.hostIp.includes(search));
 
       const matchStatus =
         statusFilter === 'all' ||
@@ -95,13 +147,20 @@ export default function DockerPage() {
         img.repository.toLowerCase().includes(q) ||
         img.tag.toLowerCase().includes(q) ||
         img.hostInstance.toLowerCase().includes(q) ||
-        img.shortId.toLowerCase().includes(q)
+        img.shortId.toLowerCase().includes(q) ||
+        (img.hostIp && img.hostIp.includes(q))
       );
     });
   }, [images, cloudProvider, search]);
 
   const runningCount = containers.filter((c) => c.status === 'Running').length;
   const stoppedCount = containers.filter((c) => c.status === 'Stopped').length;
+
+  const handleSync = async () => {
+    await syncNow();
+    await loadImages();
+    await loadHosts();
+  };
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col">
@@ -137,13 +196,123 @@ export default function DockerPage() {
               </div>
 
               <button
-                onClick={() => syncNow()}
+                onClick={handleSync}
                 disabled={isSyncing}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors disabled:opacity-50"
               >
                 <RotateCw className={`w-3.5 h-3.5 text-sky-400 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Syncing...' : 'Sync Containers'}</span>
+                <span>{isSyncing ? 'Syncing...' : 'Sync Containers & Images'}</span>
               </button>
+            </div>
+          </div>
+
+          {/* Connected Docker Hosts Status Cards */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <ServerIcon className="w-3.5 h-3.5 text-blue-400" />
+                <span>Connected SSH Server Docker Hosts ({hosts.length})</span>
+              </h3>
+              <span className="text-[11px] text-slate-500 font-mono">
+                Real-time SSH Docker Engine Telemetry
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {hosts.map((host) => {
+                const isRunning = host.dockerStatus === 'running';
+                const isPermDenied = host.dockerStatus === 'permission_denied';
+                const isNotInstalled = host.dockerStatus === 'not_installed';
+                const isStopped = host.dockerStatus === 'daemon_stopped';
+
+                return (
+                  <div
+                    key={host.id}
+                    className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5 flex flex-col justify-between space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white text-sm font-mono">
+                            {host.name}
+                          </span>
+                          <span className="text-xs text-slate-400 font-mono">
+                            ({host.host})
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
+                          {host.cloudProvider === 'azure' ? (
+                            <AzureLogo className="w-3 h-3" />
+                          ) : host.cloudProvider === 'aws' ? (
+                            <AwsLogo className="w-3.5 h-2.5" />
+                          ) : (
+                            <ServerIcon className="w-3 h-3 text-slate-400" />
+                          )}
+                          <span className="uppercase font-semibold">{host.cloudProvider}</span>
+                          <span>•</span>
+                          <span>{host.region}</span>
+                        </div>
+                      </div>
+
+                      {/* Status badge */}
+                      {isRunning ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Running</span>
+                        </span>
+                      ) : isPermDenied ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30 whitespace-nowrap" title="SSH user lacks docker permissions. Run: sudo usermod -aG docker $USER">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Permission Denied</span>
+                        </span>
+                      ) : isNotInstalled ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 whitespace-nowrap">
+                          <XCircle className="w-3 h-3" />
+                          <span>Not Installed</span>
+                        </span>
+                      ) : isStopped ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Daemon Stopped</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 whitespace-nowrap">
+                          <span>{host.dockerStatusMessage}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1E293B]/70 text-[11px]">
+                      <div>
+                        <span className="text-slate-500 block">Version</span>
+                        <span className="font-semibold text-slate-300 truncate block">
+                          {host.dockerVersion.replace('Docker version ', '').split(',')[0] || 'N/A'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">Containers</span>
+                        <span className="font-semibold text-white block">
+                          {host.containersCount} ({host.runningCount} up)
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">Images</span>
+                        <span className="font-semibold text-cyan-400 block">
+                          {host.imagesCount} images
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {hosts.length === 0 && (
+                <div className="col-span-full bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 text-center text-xs text-slate-400">
+                  {loadingHosts
+                    ? 'Loading connected SSH Docker hosts...'
+                    : 'No monitored servers registered yet. Add a server under Servers to monitor Docker.'}
+                </div>
+              )}
             </div>
           </div>
 
@@ -162,7 +331,7 @@ export default function DockerPage() {
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                 activeTab === 'containers' ? 'bg-blue-500/40 text-white' : 'bg-[#18233C] text-slate-400'
               }`}>
-                {filteredDockerContainers.length}
+                {containers.length}
               </span>
             </button>
 
@@ -179,7 +348,7 @@ export default function DockerPage() {
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                 activeTab === 'images' ? 'bg-blue-500/40 text-white' : 'bg-[#18233C] text-slate-400'
               }`}>
-                {images.length}
+                {filteredImages.length}
               </span>
             </button>
           </div>
@@ -189,10 +358,10 @@ export default function DockerPage() {
             <div className="p-4 sm:p-5 border-b border-[#1E293B] flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs font-medium text-slate-400">
                 {cloudProvider === 'aws'
-                  ? 'Monitoring resources running inside connected AWS EC2 instances'
+                  ? 'Showing Docker resources running inside connected AWS EC2 instances'
                   : cloudProvider === 'azure'
-                  ? 'Monitoring resources running inside connected Azure VMs'
-                  : 'Monitoring resources running inside connected AWS EC2 & Azure VMs'}
+                  ? 'Showing Docker resources running inside connected Azure VMs'
+                  : 'Showing real Docker containers and images collected directly via SSH'}
               </div>
 
               <div className="flex items-center gap-2.5">
@@ -231,16 +400,16 @@ export default function DockerPage() {
                       <th className="py-3 px-4">Container Name</th>
                       <th className="py-3 px-4">Container ID</th>
                       <th className="py-3 px-4">Image</th>
-                      <th className="py-3 px-4">Host Instance</th>
+                      <th className="py-3 px-4">Host Server</th>
                       <th className="py-3 px-4">Cloud Provider</th>
                       <th className="py-3 px-4">Region</th>
                       <th className="py-3 px-4">Status</th>
                       <th className="py-3 px-4">CPU Usage</th>
-                      <th className="py-3 px-4">Memory</th>
                       <th className="py-3 px-4">Memory Limit</th>
                       <th className="py-3 px-4">Disk I/O</th>
                       <th className="py-3 px-4">Network Traffic</th>
-                      <th className="py-3 px-4">Restarts</th>
+                      <th className="py-3 px-4">Published Ports</th>
+                      <th className="py-3 px-4">Telemetry Source</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#1E293B]/60 font-medium">
@@ -260,14 +429,21 @@ export default function DockerPage() {
                             {c.image}
                           </td>
                           <td className="py-3 px-4 text-slate-300">
-                            {c.hostInstance}
+                            <span className="font-semibold text-white block">{c.hostInstance}</span>
+                            {c.hostIp && (
+                              <span className="text-[10px] text-slate-500 font-mono block">
+                                {c.hostIp}
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-1.5">
                               {c.cloudProvider === 'aws' ? (
                                 <AwsLogo className="w-4 h-3" />
-                              ) : (
+                              ) : c.cloudProvider === 'azure' ? (
                                 <AzureLogo className="w-3.5 h-3.5" />
+                              ) : (
+                                <ServerIcon className="w-3.5 h-3.5 text-slate-400" />
                               )}
                               <span className="uppercase text-[11px] font-semibold text-slate-300">
                                 {c.cloudProvider}
@@ -302,30 +478,20 @@ export default function DockerPage() {
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-slate-500 italic text-[11px]">Unavailable</span>
+                              <span className="text-slate-500 italic text-[11px]">0.0%</span>
                             )}
                           </td>
-                          <td className="py-3 px-4">
-                            {c.memoryUsage !== null && c.memoryUsage !== undefined ? (
-                              <div className="flex items-center gap-2">
-                                <span className="w-8 font-semibold text-white">
-                                  {c.memoryUsage}%
-                                </span>
-                                <div className="w-12 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-cyan-500"
-                                    style={{ width: `${Math.min(100, Math.max(0, c.memoryUsage))}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-slate-500 italic text-[11px]">Unavailable</span>
-                            )}
+                          <td className="py-3 px-4 text-slate-300 font-mono">
+                            {c.memoryLimit}
                           </td>
-                          <td className="py-3 px-4 text-slate-400 font-mono">{c.memoryLimit}</td>
                           <td className="py-3 px-4 text-slate-300 font-mono">{c.diskIO}</td>
                           <td className="py-3 px-4 text-slate-300 font-mono">{c.networkTraffic}</td>
-                          <td className="py-3 px-4 text-slate-300 font-semibold">{c.restartCount}</td>
+                          <td className="py-3 px-4 text-cyan-400 font-mono text-[11px]">
+                            {c.publishedPorts || '-'}
+                          </td>
+                          <td className="py-3 px-4 text-slate-400 text-[11px] font-mono">
+                            {c.metricSource || 'Direct SSH (Docker Engine)'}
+                          </td>
                         </tr>
                       );
                     })}
@@ -333,7 +499,7 @@ export default function DockerPage() {
                     {containers.length === 0 && (
                       <tr>
                         <td colSpan={13} className="py-8 text-center text-slate-400">
-                          No containers found matching current cloud provider or filter.
+                          No Docker containers found on connected servers matching current filter.
                         </td>
                       </tr>
                     )}
@@ -348,12 +514,13 @@ export default function DockerPage() {
                       <th className="py-3 px-4">Repository / Image Name</th>
                       <th className="py-3 px-4">Tag</th>
                       <th className="py-3 px-4">Image ID</th>
-                      <th className="py-3 px-4">Host Instance</th>
+                      <th className="py-3 px-4">Host Server</th>
                       <th className="py-3 px-4">Cloud Provider</th>
                       <th className="py-3 px-4">Region</th>
                       <th className="py-3 px-4">Virtual Size</th>
                       <th className="py-3 px-4">Active Containers</th>
                       <th className="py-3 px-4">Created</th>
+                      <th className="py-3 px-4">Telemetry Source</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#1E293B]/60 font-medium">
@@ -374,14 +541,21 @@ export default function DockerPage() {
                           {img.shortId}
                         </td>
                         <td className="py-3 px-4 text-slate-300">
-                          {img.hostInstance}
+                          <span className="font-semibold text-white block">{img.hostInstance}</span>
+                          {img.hostIp && (
+                            <span className="text-[10px] text-slate-500 font-mono block">
+                              {img.hostIp}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1.5">
                             {img.cloudProvider === 'aws' ? (
                               <AwsLogo className="w-4 h-3" />
-                            ) : (
+                            ) : img.cloudProvider === 'azure' ? (
                               <AzureLogo className="w-3.5 h-3.5" />
+                            ) : (
+                              <ServerIcon className="w-3.5 h-3.5 text-slate-400" />
                             )}
                             <span className="uppercase text-[11px] font-semibold text-slate-300">
                               {img.cloudProvider}
@@ -400,12 +574,15 @@ export default function DockerPage() {
                         <td className="py-3 px-4 text-slate-400">
                           {img.created}
                         </td>
+                        <td className="py-3 px-4 text-slate-400 text-[11px] font-mono">
+                          Direct SSH (Docker Engine)
+                        </td>
                       </tr>
                     ))}
 
                     {filteredImages.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="py-8 text-center text-slate-400">
+                        <td colSpan={10} className="py-8 text-center text-slate-400">
                           {loadingImages ? 'Loading Docker images...' : 'No Docker images found matching current filter.'}
                         </td>
                       </tr>

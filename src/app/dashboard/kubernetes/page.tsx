@@ -94,28 +94,8 @@ export default function KubernetesPage() {
       }
     });
 
-    if (nodeMap.size === 0 && filteredK8sClusters.length > 0) {
-      filteredK8sClusters.forEach((c) => {
-        for (let i = 1; i <= (c.nodeCount || 1); i++) {
-          const name = `aks-agentpool-${i}`;
-          nodeMap.set(name, {
-            id: `node-${name}`,
-            name,
-            cluster: c.name,
-            cloudProvider: c.cloudProvider,
-            status: 'Ready',
-            role: 'worker',
-            cpuUsage: null,
-            memoryUsage: null,
-            kubeletVersion: c.version || 'v1.28.3',
-            podsCount: 0,
-          });
-        }
-      });
-    }
-
     return Array.from(nodeMap.values());
-  }, [filteredK8sPods, filteredK8sClusters]);
+  }, [filteredK8sPods]);
 
   const getPodStatusBadge = (status: string) => {
     const s = status.toLowerCase();
@@ -305,9 +285,9 @@ export default function KubernetesPage() {
                   <div className="w-12 h-12 rounded-xl bg-sky-500/10 flex items-center justify-center text-sky-400 mx-auto">
                     <KubernetesIcon className="w-6 h-6" />
                   </div>
-                  <h3 className="text-base font-semibold text-white">No Kubernetes Clusters Discovered</h3>
+                  <h3 className="text-base font-semibold text-white">Kubernetes: Not Detected</h3>
                   <p className="text-xs text-slate-400 max-w-md mx-auto">
-                    No Azure Kubernetes Service (AKS) or AWS Elastic Kubernetes Service (EKS) clusters exist in your connected cloud subscriptions.
+                    No Kubernetes clusters (AKS / EKS) or cluster nodes detected across your registered SSH servers or connected cloud subscriptions.
                   </p>
                 </div>
               )}

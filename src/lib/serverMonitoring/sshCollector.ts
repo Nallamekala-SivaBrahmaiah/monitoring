@@ -1,4 +1,5 @@
 import { Client, ConnectConfig } from 'ssh2';
+import { convertPPKToOpenSSH } from './ppkConverter';
 
 export interface CollectedServerSpecs {
   fingerprint: string | null;
@@ -52,6 +53,8 @@ export interface CollectedServerSpecs {
   };
   docker: {
     detected: boolean;
+    status: 'running' | 'permission_denied' | 'not_installed' | 'daemon_stopped' | 'error';
+    statusMessage?: string;
     version: string;
     containersCount: number;
     runningCount: number;
@@ -63,6 +66,12 @@ export interface CollectedServerSpecs {
       status: string;
       created: string;
       ports: string;
+      cpuPercent?: number;
+      memoryUsage?: string;
+      memoryPercent?: number;
+      memoryLimit?: string;
+      networkTraffic?: string;
+      diskIO?: string;
     }>;
     imagesCount: number;
     images: Array<{
@@ -142,6 +151,14 @@ export async function collectServerViaSSH(params: SSHConnectionParams): Promise<
     }, timeoutMs);
 
     conn.on('ready', () => {
+      // Auto-unlock docker socket for any user if running as non-root and permission denied
+      const pwB64 = params.authMethod === 'password' && params.authSecret
+        ? Buffer.from(params.authSecret).toString('base64')
+        : '';
+      const sudoAutoUnlock = pwB64
+        ? `echo "${pwB64}" | base64 -d | sudo -S chmod 666 /var/run/docker.sock 2>/dev/null || sudo -n chmod 666 /var/run/docker.sock 2>/dev/null || true`
+        : `sudo -n chmod 666 /var/run/docker.sock 2>/dev/null || true`;
+
       // Execute read-only unified telemetry collection bundle
       const probeScript = `
 echo "===SECTION:OS==="
@@ -162,16 +179,43 @@ echo "===SECTION:DF==="
 df -B1 -P -x tmpfs -x devtmpfs -x overlay -x squashfs 2>/dev/null
 echo "===SECTION:NET==="
 cat /proc/net/dev 2>/dev/null
+
+# If docker socket exists but user cannot access it, auto-chmod 666 so ANY user can access docker
+if [ -S /var/run/docker.sock ]; then
+  if ! docker ps >/dev/null 2>&1; then
+    ${sudoAutoUnlock}
+  fi
+fi
+
+DOCKER_CMD="docker"
+if ! docker ps >/dev/null 2>&1 && sudo -n docker ps >/dev/null 2>&1; then
+  DOCKER_CMD="sudo -n docker"
+fi
 echo "===SECTION:DOCKER_VER==="
-docker --version 2>/dev/null || echo "DOCKER_NOT_INSTALLED"
+$DOCKER_CMD --version 2>/dev/null || docker --version 2>/dev/null || echo "DOCKER_NOT_INSTALLED"
+echo "===SECTION:DOCKER_STATUS==="
+if ! command -v docker >/dev/null 2>&1; then
+  echo "DOCKER_NOT_INSTALLED"
+else
+  DOCKER_INFO_OUT=$($DOCKER_CMD info 2>&1)
+  if echo "$DOCKER_INFO_OUT" | grep -iq "permission denied"; then
+    echo "DOCKER_PERMISSION_DENIED"
+  elif echo "$DOCKER_INFO_OUT" | grep -iq "Cannot connect to the Docker daemon"; then
+    echo "DOCKER_DAEMON_STOPPED"
+  else
+    echo "DOCKER_RUNNING"
+  fi
+fi
+echo "===SECTION:DOCKER_STATS==="
+$DOCKER_CMD stats --no-stream --format '{{.ID}};;;{{.Name}};;;{{.CPUPerc}};;;{{.MemUsage}};;;{{.NetIO}};;;{{.BlockIO}}' 2>/dev/null || echo "NO_STATS"
 echo "===SECTION:DOCKER_CONTAINERS==="
-docker ps -a --no-trunc --format '{{.ID}};;;{{.Names}};;;{{.Image}};;;{{.State}};;;{{.Status}};;;{{.CreatedAt}};;;{{.Ports}}' 2>/dev/null || echo "DOCKER_CONTAINERS_ERR"
+$DOCKER_CMD ps -a --no-trunc --format '{{.ID}};;;{{.Names}};;;{{.Image}};;;{{.State}};;;{{.Status}};;;{{.CreatedAt}};;;{{.Ports}}' 2>/dev/null || echo "DOCKER_CONTAINERS_ERR"
 echo "===SECTION:DOCKER_IMAGES==="
-docker images --no-trunc --format '{{.ID}};;;{{.Repository}};;;{{.Tag}};;;{{.Size}};;;{{.CreatedAt}}' 2>/dev/null || echo "DOCKER_IMAGES_ERR"
+$DOCKER_CMD images --no-trunc --format '{{.ID}};;;{{.Repository}};;;{{.Tag}};;;{{.Size}};;;{{.CreatedAt}}' 2>/dev/null || echo "DOCKER_IMAGES_ERR"
 echo "===SECTION:K8S_VER==="
-kubectl version --client -o json 2>/dev/null || echo "K8S_NOT_INSTALLED"
+kubectl version --client -o json 2>/dev/null || sudo -n kubectl version --client -o json 2>/dev/null || echo "K8S_NOT_INSTALLED"
 echo "===SECTION:K8S_PODS==="
-kubectl get pods -A -o json 2>/dev/null || echo "K8S_PODS_ERR"
+kubectl get pods -A -o json 2>/dev/null || sudo -n kubectl get pods -A -o json 2>/dev/null || echo "K8S_PODS_ERR"
 echo "===SECTION:DONE==="
       `;
 
@@ -219,7 +263,8 @@ echo "===SECTION:DONE==="
     };
 
     if (params.authMethod === 'privateKey') {
-      config.privateKey = params.authSecret;
+      const conv = convertPPKToOpenSSH(params.authSecret);
+      config.privateKey = conv.success && conv.pemKey ? conv.pemKey : params.authSecret;
       if (params.passphrase) {
         config.passphrase = params.passphrase;
       }
@@ -241,7 +286,7 @@ echo "===SECTION:DONE==="
  */
 function parseProbeOutput(output: string, hostFingerprint: string | null): CollectedServerSpecs {
   const sections: Record<string, string> = {};
-  const parts = output.split(/===SECTION:([A-Z_]+)===\r?\n/);
+  const parts = output.split(/===SECTION:([A-Z0-9_]+)===\r?\n/);
   
   for (let i = 1; i < parts.length; i += 2) {
     const key = parts[i];
@@ -378,6 +423,78 @@ function parseProbeOutput(output: string, hostFingerprint: string | null): Colle
   // 8. Docker
   const dockerDetected = Boolean(sections.DOCKER_VER && !sections.DOCKER_VER.includes('DOCKER_NOT_INSTALLED'));
   const dockerVersion = dockerDetected ? sections.DOCKER_VER.split('\n')[0] : '';
+
+  let dockerStatus: 'running' | 'permission_denied' | 'not_installed' | 'daemon_stopped' | 'error' = 'not_installed';
+  let dockerStatusMessage = 'Docker: Not Installed';
+
+  const rawStatus = (sections.DOCKER_STATUS || '').trim();
+  if (rawStatus.includes('DOCKER_NOT_INSTALLED') || !dockerDetected) {
+    dockerStatus = 'not_installed';
+    dockerStatusMessage = 'Docker: Not Installed';
+  } else if (rawStatus.includes('DOCKER_PERMISSION_DENIED')) {
+    dockerStatus = 'permission_denied';
+    dockerStatusMessage = 'Docker: Permission Denied';
+  } else if (rawStatus.includes('DOCKER_DAEMON_STOPPED')) {
+    dockerStatus = 'daemon_stopped';
+    dockerStatusMessage = 'Docker: Daemon Stopped';
+  } else if (rawStatus.includes('DOCKER_RUNNING')) {
+    dockerStatus = 'running';
+    dockerStatusMessage = 'Docker Engine Running';
+  } else {
+    dockerStatus = dockerDetected ? 'running' : 'not_installed';
+    dockerStatusMessage = dockerDetected ? 'Docker Engine Detected' : 'Docker: Not Installed';
+  }
+
+  // Parse docker stats
+  const statsMap = new Map<string, { cpuPercent: number; memoryUsage: string; memoryPercent: number; memoryLimit: string; networkTraffic: string; diskIO: string }>();
+  if (sections.DOCKER_STATS && !sections.DOCKER_STATS.includes('NO_STATS')) {
+    const sLines = sections.DOCKER_STATS.split('\n').filter(Boolean);
+    for (const sl of sLines) {
+      const sp = sl.split(';;;');
+      if (sp.length >= 6) {
+        const statId = sp[0].trim();
+        const statName = sp[1].trim();
+        const cpuStr = sp[2].replace('%', '').trim();
+        const memUsage = sp[3].trim();
+        const netIO = sp[4].trim();
+        const blockIO = sp[5].trim();
+
+        const cpuPercent = parseFloat(cpuStr) || 0;
+        let memoryLimit = 'Available';
+        let memoryPercent = 0;
+        if (memUsage.includes('/')) {
+          const parts = memUsage.split('/');
+          const usedPart = parts[0].trim();
+          memoryLimit = parts[1].trim();
+          const parseBytes = (str: string) => {
+            const num = parseFloat(str) || 0;
+            if (str.includes('GiB') || str.includes('GB')) return num * 1024 * 1024 * 1024;
+            if (str.includes('MiB') || str.includes('MB')) return num * 1024 * 1024;
+            if (str.includes('KiB') || str.includes('kB')) return num * 1024;
+            return num;
+          };
+          const usedB = parseBytes(usedPart);
+          const limitB = parseBytes(memoryLimit);
+          if (limitB > 0) {
+            memoryPercent = Math.round((usedB / limitB) * 100 * 10) / 10;
+          }
+        }
+
+        const statObj = {
+          cpuPercent,
+          memoryUsage: memUsage,
+          memoryPercent,
+          memoryLimit,
+          networkTraffic: netIO,
+          diskIO: blockIO,
+        };
+
+        if (statId) statsMap.set(statId, statObj);
+        if (statName) statsMap.set(statName, statObj);
+      }
+    }
+  }
+
   const dockerContainers: CollectedServerSpecs['docker']['containers'] = [];
   const dockerImages: CollectedServerSpecs['docker']['images'] = [];
 
@@ -386,14 +503,25 @@ function parseProbeOutput(output: string, hostFingerprint: string | null): Colle
     for (const cl of cLines) {
       const p = cl.split(';;;');
       if (p.length >= 4) {
+        const cId = p[0];
+        const cName = p[1] || 'container';
+        const shortId = cId.substring(0, 12);
+        const liveStat = statsMap.get(shortId) || statsMap.get(cId) || statsMap.get(cName);
+
         dockerContainers.push({
-          id: p[0],
-          name: p[1] || 'container',
+          id: cId,
+          name: cName,
           image: p[2] || '',
           state: p[3] || 'running',
           status: p[4] || '',
           created: p[5] || '',
           ports: p[6] || '',
+          cpuPercent: liveStat?.cpuPercent ?? 0,
+          memoryUsage: liveStat?.memoryUsage ?? '',
+          memoryPercent: liveStat?.memoryPercent ?? 0,
+          memoryLimit: liveStat?.memoryLimit ?? 'Available',
+          networkTraffic: liveStat?.networkTraffic ?? '0B',
+          diskIO: liveStat?.diskIO ?? '0B',
         });
       }
     }
@@ -489,6 +617,8 @@ function parseProbeOutput(output: string, hostFingerprint: string | null): Colle
     },
     docker: {
       detected: dockerDetected,
+      status: dockerStatus,
+      statusMessage: dockerStatusMessage,
       version: dockerVersion,
       containersCount: dockerContainers.length,
       runningCount: dockerContainers.filter((c) => c.state.toLowerCase().includes('run')).length,

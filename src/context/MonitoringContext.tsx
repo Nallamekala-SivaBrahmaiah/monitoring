@@ -547,19 +547,45 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     const k8sCount = filteredK8sClusters.length;
     const alertCount = filteredAlerts.length;
 
-    const customOnline = customServers.filter((s) => s.status === 'Online').length;
-    let totalServers = awsCount + azureCount + customServers.length;
+    // Known IPs and names from cloud VMs to prevent duplicate counting
+    const knownIps = new Set([
+      ...filteredAzureVMs.map((v) => v.publicIp).filter(Boolean),
+      ...filteredAzureVMs.map((v) => v.privateIp).filter(Boolean),
+      ...filteredEC2Instances.map((e) => e.publicIp).filter(Boolean),
+      ...filteredEC2Instances.map((e) => e.privateIp).filter(Boolean),
+    ]);
+    const knownNames = new Set([
+      ...filteredAzureVMs.map((v) => (v.name || '').toLowerCase().trim()).filter(Boolean),
+      ...filteredEC2Instances.map((e) => (e.name || '').toLowerCase().trim()).filter(Boolean),
+    ]);
+
+    // Only count custom servers that are not already matched to a cloud VM
+    const unlinkedCustomServers = customServers.filter((s) => {
+      const host = (s.host || '').trim();
+      const name = (s.name || '').toLowerCase().trim();
+      if (host && knownIps.has(host)) return false;
+      if (name && knownNames.has(name)) return false;
+      return true;
+    });
+
+    let totalServers = awsCount + azureCount + unlinkedCustomServers.length;
     let runningServers =
       filteredEC2Instances.filter((i) => i.status === 'Running').length +
       filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase().includes('run')).length +
-      customOnline;
+      unlinkedCustomServers.filter((s) => s.status === 'Online').length;
 
     if (cloudProvider === 'aws') {
-      totalServers = awsCount + customServers.filter((s) => s.cloudProvider === 'aws').length;
-      runningServers = filteredEC2Instances.filter((i) => i.status === 'Running').length;
+      const unlinkedAws = unlinkedCustomServers.filter((s) => s.cloudProvider === 'aws');
+      totalServers = awsCount + unlinkedAws.length;
+      runningServers =
+        filteredEC2Instances.filter((i) => i.status === 'Running').length +
+        unlinkedAws.filter((s) => s.status === 'Online').length;
     } else if (cloudProvider === 'azure') {
-      totalServers = azureCount + customServers.filter((s) => s.cloudProvider === 'azure').length;
-      runningServers = filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase().includes('run')).length;
+      const unlinkedAzure = unlinkedCustomServers.filter((s) => s.cloudProvider === 'azure');
+      totalServers = azureCount + unlinkedAzure.length;
+      runningServers =
+        filteredAzureVMs.filter((v) => (v.powerState || '').toLowerCase().includes('run')).length +
+        unlinkedAzure.filter((s) => s.status === 'Online').length;
     }
 
     return {

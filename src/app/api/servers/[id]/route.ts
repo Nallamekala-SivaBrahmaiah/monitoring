@@ -55,20 +55,6 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 });
     }
 
-    // Safety check for production servers
-    const { searchParams } = new URL(request.url);
-    const confirmed = searchParams.get('confirmed');
-    if (server.environment === 'Production' && confirmed !== 'true') {
-      return NextResponse.json(
-        {
-          error: 'Production server removal requires explicit confirmation',
-          requiresConfirmation: true,
-          serverName: server.name,
-        },
-        { status: 400 }
-      );
-    }
-
     await Server.findByIdAndDelete(id);
 
     // Remove from CloudResource

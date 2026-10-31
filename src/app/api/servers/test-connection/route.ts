@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { collectServerViaSSH } from '@/lib/serverMonitoring/sshCollector';
 import { formatConnectionDiagnostic } from '@/lib/serverMonitoring/errorDiagnostic';
+import { convertPPKToOpenSSH } from '@/lib/serverMonitoring/ppkConverter';
 
 /**
  * POST /api/servers/test-connection
@@ -26,12 +27,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let secretToUse = authSecret;
+    if (authMethod === 'privateKey') {
+      const converted = convertPPKToOpenSSH(authSecret);
+      if (!converted.success) {
+        return NextResponse.json({ error: converted.error }, { status: 400 });
+      }
+      if (converted.pemKey) {
+        secretToUse = converted.pemKey;
+      }
+    }
+
     const specs = await collectServerViaSSH({
       host: host.trim(),
       port: portNum,
       username: username.trim(),
       authMethod,
-      authSecret,
+      authSecret: secretToUse,
       timeoutMs: 10000,
     });
 

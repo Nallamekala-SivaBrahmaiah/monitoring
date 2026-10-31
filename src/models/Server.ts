@@ -29,6 +29,10 @@ export interface IServerDockerContainer {
   ports: string;
   cpuPercent?: number;
   memoryUsage?: string;
+  memoryPercent?: number;
+  memoryLimit?: string;
+  networkTraffic?: string;
+  diskIO?: string;
 }
 
 export interface IServerDockerImage {
@@ -59,7 +63,7 @@ export interface IServer extends Document {
   encryptedAuthSecret: string;
   authSecretIv: string;
   authSecretTag: string;
-  environment: 'Production' | 'Staging' | 'Development';
+  environment?: string;
   cloudProvider: 'aws' | 'azure' | 'gcp' | 'on-premise' | 'other';
   region?: string;
   tags: string[];
@@ -105,6 +109,8 @@ export interface IServer extends Document {
   };
   docker: {
     detected: boolean;
+    status: 'running' | 'permission_denied' | 'not_installed' | 'daemon_stopped' | 'error';
+    statusMessage?: string;
     version: string;
     containersCount: number;
     runningCount: number;
@@ -112,6 +118,7 @@ export interface IServer extends Document {
     imagesCount: number;
     images: IServerDockerImage[];
     lastSyncedAt: Date | null;
+    lastError?: string | null;
   };
   kubernetes: {
     detected: boolean;
@@ -144,9 +151,7 @@ const ServerSchema = new Schema<IServer>(
     authSecretTag: { type: String, required: true },
     environment: {
       type: String,
-      enum: ['Production', 'Staging', 'Development'],
-      default: 'Development',
-      index: true,
+      required: false,
     },
     cloudProvider: {
       type: String,
@@ -222,6 +227,8 @@ const ServerSchema = new Schema<IServer>(
     },
     docker: {
       detected: { type: Boolean, default: false },
+      status: { type: String, default: 'not_installed' },
+      statusMessage: { type: String, default: '' },
       version: { type: String, default: '' },
       containersCount: { type: Number, default: 0 },
       runningCount: { type: Number, default: 0 },
@@ -236,6 +243,10 @@ const ServerSchema = new Schema<IServer>(
           ports: { type: String },
           cpuPercent: { type: Number, default: 0 },
           memoryUsage: { type: String, default: '' },
+          memoryPercent: { type: Number, default: 0 },
+          memoryLimit: { type: String, default: '' },
+          networkTraffic: { type: String, default: '' },
+          diskIO: { type: String, default: '' },
         },
       ],
       imagesCount: { type: Number, default: 0 },
@@ -249,6 +260,7 @@ const ServerSchema = new Schema<IServer>(
         },
       ],
       lastSyncedAt: { type: Date, default: null },
+      lastError: { type: String, default: null },
     },
     kubernetes: {
       detected: { type: Boolean, default: false },
@@ -286,9 +298,10 @@ const ServerSchema = new Schema<IServer>(
   }
 );
 
-ServerSchema.index({ host: 1, port: 1 }, { unique: true });
+if (mongoose.models && mongoose.models.Server) {
+  delete (mongoose.models as any).Server;
+}
 
-const Server: Model<IServer> =
-  mongoose.models.Server || mongoose.model<IServer>('Server', ServerSchema);
+const Server: Model<IServer> = mongoose.model<IServer>('Server', ServerSchema);
 
 export default Server;

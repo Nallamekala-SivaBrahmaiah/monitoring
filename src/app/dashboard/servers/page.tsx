@@ -26,6 +26,7 @@ import {
   Globe,
   Radio,
   X,
+  Upload,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -42,7 +43,7 @@ interface RegisteredServer {
   port: number;
   username: string;
   authMethod: 'privateKey' | 'password';
-  environment: 'Production' | 'Staging' | 'Development';
+  environment?: string;
   cloudProvider: 'aws' | 'azure' | 'gcp' | 'on-premise' | 'other';
   region?: string;
   tags: string[];
@@ -126,7 +127,7 @@ export default function ServersPage() {
   // State
   const [servers, setServers] = useState<RegisteredServer[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [envFilter, setEnvFilter] = useState<'all' | 'Production' | 'Staging' | 'Development'>('all');
+  const [fleetFilter, setFleetFilter] = useState<'all' | 'online' | 'offline' | 'docker' | 'kubernetes'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'custom' | 'aws' | 'azure'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -151,7 +152,6 @@ export default function ServersPage() {
     username: 'ubuntu',
     authMethod: 'privateKey' as 'privateKey' | 'password',
     authSecret: '',
-    environment: 'Production' as 'Production' | 'Staging' | 'Development',
     cloudProvider: 'other' as 'aws' | 'azure' | 'gcp' | 'on-premise' | 'other',
     region: 'us-east-1',
     tags: 'web, api',
@@ -280,7 +280,6 @@ export default function ServersPage() {
         username: 'ubuntu',
         authMethod: 'privateKey',
         authSecret: '',
-        environment: 'Production',
         cloudProvider: 'other',
         region: 'us-east-1',
         tags: 'web, api',
@@ -330,8 +329,7 @@ export default function ServersPage() {
     if (!deleteTarget) return;
     try {
       setDeleting(true);
-      const isProd = deleteTarget.environment === 'Production';
-      const url = `/api/servers/${deleteTarget._id}${isProd ? '?confirmed=true' : ''}`;
+      const url = `/api/servers/${deleteTarget._id}`;
       const res = await fetch(url, { method: 'DELETE' });
 
       if (res.ok) {
@@ -368,7 +366,10 @@ export default function ServersPage() {
   // Filtered servers
   const filteredServers = useMemo(() => {
     return servers.filter((s) => {
-      if (envFilter !== 'all' && s.environment !== envFilter) return false;
+      if (fleetFilter === 'online' && s.status !== 'Online') return false;
+      if (fleetFilter === 'offline' && s.status === 'Online') return false;
+      if (fleetFilter === 'docker' && !s.docker?.detected) return false;
+      if (fleetFilter === 'kubernetes' && !s.kubernetes?.detected) return false;
       if (cloudProvider === 'aws' && s.cloudProvider !== 'aws') return false;
       if (cloudProvider === 'azure' && s.cloudProvider !== 'azure') return false;
 
@@ -377,18 +378,15 @@ export default function ServersPage() {
         const matchName = s.name.toLowerCase().includes(q);
         const matchHost = s.host.toLowerCase().includes(q);
         const matchTags = s.tags.some((t) => t.toLowerCase().includes(q));
-        const matchEnv = s.environment.toLowerCase().includes(q);
-        return matchName || matchHost || matchTags || matchEnv;
+        const matchProvider = (s.cloudProvider || '').toLowerCase().includes(q);
+        return matchName || matchHost || matchTags || matchProvider;
       }
       return true;
     });
-  }, [servers, envFilter, cloudProvider, searchQuery]);
+  }, [servers, fleetFilter, cloudProvider, searchQuery]);
 
   // Aggregate stats
   const totalCustomServers = servers.length;
-  const prodServersCount = servers.filter((s) => s.environment === 'Production').length;
-  const stagingServersCount = servers.filter((s) => s.environment === 'Staging').length;
-  const devServersCount = servers.filter((s) => s.environment === 'Development').length;
   const onlineServersCount = servers.filter((s) => s.status === 'Online').length;
   const totalCombinedNodes = totalCustomServers + filteredEC2Instances.length + filteredAzureVMs.length;
 
@@ -484,97 +482,116 @@ export default function ServersPage() {
               <span className="text-[10px] text-emerald-400 mt-0.5 block">{onlineServersCount} connected</span>
             </div>
 
-            <div className="bg-[#111A2E] border border-rose-500/20 rounded-xl p-3.5 shadow-sm">
+            <div className="bg-[#111A2E] border border-emerald-500/20 rounded-xl p-3.5 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-rose-400 uppercase tracking-wider">Production</span>
-                <Shield className="w-3.5 h-3.5 text-rose-400" />
+                <span className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">Online Nodes</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
               </div>
-              <div className="text-2xl font-bold text-white mt-1">{prodServersCount}</div>
-              <span className="text-[10px] text-rose-300/80 mt-0.5 block">Critical Read-Only</span>
+              <div className="text-2xl font-bold text-white mt-1">{onlineServersCount}</div>
+              <span className="text-[10px] text-emerald-300/80 mt-0.5 block">Active Telemetry</span>
             </div>
 
-            <div className="bg-[#111A2E] border border-purple-500/20 rounded-xl p-3.5 shadow-sm">
-              <span className="text-[11px] font-semibold text-purple-400 uppercase tracking-wider block">Staging</span>
-              <div className="text-2xl font-bold text-white mt-1">{stagingServersCount}</div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Pre-release nodes</span>
-            </div>
-
-            <div className="bg-[#111A2E] border border-sky-500/20 rounded-xl p-3.5 shadow-sm">
-              <span className="text-[11px] font-semibold text-sky-400 uppercase tracking-wider block">Development</span>
-              <div className="text-2xl font-bold text-white mt-1">{devServersCount}</div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Testing environments</span>
-            </div>
-
-            <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5 shadow-sm">
+            <div className="bg-[#111A2E] border border-slate-700/60 rounded-xl p-3.5 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Docker Hosts</span>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Offline Nodes</span>
+                <XCircle className="w-3.5 h-3.5 text-slate-400" />
+              </div>
+              <div className="text-2xl font-bold text-white mt-1">{totalCustomServers - onlineServersCount}</div>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Needs Attention</span>
+            </div>
+
+            <div className="bg-[#111A2E] border border-blue-500/20 rounded-xl p-3.5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-blue-400 uppercase tracking-wider">Docker Hosts</span>
                 <DockerIcon className="w-3.5 h-3.5" />
               </div>
               <div className="text-2xl font-bold text-white mt-1">
                 {servers.filter((s) => s.docker?.detected).length}
               </div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Docker enabled</span>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Engine Detected</span>
             </div>
 
-            <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5 shadow-sm">
+            <div className="bg-[#111A2E] border border-indigo-500/20 rounded-xl p-3.5 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Kubernetes</span>
+                <span className="text-[11px] font-semibold text-indigo-400 uppercase tracking-wider">Kubernetes</span>
                 <KubernetesIcon className="w-3.5 h-3.5" />
               </div>
               <div className="text-2xl font-bold text-white mt-1">
                 {servers.filter((s) => s.kubernetes?.detected).length}
               </div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">K8s nodes detected</span>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">K8s Nodes</span>
+            </div>
+
+            <div className="bg-[#111A2E] border border-cyan-500/20 rounded-xl p-3.5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-cyan-400 uppercase tracking-wider">Fleet Health</span>
+                <Activity className="w-3.5 h-3.5 text-cyan-400" />
+              </div>
+              <div className="text-2xl font-bold text-white mt-1">
+                {servers.filter((s) => (s.metrics?.cpu?.usagePercent || 0) < 80).length} / {totalCustomServers}
+              </div>
+              <span className="text-[10px] text-emerald-400 mt-0.5 block">Healthy Load</span>
             </div>
           </div>
 
           {/* Filter Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#111A2E] border border-[#1E293B] rounded-xl p-3">
-            {/* Environment Filters */}
+            {/* Fleet Status Filters */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
               <button
-                onClick={() => setEnvFilter('all')}
+                onClick={() => setFleetFilter('all')}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  envFilter === 'all'
+                  fleetFilter === 'all'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
                 }`}
               >
-                All Environments ({servers.length})
+                All Servers ({servers.length})
               </button>
 
               <button
-                onClick={() => setEnvFilter('Production')}
+                onClick={() => setFleetFilter('online')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  envFilter === 'Production'
-                    ? 'bg-rose-600 text-white shadow-sm'
-                    : 'text-rose-400 hover:bg-rose-950/30'
+                  fleetFilter === 'online'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-emerald-400 hover:bg-emerald-950/30'
                 }`}
               >
-                <Shield className="w-3 h-3" />
-                <span>Production ({prodServersCount})</span>
+                <CheckCircle2 className="w-3 h-3" />
+                <span>Online ({onlineServersCount})</span>
               </button>
 
               <button
-                onClick={() => setEnvFilter('Staging')}
+                onClick={() => setFleetFilter('offline')}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  envFilter === 'Staging'
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'text-purple-400 hover:bg-purple-950/30'
+                  fleetFilter === 'offline'
+                    ? 'bg-slate-700 text-white shadow-sm'
+                    : 'text-slate-400 hover:bg-slate-800'
                 }`}
               >
-                Staging ({stagingServersCount})
+                Offline ({totalCustomServers - onlineServersCount})
               </button>
 
               <button
-                onClick={() => setEnvFilter('Development')}
+                onClick={() => setFleetFilter('docker')}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  envFilter === 'Development'
+                  fleetFilter === 'docker'
                     ? 'bg-sky-600 text-white shadow-sm'
                     : 'text-sky-400 hover:bg-sky-950/30'
                 }`}
               >
-                Development ({devServersCount})
+                Docker Hosts ({servers.filter((s) => s.docker?.detected).length})
+              </button>
+
+              <button
+                onClick={() => setFleetFilter('kubernetes')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  fleetFilter === 'kubernetes'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-indigo-400 hover:bg-indigo-950/30'
+                }`}
+              >
+                Kubernetes ({servers.filter((s) => s.kubernetes?.detected).length})
               </button>
             </div>
 
@@ -618,7 +635,7 @@ export default function ServersPage() {
                 <thead className="bg-[#0D1526] text-slate-400 uppercase text-[10px] tracking-wider border-b border-[#1E293B]">
                   <tr>
                     <th className="py-3 px-4">Server Name & Host</th>
-                    <th className="py-3 px-4">Environment</th>
+                    <th className="py-3 px-4">Provider / Location</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">CPU Usage</th>
                     <th className="py-3 px-4">RAM Usage</th>
@@ -633,7 +650,6 @@ export default function ServersPage() {
                     const cpuVal = server.metrics?.cpu?.usagePercent ?? 0;
                     const memVal = server.metrics?.memory?.usagePercent ?? 0;
                     const diskVal = server.metrics?.disks?.[0]?.usagePercent ?? 0;
-                    const isProd = server.environment === 'Production';
 
                     return (
                       <tr key={server._id} className="hover:bg-[#15203A] transition-colors">
@@ -652,19 +668,11 @@ export default function ServersPage() {
                           </Link>
                         </td>
 
-                        {/* Environment */}
+                        {/* Provider / Location */}
                         <td className="py-3 px-4">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                              isProd
-                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                                : server.environment === 'Staging'
-                                ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
-                                : 'bg-sky-500/10 text-sky-400 border-sky-500/30'
-                            }`}
-                          >
-                            {isProd && <Shield className="w-2.5 h-2.5" />}
-                            <span>{server.environment}</span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border bg-slate-800/60 text-slate-300 border-slate-700/60">
+                            <span className="uppercase text-blue-400 font-bold">{server.cloudProvider}</span>
+                            {server.region && <span className="text-slate-400">({server.region})</span>}
                           </span>
                         </td>
 
@@ -935,49 +943,19 @@ export default function ServersPage() {
             </div>
 
             <form onSubmit={handleAddServerSubmit} className="p-6 space-y-5">
-              {/* Production Safety Warning banner if Production environment chosen */}
-              {formData.environment === 'Production' && (
-                <div className="p-3.5 rounded-xl bg-rose-950/30 border border-rose-500/30 flex items-start gap-3">
-                  <Shield className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-                  <div className="text-xs">
-                    <span className="font-bold text-rose-300 block">Production Server Safety Notice</span>
-                    <p className="text-slate-300 mt-0.5 leading-relaxed">
-                      This server is treated as critical production infrastructure. Monitoring is strictly read-only by default. The system will never execute destructive commands, restart services, or alter configurations.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Row 1: Server Name & Environment */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Server Name <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. prod-api-01"
-                    className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Environment <span className="text-rose-400">*</span>
-                  </label>
-                  <select
-                    value={formData.environment}
-                    onChange={(e) => setFormData({ ...formData, environment: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="Production">Production (Critical - Read Only)</option>
-                    <option value="Staging">Staging</option>
-                    <option value="Development">Development</option>
-                  </select>
-                </div>
+              {/* Row 1: Server Name */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Server Name <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g. vm01siva or prod-api-01"
+                  className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
               </div>
 
               {/* Row 2: Host & Port */}
@@ -1043,15 +1021,41 @@ export default function ServersPage() {
 
               {/* Row 4: Secret Key / Password */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                   <label className="block text-xs font-semibold text-slate-300">
-                    {formData.authMethod === 'privateKey' ? 'SSH Private Key Content (PEM)' : 'SSH Password'}{' '}
+                    {formData.authMethod === 'privateKey' ? 'SSH Private Key (PEM or PPK)' : 'SSH Password'}{' '}
                     <span className="text-rose-400">*</span>
                   </label>
-                  <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5" />
-                    <span>Encrypted at rest with AES-256-GCM</span>
-                  </span>
+                  <div className="flex items-center gap-3">
+                    {formData.authMethod === 'privateKey' && (
+                      <label className="cursor-pointer text-[11px] font-medium text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded border border-blue-500/30 transition-all flex items-center gap-1">
+                        <Upload className="w-3 h-3" />
+                        <span>Upload .pem / .ppk key file</span>
+                        <input
+                          type="file"
+                          accept=".pem,.ppk,.key,.txt"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                const text = event.target?.result as string;
+                                if (text) {
+                                  setFormData((prev) => ({ ...prev, authSecret: text }));
+                                }
+                              };
+                              reader.readAsText(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>Encrypted at rest with AES-256-GCM</span>
+                    </span>
+                  </div>
                 </div>
 
                 {formData.authMethod === 'privateKey' ? (
@@ -1060,7 +1064,7 @@ export default function ServersPage() {
                     rows={4}
                     value={formData.authSecret}
                     onChange={(e) => setFormData({ ...formData, authSecret: e.target.value })}
-                    placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+                    placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;... (or PuTTY PPK key content)"
                     className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono"
                   />
                 ) : (
@@ -1337,7 +1341,7 @@ export default function ServersPage() {
               </div>
               <div>
                 <h3 className="text-base font-bold text-white">Remove Server from Monitoring</h3>
-                <span className="text-xs text-rose-400 font-semibold">{deleteTarget.environment} Server Node</span>
+                <span className="text-xs text-slate-400 font-medium">{deleteTarget.host}:{deleteTarget.port}</span>
               </div>
             </div>
 
@@ -1352,9 +1356,9 @@ export default function ServersPage() {
                 <span className="font-mono text-blue-400 font-semibold">{deleteTarget.host}:{deleteTarget.port}</span>
               </div>
               <div className="flex justify-between items-center pb-2 border-b border-[#1E293B]">
-                <span className="text-slate-400">Environment & Provider:</span>
+                <span className="text-slate-400">Provider & Location:</span>
                 <span className="text-slate-300">
-                  {deleteTarget.environment} • <span className="uppercase">{deleteTarget.cloudProvider}</span> ({deleteTarget.region})
+                  <span className="uppercase">{deleteTarget.cloudProvider}</span> ({deleteTarget.region})
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -1369,21 +1373,6 @@ export default function ServersPage() {
               Disconnecting will terminate scheduled SSH telemetry collection, stop agent sync, and purge this server node from the monitoring fleet.
             </p>
 
-            {deleteTarget.environment === 'Production' && (
-              <div className="space-y-2">
-                <p className="text-xs text-rose-400 font-semibold">
-                  To confirm removal of this Production server, type <span className="underline">{deleteTarget.name}</span>:
-                </p>
-                <input
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder={deleteTarget.name}
-                  className="w-full px-3 py-2 bg-[#0D1526] border border-rose-500/30 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-rose-500 font-mono"
-                />
-              </div>
-            )}
-
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => {
@@ -1397,7 +1386,7 @@ export default function ServersPage() {
 
               <button
                 onClick={handleDeleteServer}
-                disabled={deleting || (deleteTarget.environment === 'Production' && deleteConfirmText !== deleteTarget.name)}
+                disabled={deleting}
                 className="px-4 py-2 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-500 text-white transition-all disabled:opacity-50"
               >
                 {deleting ? 'Disconnecting & Removing...' : 'Disconnect & Remove Server'}

@@ -99,8 +99,7 @@ function ServerDetailContent({ params }: ServerDetailProps) {
   const handleDeleteServer = async () => {
     try {
       setDeleting(true);
-      const isProd = server?.environment === 'Production';
-      const url = `/api/servers/${serverId}${isProd ? '?confirmed=true' : ''}`;
+      const url = `/api/servers/${serverId}`;
       const res = await fetch(url, { method: 'DELETE' });
 
       if (res.ok) {
@@ -190,17 +189,8 @@ function ServerDetailContent({ params }: ServerDetailProps) {
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h1 className="text-xl font-bold text-white tracking-tight">{server.name}</h1>
-                  <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                      isProd
-                        ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                        : server.environment === 'Staging'
-                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
-                        : 'bg-sky-500/10 text-sky-400 border-sky-500/30'
-                    }`}
-                  >
-                    {isProd && <Shield className="w-3 h-3" />}
-                    <span>{server.environment}</span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-blue-500/10 text-blue-400 border-blue-500/30 uppercase">
+                    <span>{server.cloudProvider} ({server.region})</span>
                   </span>
 
                   <span
@@ -843,7 +833,7 @@ function ServerDetailContent({ params }: ServerDetailProps) {
               </div>
               <div>
                 <h3 className="text-base font-bold text-white">Remove Server from Monitoring</h3>
-                <span className="text-xs text-rose-400 font-semibold">{server.environment} Server Node</span>
+                <span className="text-xs text-slate-400 font-semibold">{server.name} ({server.host})</span>
               </div>
             </div>
 
@@ -858,9 +848,9 @@ function ServerDetailContent({ params }: ServerDetailProps) {
                 <span className="font-mono text-blue-400 font-semibold">{server.host}:{server.port}</span>
               </div>
               <div className="flex justify-between items-center pb-2 border-b border-[#1E293B]">
-                <span className="text-slate-400">Environment & Provider:</span>
+                <span className="text-slate-400">Provider & Region:</span>
                 <span className="text-slate-300">
-                  {server.environment} • <span className="uppercase">{server.cloudProvider}</span> ({server.region})
+                  <span className="uppercase">{server.cloudProvider}</span> ({server.region})
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -875,21 +865,6 @@ function ServerDetailContent({ params }: ServerDetailProps) {
               Disconnecting will terminate scheduled SSH telemetry collection, stop agent sync, and purge this server node from the monitoring fleet.
             </p>
 
-            {isProd && (
-              <div className="space-y-2">
-                <p className="text-xs text-rose-400 font-semibold">
-                  To confirm removal of this Production server, type <span className="underline">{server.name}</span>:
-                </p>
-                <input
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder={server.name}
-                  className="w-full px-3 py-2 bg-[#0D1526] border border-rose-500/30 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-rose-500 font-mono"
-                />
-              </div>
-            )}
-
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => {
@@ -903,7 +878,7 @@ function ServerDetailContent({ params }: ServerDetailProps) {
 
               <button
                 onClick={handleDeleteServer}
-                disabled={deleting || (isProd && deleteConfirmText !== server.name)}
+                disabled={deleting}
                 className="px-4 py-2 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-500 text-white transition-all disabled:opacity-50"
               >
                 {deleting ? 'Disconnecting & Removing...' : 'Disconnect & Remove Server'}

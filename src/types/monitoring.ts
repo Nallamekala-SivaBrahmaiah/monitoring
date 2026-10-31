@@ -281,6 +281,10 @@ export interface DockerContainer {
   healthStatus?: string;
   metricSource?: string;
   lastUpdated?: string;
+  hostIp?: string;
+  dockerDaemonStatus?: string;
+  dockerDaemonMessage?: string;
+  dockerVersion?: string;
 }
 
 export interface K8sCluster {
@@ -361,7 +365,7 @@ export interface DynamicRegionResource {
   id: string;
   resourceId: string;
   name: string;
-  cloudProvider: 'aws' | 'azure';
+  cloudProvider: 'aws' | 'azure' | 'gcp' | 'on-premise' | 'other';
   region: string;
   status: string;
   type: string;
@@ -373,18 +377,32 @@ export interface DynamicRegionResource {
   startTime?: string;
   runningDuration?: string;
   tags?: Record<string, string>;
+  isSSHConnected?: boolean;
+  sshServerId?: string;
+  sshStatus?: string;
   metrics?: {
-    cpu?: number;
-    memory?: number;
-    disk?: number;
+    cpu?: number | null;
+    memory?: number | null;
+    disk?: number | null;
     network?: string;
+  };
+  docker?: {
+    detected: boolean;
+    status: string;
+    version?: string;
+    containersCount?: number;
+  };
+  kubernetes?: {
+    detected: boolean;
+    version?: string;
+    podsCount?: number;
   };
 }
 
 export interface DynamicRegionSummary {
   region: string;
   displayName: string;
-  cloud: 'aws' | 'azure';
+  cloud: 'aws' | 'azure' | 'other';
   resourceCount: number;
   runningCount: number;
   stoppedCount: number;

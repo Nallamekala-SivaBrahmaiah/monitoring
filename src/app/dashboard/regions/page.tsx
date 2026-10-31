@@ -186,7 +186,13 @@ export default function RegionsPage() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-[#111A2E] flex items-center justify-center">
-                              {reg.cloud === 'aws' ? <AwsLogo className="w-5 h-4" /> : <AzureLogo className="w-4 h-4" />}
+                              {reg.cloud === 'aws' ? (
+                                <AwsLogo className="w-5 h-4" />
+                              ) : reg.cloud === 'azure' ? (
+                                <AzureLogo className="w-4 h-4" />
+                              ) : (
+                                <Server className="w-4 h-4 text-blue-400" />
+                              )}
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
@@ -196,7 +202,11 @@ export default function RegionsPage() {
                                 <span className="font-mono text-xs text-slate-400">({reg.region})</span>
                               </div>
                               <span className="text-xs text-slate-400">
-                                {reg.cloud === 'aws' ? 'Amazon Web Services' : 'Microsoft Azure Cloud'}
+                                {reg.cloud === 'aws'
+                                  ? 'Amazon Web Services'
+                                  : reg.cloud === 'azure'
+                                  ? 'Microsoft Azure Cloud'
+                                  : 'Registered Server Fleet'}
                               </span>
                             </div>
                           </div>
@@ -214,7 +224,7 @@ export default function RegionsPage() {
                         <div className="flex items-center justify-between pt-2 border-t border-[#1E293B]/70 text-xs">
                           <div className="flex items-center gap-2">
                             <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                              {reg.resourceCount} {reg.cloud === 'aws' ? 'EC2 Instance' : 'Virtual Machine'}
+                              {reg.resourceCount} {reg.cloud === 'aws' ? 'EC2 Instances' : reg.cloud === 'azure' ? 'Virtual Machines' : 'Server Nodes'}
                             </span>
                             <span className="text-slate-400 text-[11px]">
                               {reg.runningCount} Running

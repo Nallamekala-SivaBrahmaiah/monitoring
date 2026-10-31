@@ -8,9 +8,13 @@ import {
   ChevronRight,
   TrendingUp,
   ArrowUpDown,
+  Trash2,
+  KeyRound,
 } from 'lucide-react';
 import { AzureVirtualMachine } from '@/types/monitoring';
 import { AzureVmIcon } from '@/components/icons/CloudIcons';
+import { ConnectSSHModal, ConnectSSHTarget } from '@/components/dashboard/ConnectSSHModal';
+import { useMonitoring } from '@/context/MonitoringContext';
 
 interface AzureVMsTableProps {
   vms: AzureVirtualMachine[];
@@ -24,16 +28,56 @@ export function AzureVMsTable({
   limit,
 }: AzureVMsTableProps) {
   const router = useRouter();
+  const { triggerRefresh } = useMonitoring();
   const [searchTerm, setSearchTerm] = useState('');
   const [regionFilter, setRegionFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortField, setSortField] = useState<string>('name');
   const [sortAsc, setSortAsc] = useState<boolean>(true);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sshTarget, setSshTarget] = useState<ConnectSSHTarget | null>(null);
+  const [showSSHModal, setShowSSHModal] = useState<boolean>(false);
   const pageSize = limit || 5;
 
+  const handleOpenSSHModal = (vm: AzureVirtualMachine) => {
+    setSshTarget({
+      id: vm.id || vm.vmId,
+      name: vm.name,
+      host: vm.publicIp && vm.publicIp !== '-' ? vm.publicIp : vm.privateIp,
+      cloudProvider: 'azure',
+      region: vm.region,
+      os: vm.os || 'Linux',
+    });
+    setShowSSHModal(true);
+  };
+
+  const handleSSHSuccess = () => {
+    triggerRefresh();
+    router.refresh();
+  };
+
+  const handleDeleteVM = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to remove VM "${name}"?`)) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/azure/vms/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (res.ok) {
+        setRemovedIds(prev => new Set(prev).add(id));
+        router.refresh();
+      }
+    } catch (e) {
+      console.error('Failed to remove VM:', e);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const filteredVMs = useMemo(() => {
-    return vms.filter((vm) => {
+    return vms
+      .filter((vm) => !removedIds.has(vm.id) && !removedIds.has(vm.vmId))
+      .filter((vm) => {
       const matchSearch =
         vm.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         vm.resourceGroup.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -236,9 +280,34 @@ export function AzureVMsTable({
                       <div className="w-5 h-5 rounded bg-[#0089D6]/20 flex items-center justify-center text-[#0089D6] flex-shrink-0">
                         <AzureVmIcon className="w-3 h-3" />
                       </div>
-                      <span className="font-semibold text-white group-hover:underline">
-                        {vm.name}
-                      </span>
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-white group-hover:underline">
+                            {vm.name}
+                          </span>
+                          {(vm as any).isSSHConnected ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+                              SSH Verified
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenSSHModal(vm);
+                              }}
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 font-mono flex items-center gap-1 transition-colors"
+                              title="Connect SSH (PPK / PEM / Password) for in-guest CPU, RAM, Disk, Docker & K8s telemetry"
+                            >
+                              <KeyRound className="w-2.5 h-2.5" />
+                              <span>Connect SSH</span>
+                            </button>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono block">
+                          {vm.publicIp && vm.publicIp !== '-' ? vm.publicIp : vm.privateIp}
+                        </span>
+                      </div>
                     </div>
                   </td>
 
@@ -304,10 +373,10 @@ export function AzureVMsTable({
                       </div>
                     ) : (
                       <span
-                        className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60"
-                        title="Guest OS memory requires Azure Monitor Agent (AMA) extension on the VM"
+                        className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800/80 text-slate-400 border border-slate-700/60"
+                        title="Guest OS memory requires Azure Monitor Agent (AMA) extension / Data Collection Rule"
                       >
-                        Unavailable
+                        N/A
                       </span>
                     )}
                   </td>
@@ -326,7 +395,12 @@ export function AzureVMsTable({
                         </div>
                       </div>
                     ) : (
-                      <span className="text-slate-500 text-xs italic">Unavailable</span>
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800/80 text-slate-400 border border-slate-700/60"
+                        title="Guest OS disk space requires Azure Monitor Agent (AMA) extension / Data Collection Rule"
+                      >
+                        N/A
+                      </span>
                     )}
                   </td>
 
@@ -344,6 +418,26 @@ export function AzureVMsTable({
 
                   <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
+                      {!(vm as any).isSSHConnected ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSSHModal(vm)}
+                          className="px-2 py-1 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded border border-blue-500/50 transition-colors flex items-center gap-1 shadow-sm shrink-0"
+                          title="Connect SSH (PPK / PEM / Password) to view real CPU, RAM, Disk, Docker & K8s"
+                        >
+                          <KeyRound className="w-3 h-3" />
+                          <span>Connect SSH</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSSHModal(vm)}
+                          className="p-1 text-slate-400 hover:text-emerald-400 rounded hover:bg-[#18233C] transition-colors"
+                          title="Reconfigure SSH Credentials"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <Link
                         href={`/dashboard/azure-vms/${vm.vmId}`}
                         className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-[#0089D6] hover:text-white text-slate-300 rounded border border-[#1E293B] transition-colors"
@@ -356,6 +450,14 @@ export function AzureVMsTable({
                         title="View Metrics"
                       >
                         <TrendingUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteVM(vm.id || vm.vmId, vm.name)}
+                        disabled={deletingId === (vm.id || vm.vmId)}
+                        className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+                        title="Remove VM"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </td>
@@ -400,6 +502,14 @@ export function AzureVMsTable({
           </div>
         </div>
       )}
+
+      {/* Connect SSH Modal */}
+      <ConnectSSHModal
+        isOpen={showSSHModal}
+        onClose={() => setShowSSHModal(false)}
+        target={sshTarget}
+        onSuccess={handleSSHSuccess}
+      />
     </div>
   );
 }

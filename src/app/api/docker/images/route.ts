@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
-import CloudResource from '@/models/CloudResource';
-import { syncDockerResources } from '@/lib/docker/sync';
+import Server from '@/models/Server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,49 +8,61 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get('provider');
 
-    // Run sync or query containers to see images
-    const containers = await CloudResource.find({
-      resourceType: 'container',
-      isDeleted: { $ne: true },
-    }).lean();
+    const query: any = {};
+    if (provider && provider !== 'all') {
+      query.cloudProvider = provider;
+    }
 
-    // Collect distinct images from active containers
-    const imageMap = new Map<string, any>();
-    for (const c of containers) {
-      const img = c.metadata?.image;
-      if (!img) continue;
+    const servers = await Server.find(query).lean();
+    const imageList: any[] = [];
 
-      if (!imageMap.has(img)) {
-        const parts = img.split(':');
-        const repo = parts[0];
-        const tag = parts[1] || 'latest';
-        imageMap.set(img, {
-          id: `img-${img.replace(/[^a-zA-Z0-9]/g, '-')}`,
-          imageId: `sha256:${Buffer.from(img).toString('hex').slice(0, 12)}`,
-          shortId: Buffer.from(img).toString('hex').slice(0, 12),
-          repository: repo,
-          tag,
-          fullTag: img,
-          hostInstance: c.metadata?.host || 'vm01siva',
-          cloudProvider: c.provider,
-          region: c.region || 'centralindia',
-          size: '882 MB',
-          sizeBytes: 882 * 1024 * 1024,
-          activeContainers: 1,
-          created: c.metadata?.created || 'recently',
+    for (const server of servers) {
+      const docker = server.docker;
+      if (!docker || !docker.images || docker.images.length === 0) continue;
+
+      for (const img of docker.images) {
+        const fullId = img.id || '';
+        const shortId = fullId.replace(/^sha256:/, '').substring(0, 12);
+        const fullTag = `${img.repository}:${img.tag}`;
+
+        // Real count of active containers on this host using this image
+        const activeCount = (docker.containers || []).filter(
+          (c) => c.image === img.repository || c.image === fullTag || c.image === shortId
+        ).length;
+
+        // Calculate approximate bytes from human size
+        let sizeBytes = 0;
+        const sizeStr = img.size || '0MB';
+        const num = parseFloat(sizeStr) || 0;
+        if (sizeStr.includes('GB') || sizeStr.includes('GiB')) sizeBytes = Math.round(num * 1024 * 1024 * 1024);
+        else if (sizeStr.includes('MB') || sizeStr.includes('MiB')) sizeBytes = Math.round(num * 1024 * 1024);
+        else if (sizeStr.includes('KB') || sizeStr.includes('kB') || sizeStr.includes('KiB')) sizeBytes = Math.round(num * 1024);
+        else sizeBytes = Math.round(num);
+
+        imageList.push({
+          id: (img as any)._id ? (img as any)._id.toString() : `img-${shortId}`,
+          imageId: fullId,
+          shortId,
+          repository: img.repository,
+          tag: img.tag,
+          fullTag,
+          hostInstance: server.name,
+          hostId: server._id.toString(),
+          hostIp: server.host,
+          cloudProvider: (server.cloudProvider === 'azure' ? 'azure' : server.cloudProvider === 'aws' ? 'aws' : 'other') as 'aws' | 'azure' | 'other',
+          region: server.region || 'centralindia',
+          size: img.size,
+          sizeBytes,
+          activeContainers: activeCount,
+          created: img.created || 'recently',
+          metricSource: 'Direct SSH (Docker Engine)',
+          lastUpdated: docker.lastSyncedAt ? new Date(docker.lastSyncedAt).toISOString() : new Date().toISOString(),
+          dockerVersion: docker.version || 'Docker Engine',
         });
-      } else {
-        const existing = imageMap.get(img);
-        existing.activeContainers += 1;
       }
     }
 
-    let images = Array.from(imageMap.values());
-    if (provider && provider !== 'all') {
-      images = images.filter((img) => img.cloudProvider === provider);
-    }
-
-    return NextResponse.json(images);
+    return NextResponse.json(imageList);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to fetch Docker images' }, { status: 500 });
   }

@@ -2,33 +2,68 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Metric from '@/models/Metric';
 import CloudResource from '@/models/CloudResource';
-
-
+import Server from '@/models/Server';
 
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get('provider');
+    const serverFilter = searchParams.get('server');
 
     const query: any = {};
     if (provider && provider !== 'all') {
       query.provider = provider;
     }
 
+    // Build server and cloud resource name mapping
+    const [servers, cloudRes] = await Promise.all([
+      Server.find().select('_id name host cloudProvider').lean(),
+      CloudResource.find().select('resourceId name publicIp provider').lean(),
+    ]);
+
+    const nameMap: Record<string, { name: string; host: string; provider: string }> = {};
+    for (const s of (servers as any[])) {
+      const sId = s._id.toString();
+      nameMap[sId] = { name: s.name, host: s.host, provider: s.cloudProvider || 'other' };
+      nameMap[`srv-${sId}`] = { name: s.name, host: s.host, provider: s.cloudProvider || 'other' };
+    }
+    for (const cr of (cloudRes as any[])) {
+      if (cr.resourceId) {
+        nameMap[cr.resourceId] = { name: cr.name, host: cr.publicIp || '', provider: cr.provider };
+      }
+    }
+
     // Fetch latest time-series metrics from MongoDB
-    const metrics = await Metric.find(query).sort({ timestamp: -1 }).limit(100).lean();
+    let metrics = await Metric.find(query).sort({ timestamp: -1 }).limit(100).lean();
+
+    if (serverFilter && serverFilter !== 'all') {
+      metrics = metrics.filter((m: any) => {
+        const info = nameMap[m.resourceId];
+        return info && (info.name === serverFilter || m.resourceId === serverFilter);
+      });
+    }
 
     if (metrics.length > 0) {
       return NextResponse.json(
-        metrics.map((m: any) => ({
-          id: m._id.toString(),
-          resourceId: m.resourceId,
-          metricName: m.metricName,
-          value: m.value,
-          unit: m.unit,
-          timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString(),
-        }))
+        metrics.map((m: any) => {
+          const info = nameMap[m.resourceId] || {
+            name: m.resourceId.replace(/^srv-/, ''),
+            host: '',
+            provider: m.provider || 'azure',
+          };
+          return {
+            id: m._id.toString(),
+            resourceId: m.resourceId,
+            serverName: info.name,
+            host: info.host,
+            metricName: m.metricName,
+            value: m.value,
+            unit: m.unit,
+            provider: m.provider || info.provider || 'azure',
+            timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString(),
+          };
+        })
       );
     }
 

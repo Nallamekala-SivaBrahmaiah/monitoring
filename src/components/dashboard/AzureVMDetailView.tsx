@@ -13,6 +13,8 @@ import {
   Network,
   Shield,
   Terminal,
+  Server,
+  KeyRound,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -29,31 +31,33 @@ import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { AzureVmIcon, AzureLogo } from '@/components/icons/CloudIcons';
 import { AzureVirtualMachine } from '@/types/monitoring';
+import { ConnectSSHModal, ConnectSSHTarget } from '@/components/dashboard/ConnectSSHModal';
+import { useMonitoring } from '@/context/MonitoringContext';
 
 interface AzureVMDetailViewProps {
   vm: AzureVirtualMachine;
 }
 
 export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
+  const { triggerRefresh } = useMonitoring();
   const [activeTab, setActiveTab] = useState<'Overview' | 'Metrics' | 'Disks' | 'Networking'>('Overview');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showSSHModal, setShowSSHModal] = useState(false);
 
   const isRunning = (vm.powerState || '').toLowerCase().includes('run');
-  const cpuVal = vm.cpuUsage ?? (vm as any).cpuUtilization ?? (isRunning ? 12.4 : 0);
-  const memVal = vm.memoryUsage ?? (vm as any).memoryUtilization ?? (isRunning ? 38.6 : 0);
-  const diskVal = vm.diskUsage ?? (vm as any).diskUtilization ?? (isRunning ? 24.2 : 0);
-  const netInVal = vm.networkInMB ?? (vm as any).networkIn ?? (isRunning ? 1.4 : 0);
-  const netOutVal = vm.networkOutMB ?? (vm as any).networkOut ?? (isRunning ? 0.8 : 0);
+  const cpuVal = vm.cpuUsage ?? (vm as any).cpuUtilization ?? null;
+  const memVal = vm.memoryUsage ?? (vm as any).memoryUtilization ?? null;
+  const diskVal = vm.diskUsage ?? (vm as any).diskUtilization ?? null;
+  const netInVal = vm.networkInMB ?? (vm as any).networkIn ?? null;
+  const netOutVal = vm.networkOutMB ?? (vm as any).networkOut ?? null;
 
-  const defaultMetrics = [
-    { timestamp: '14:00', cpu: Math.max(0, cpuVal - 3), memory: Math.max(0, memVal - 2), diskIo: 12, netIn: Math.max(0, netInVal - 0.2), netOut: Math.max(0, netOutVal - 0.1) },
-    { timestamp: '14:10', cpu: cpuVal + 2, memory: memVal, diskIo: 16, netIn: netInVal, netOut: netOutVal },
-    { timestamp: '14:20', cpu: Math.max(0, cpuVal - 1), memory: Math.max(0, memVal - 1), diskIo: 24, netIn: netInVal + 0.3, netOut: netOutVal },
-    { timestamp: '14:30', cpu: cpuVal + 4, memory: memVal + 1, diskIo: 18, netIn: netInVal + 0.5, netOut: netOutVal + 0.2 },
-    { timestamp: '14:40', cpu: cpuVal, memory: memVal, diskIo: 14, netIn: netInVal, netOut: netOutVal },
-    { timestamp: '14:50', cpu: cpuVal, memory: memVal, diskIo: 15, netIn: netInVal, netOut: netOutVal },
-  ];
+  const defaultMetrics = cpuVal !== null ? [
+    { timestamp: '14:00', cpu: Math.max(0, cpuVal - 1), memory: memVal, diskIo: 12, netIn: netInVal, netOut: netOutVal },
+    { timestamp: '14:15', cpu: Math.max(0, cpuVal + 1), memory: memVal, diskIo: 16, netIn: netInVal, netOut: netOutVal },
+    { timestamp: '14:30', cpu: Math.max(0, cpuVal - 0.5), memory: memVal, diskIo: 14, netIn: netInVal, netOut: netOutVal },
+    { timestamp: '14:45', cpu: cpuVal, memory: memVal, diskIo: 15, netIn: netInVal, netOut: netOutVal },
+  ] : [];
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col">
@@ -115,6 +119,12 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                       <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
                       {vm.powerState}
                     </span>
+                    {(vm as any).isSSHConnected && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                        <Shield className="w-3 h-3" />
+                        <span>SSH Monitored Node</span>
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-400 mt-1">
                     {vm.vmSize} • {vm.os} • Resource Group: {vm.resourceGroup}
@@ -123,6 +133,23 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
+                {(vm as any).isSSHConnected && (vm as any).sshServerId ? (
+                  <Link
+                    href={`/dashboard/servers/${(vm as any).sshServerId}`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors shadow-sm"
+                  >
+                    <Server className="w-3.5 h-3.5" />
+                    <span>View Server Telemetry</span>
+                  </Link>
+                ) : (
+                  <button
+                    onClick={() => setShowSSHModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors shadow-sm"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Connect SSH (PPK / PEM / Password)</span>
+                  </button>
+                )}
                 <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#18233C] hover:bg-[#202E4E] text-slate-200 border border-[#1E293B] rounded-lg">
                   <Terminal className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Bastion SSH</span>
@@ -173,11 +200,13 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                 <span className="font-medium">CPU Utilization</span>
                 <Cpu className="w-4 h-4 text-blue-400" />
               </div>
-              <div className="text-2xl font-bold text-white mb-2">{cpuVal}%</div>
-              <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, cpuVal))}%` }} />
+              <div className="text-2xl font-bold text-white mb-2">
+                {cpuVal !== null ? `${cpuVal}%` : 'Unavailable'}
               </div>
-              <span className="text-[11px] text-slate-400 mt-2 block">Azure Host Telemetry</span>
+              <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, cpuVal || 0))}%` }} />
+              </div>
+              <span className="text-[11px] text-slate-400 mt-2 block">Azure Platform Metric (Host)</span>
             </div>
 
             <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 shadow-sm">
@@ -185,23 +214,31 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                 <span className="font-medium">Memory Utilization</span>
                 <Activity className="w-4 h-4 text-cyan-400" />
               </div>
-              <div className="text-2xl font-bold text-white mb-2">{memVal}%</div>
-              <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-cyan-500" style={{ width: `${Math.min(100, Math.max(0, memVal))}%` }} />
+              <div className="text-2xl font-bold text-white mb-2">
+                {memVal !== null ? `${memVal}%` : <span className="text-slate-400 font-medium">N/A</span>}
               </div>
-              <span className="text-[11px] text-slate-400 mt-2 block">Azure Diagnostics Extension</span>
+              <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-cyan-500" style={{ width: `${Math.min(100, Math.max(0, memVal || 0))}%` }} />
+              </div>
+              <span className="text-[11px] text-slate-500 mt-2 block" title="Guest memory requires Azure Monitor Agent (AMA)">
+                {memVal !== null ? 'Azure Diagnostics Extension' : 'Requires Azure Monitor Agent (AMA)'}
+              </span>
             </div>
 
             <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 shadow-sm">
               <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-                <span className="font-medium">Disk Utilization</span>
+                <span className="font-medium">Disk Space Utilization</span>
                 <HardDrive className="w-4 h-4 text-amber-400" />
               </div>
-              <div className="text-2xl font-bold text-white mb-2">{diskVal}%</div>
-              <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-amber-500" style={{ width: `${Math.min(100, Math.max(0, diskVal))}%` }} />
+              <div className="text-2xl font-bold text-white mb-2">
+                {diskVal !== null ? `${diskVal}%` : <span className="text-slate-400 font-medium">N/A</span>}
               </div>
-              <span className="text-[11px] text-slate-400 mt-2 block">Premium SSD OS Disk</span>
+              <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-amber-500" style={{ width: `${Math.min(100, Math.max(0, diskVal || 0))}%` }} />
+              </div>
+              <span className="text-[11px] text-slate-500 mt-2 block" title="Guest disk space requires Azure Monitor Agent (AMA)">
+                {diskVal !== null ? 'Premium SSD OS Disk' : 'Requires Azure Monitor Agent (AMA)'}
+              </span>
             </div>
 
             <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 shadow-sm">
@@ -209,9 +246,15 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                 <span className="font-medium">Network In</span>
                 <Network className="w-4 h-4 text-emerald-400" />
               </div>
-              <div className="text-2xl font-bold text-white mb-2">{netInVal} <span className="text-xs font-normal text-slate-400">MB/s</span></div>
+              <div className="text-2xl font-bold text-white mb-2">
+                {netInVal !== null ? (
+                  <>{netInVal} <span className="text-xs font-normal text-slate-400">MB/s</span></>
+                ) : (
+                  <span className="text-slate-400 text-lg">-</span>
+                )}
+              </div>
               <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, netInVal * 20)}%` }} />
+                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, (netInVal || 0) * 20)}%` }} />
               </div>
               <span className="text-[11px] text-slate-400 mt-2 block">Throughput In</span>
             </div>
@@ -221,9 +264,15 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                 <span className="font-medium">Network Out</span>
                 <Network className="w-4 h-4 text-purple-400" />
               </div>
-              <div className="text-2xl font-bold text-white mb-2">{netOutVal} <span className="text-xs font-normal text-slate-400">MB/s</span></div>
+              <div className="text-2xl font-bold text-white mb-2">
+                {netOutVal !== null ? (
+                  <>{netOutVal} <span className="text-xs font-normal text-slate-400">MB/s</span></>
+                ) : (
+                  <span className="text-slate-400 text-lg">-</span>
+                )}
+              </div>
               <div className="w-full h-2 bg-[#1E293B] rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-purple-500" style={{ width: `${Math.min(100, netOutVal * 20)}%` }} />
+                <div className="h-full rounded-full bg-purple-500" style={{ width: `${Math.min(100, (netOutVal || 0) * 20)}%` }} />
               </div>
               <span className="text-[11px] text-slate-400 mt-2 block">Throughput Out</span>
             </div>
@@ -233,52 +282,88 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm">
               <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4">
-                Azure VM CPU Utilization (%)
+                Azure VM Platform CPU Utilization (%)
               </h4>
-              <div className="w-full h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={defaultMetrics} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="azCpuGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#0089D6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#0089D6" stopOpacity={0.0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
-                    <XAxis dataKey="timestamp" stroke="#64748B" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#64748B" fontSize={11} domain={[0, 100]} tickLine={false} axisLine={false} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="cpu" stroke="#0089D6" strokeWidth={2} fill="url(#azCpuGrad)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              {defaultMetrics.length > 0 ? (
+                <div className="w-full h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={defaultMetrics} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="azCpuGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#0089D6" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#0089D6" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
+                      <XAxis dataKey="timestamp" stroke="#64748B" fontSize={11} tickLine={false} />
+                      <YAxis stroke="#64748B" fontSize={11} domain={[0, 100]} tickLine={false} axisLine={false} />
+                      <Tooltip />
+                      <Area type="monotone" dataKey="cpu" stroke="#0089D6" strokeWidth={2} fill="url(#azCpuGrad)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="w-full h-48 flex flex-col items-center justify-center p-4 text-center border border-dashed border-[#1E293B] rounded-lg">
+                  <Cpu className="w-8 h-8 text-slate-500 mb-2" />
+                  <p className="text-xs font-semibold text-slate-300">Platform CPU Metrics Pending</p>
+                  <p className="text-[11px] text-slate-500 max-w-xs mt-1">
+                    Telemetry is queried via Microsoft.Insights metrics endpoint.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm">
               <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4">
-                Azure VM Memory Utilization (%)
+                Azure VM Guest OS Memory Utilization (%)
               </h4>
-              <div className="w-full h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={defaultMetrics} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="azMemGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#06B6D4" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#06B6D4" stopOpacity={0.0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
-                    <XAxis dataKey="timestamp" stroke="#64748B" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#64748B" fontSize={11} domain={[0, 100]} tickLine={false} axisLine={false} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="memory" stroke="#06B6D4" strokeWidth={2} fill="url(#azMemGrad)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              {memVal !== null ? (
+                <div className="w-full h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={defaultMetrics} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="azMemGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#06B6D4" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#06B6D4" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
+                      <XAxis dataKey="timestamp" stroke="#64748B" fontSize={11} tickLine={false} />
+                      <YAxis stroke="#64748B" fontSize={11} domain={[0, 100]} tickLine={false} axisLine={false} />
+                      <Tooltip />
+                      <Area type="monotone" dataKey="memory" stroke="#06B6D4" strokeWidth={2} fill="url(#azMemGrad)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="w-full h-48 flex flex-col items-center justify-center p-4 text-center border border-dashed border-[#1E293B] rounded-lg">
+                  <Activity className="w-8 h-8 text-slate-500 mb-2" />
+                  <p className="text-xs font-semibold text-slate-300">Guest OS Memory Metrics: N/A</p>
+                  <p className="text-[11px] text-slate-500 max-w-sm mt-1">
+                    Azure platform metrics do not expose in-guest RAM. Install Azure Monitor Agent (AMA) with a Data Collection Rule, or monitor directly via SSH on the Servers page.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </main>
       </div>
+
+      <ConnectSSHModal
+        isOpen={showSSHModal}
+        onClose={() => setShowSSHModal(false)}
+        target={{
+          id: vm.id || vm.vmId,
+          name: vm.name,
+          host: vm.publicIp && vm.publicIp !== '-' ? vm.publicIp : vm.privateIp,
+          cloudProvider: 'azure',
+          region: vm.region,
+          os: vm.os || 'Linux',
+        }}
+        onSuccess={() => {
+          triggerRefresh();
+        }}
+      />
     </div>
   );
 }

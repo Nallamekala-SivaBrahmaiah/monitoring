@@ -5,23 +5,20 @@ import CloudResource from '@/models/CloudResource';
 import { encryptSecret, generateAgentToken } from '@/lib/serverMonitoring/crypto';
 import { collectServerViaSSH } from '@/lib/serverMonitoring/sshCollector';
 import { formatConnectionDiagnostic } from '@/lib/serverMonitoring/errorDiagnostic';
+import { convertPPKToOpenSSH } from '@/lib/serverMonitoring/ppkConverter';
 
 /**
  * GET /api/servers
- * List all registered servers with live metrics, environment, tags, and status.
+ * List all registered servers with live metrics, hardware specs, and status.
  * NEVER returns private keys or credentials.
  */
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
-    const envFilter = searchParams.get('environment');
     const cloudFilter = searchParams.get('cloudProvider');
 
     const query: any = {};
-    if (envFilter && envFilter !== 'all') {
-      query.environment = envFilter;
-    }
     if (cloudFilter && cloudFilter !== 'all') {
       query.cloudProvider = cloudFilter;
     }
@@ -58,7 +55,6 @@ export async function POST(request: NextRequest) {
       username,
       authMethod = 'privateKey',
       authSecret,
-      environment = 'Development',
       cloudProvider = 'other',
       region = 'global',
       tags = [],
@@ -79,16 +75,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'SSH private key or password is required' }, { status: 400 });
     }
 
+    let secretToUse = authSecret;
+    if (authMethod === 'privateKey') {
+      const converted = convertPPKToOpenSSH(authSecret);
+      if (!converted.success) {
+        return NextResponse.json({ error: converted.error }, { status: 400 });
+      }
+      if (converted.pemKey) {
+        secretToUse = converted.pemKey;
+      }
+    }
+
     const parsedPort = parseInt(port, 10) || 22;
 
     // Check if host+port already exists
     const existing = await Server.findOne({ host: host.trim(), port: parsedPort });
-    if (existing) {
-      return NextResponse.json(
-        { error: `A server with address ${host}:${parsedPort} is already registered (${existing.name})` },
-        { status: 409 }
-      );
-    }
 
     // 2. Initial SSH Verification & Discovery
     let initialSpecs;
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
         port: parsedPort,
         username: username.trim(),
         authMethod,
-        authSecret,
+        authSecret: secretToUse,
         timeoutMs: 12000,
       });
     } catch (sshErr: any) {
@@ -145,15 +146,18 @@ export async function POST(request: NextRequest) {
         },
         docker: {
           detected: false,
+          status: 'not_installed' as const,
           version: 'Pending Sync',
           containersCount: 0,
           runningCount: 0,
+          imagesCount: 0,
           containers: [],
           images: [],
         },
         kubernetes: {
           detected: false,
           version: 'Pending Sync',
+          nodeRole: 'worker',
           podsCount: 0,
           pods: [],
         },
@@ -161,49 +165,110 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Encrypt credentials at rest
-    const encrypted = encryptSecret(authSecret);
+    const encrypted = encryptSecret(secretToUse);
     const agentToken = generateAgentToken();
 
-    // 4. Save to MongoDB
-    const serverDoc = await Server.create({
-      name: name.trim(),
-      host: host.trim(),
-      port: parsedPort,
-      username: username.trim(),
-      authMethod,
-      encryptedAuthSecret: encrypted.encrypted,
-      authSecretIv: encrypted.iv,
-      authSecretTag: encrypted.tag,
-      environment,
-      cloudProvider,
-      region,
-      tags: Array.isArray(tags) ? tags : [],
-      status: isInitialOnline ? 'Online' : 'Offline',
-      lastConnectedAt: isInitialOnline ? new Date() : null,
-      lastHeartbeatAt: isInitialOnline ? new Date() : null,
-      lastError: initialError,
-      hostFingerprint: initialSpecs.fingerprint,
-      os: initialSpecs.os,
-      hardware: initialSpecs.hardware,
-      metrics: initialSpecs.metrics,
-      docker: {
+    // 4. Save or Update in MongoDB
+    let serverDoc: any;
+    if (existing) {
+      existing.name = name.trim();
+      existing.username = username.trim();
+      existing.authMethod = authMethod;
+      existing.encryptedAuthSecret = encrypted.encrypted;
+      existing.authSecretIv = encrypted.iv;
+      existing.authSecretTag = encrypted.tag;
+      existing.cloudProvider = cloudProvider || existing.cloudProvider;
+      existing.region = region || existing.region;
+      if (tags && Array.isArray(tags) && tags.length > 0) {
+        existing.tags = Array.from(new Set([...(existing.tags || []), ...tags]));
+      }
+      existing.status = isInitialOnline ? 'Online' : 'Offline';
+      if (isInitialOnline) {
+        existing.lastConnectedAt = new Date();
+        existing.lastHeartbeatAt = new Date();
+      }
+      existing.lastError = initialError;
+      existing.hostFingerprint = initialSpecs.fingerprint || existing.hostFingerprint;
+      existing.os = initialSpecs.os;
+      existing.hardware = initialSpecs.hardware;
+      existing.metrics = initialSpecs.metrics;
+      existing.docker = {
         ...initialSpecs.docker,
         lastSyncedAt: new Date(),
-      },
-      kubernetes: {
+      };
+      existing.kubernetes = {
         ...initialSpecs.kubernetes,
         lastSyncedAt: new Date(),
-      },
-      agent: {
-        installed: false,
-        version: '1.0.0',
-        token: agentToken,
-        lastHeartbeat: null,
-        status: 'not-installed',
-      },
-    });
+      };
+      await existing.save();
+      serverDoc = existing;
+    } else {
+      serverDoc = await Server.create({
+        name: name.trim(),
+        host: host.trim(),
+        port: parsedPort,
+        username: username.trim(),
+        authMethod,
+        encryptedAuthSecret: encrypted.encrypted,
+        authSecretIv: encrypted.iv,
+        authSecretTag: encrypted.tag,
+        cloudProvider,
+        region,
+        tags: Array.isArray(tags) ? tags : [],
+        status: isInitialOnline ? 'Online' : 'Offline',
+        lastConnectedAt: isInitialOnline ? new Date() : null,
+        lastHeartbeatAt: isInitialOnline ? new Date() : null,
+        lastError: initialError,
+        hostFingerprint: initialSpecs.fingerprint,
+        os: initialSpecs.os,
+        hardware: initialSpecs.hardware,
+        metrics: initialSpecs.metrics,
+        docker: {
+          ...initialSpecs.docker,
+          lastSyncedAt: new Date(),
+        },
+        kubernetes: {
+          ...initialSpecs.kubernetes,
+          lastSyncedAt: new Date(),
+        },
+        agent: {
+          installed: false,
+          version: '1.0.0',
+          token: agentToken,
+          lastHeartbeat: null,
+          status: 'not-installed',
+        },
+      });
+    }
 
-    // 5. Mirror to CloudResource
+    // 5. Update matching CloudResource(s) (by IP or name)
+    const hostTrim = host.trim();
+    await CloudResource.updateMany(
+      {
+        $or: [
+          { publicIp: hostTrim },
+          { privateIp: hostTrim },
+          { name: name.trim() },
+        ],
+      },
+      {
+        $set: {
+          metrics: {
+            cpuUtilization: initialSpecs.metrics.cpu.usagePercent,
+            memoryUtilization: initialSpecs.metrics.memory.usagePercent,
+            diskUtilization: initialSpecs.metrics.disks[0]?.usagePercent || 0,
+            networkIn: initialSpecs.metrics.network[0]?.bytesReceived || 0,
+            networkOut: initialSpecs.metrics.network[0]?.bytesSent || 0,
+          },
+          status: isInitialOnline ? 'Running' : 'Stopped',
+          'tags.isSSHConnected': 'true',
+          'tags.sshServerId': serverDoc._id.toString(),
+          lastSyncedAt: new Date(),
+        },
+      }
+    );
+
+    // 6. Mirror to CloudResource if not already present
     await CloudResource.findOneAndUpdate(
       { resourceId: `srv-${serverDoc._id.toString()}` },
       {
@@ -214,7 +279,7 @@ export async function POST(request: NextRequest) {
           region: region || 'global',
           name: serverDoc.name,
           resourceType: 'Server',
-          status: 'Running',
+          status: isInitialOnline ? 'Running' : 'Stopped',
           metrics: {
             cpuUtilization: initialSpecs.metrics.cpu.usagePercent,
             memoryUtilization: initialSpecs.metrics.memory.usagePercent,
@@ -223,9 +288,9 @@ export async function POST(request: NextRequest) {
             networkOut: initialSpecs.metrics.network[0]?.bytesSent || 0,
           },
           tags: {
-            environment,
             ip: serverDoc.host,
             os: `${initialSpecs.os.name} ${initialSpecs.os.version}`,
+            isSSHConnected: 'true',
           },
           isDeleted: false,
           lastSyncedAt: new Date(),
@@ -235,7 +300,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Return sanitized server doc
-    const sanitized = serverDoc.toObject();
+    const sanitized = typeof serverDoc.toObject === 'function' ? serverDoc.toObject() : serverDoc;
     delete (sanitized as any).encryptedAuthSecret;
     delete (sanitized as any).authSecretIv;
     delete (sanitized as any).authSecretTag;

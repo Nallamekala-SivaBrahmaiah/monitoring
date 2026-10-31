@@ -51,7 +51,6 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
 
   const [openCloudMenu, setOpenCloudMenu] = useState(false);
   const [openAccountMenu, setOpenAccountMenu] = useState(false);
-  const [openRegionMenu, setOpenRegionMenu] = useState(false);
   const [openAlertsMenu, setOpenAlertsMenu] = useState(false);
 
   const cloudOptions: { label: string; value: CloudProvider; icon: React.ReactNode }[] = [
@@ -60,21 +59,11 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
     { label: 'Azure', value: 'azure', icon: <AzureLogo className="w-3.5 h-3.5 text-[#0089D6]" /> },
   ];
 
-  // Filter available regions based on selected cloud provider
-  const availableRegions = regions.filter((r) => {
-    if (cloudProvider === 'aws') return r.cloud === 'aws';
-    if (cloudProvider === 'azure') return r.cloud === 'azure';
-    return true;
-  });
-
-  const selectedRegionObj = regions.find((r) => r.region === selectedRegion);
-
   const activeAlerts = filteredAlerts.filter((a) => a.status === 'active');
 
   const closeAllMenus = () => {
     setOpenCloudMenu(false);
     setOpenAccountMenu(false);
-    setOpenRegionMenu(false);
     setOpenAlertsMenu(false);
   };
 
@@ -328,61 +317,13 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
           </div>
         )}
 
-        {/* 5. Region Filter */}
-        <div className="relative">
-          <button
-            onClick={() => {
-              const prev = openRegionMenu;
-              closeAllMenus();
-              setOpenRegionMenu(!prev);
-            }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-200 bg-[#111A2E] hover:bg-[#18233C] border border-[#1E293B] rounded-lg transition-colors shadow-sm"
-          >
-            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-            <span>
-              {selectedRegion === 'all'
-                ? 'All Regions'
-                : selectedRegionObj?.displayName.split(' ')[0] || selectedRegion}
-            </span>
-            <ChevronDown className="w-3 h-3 text-slate-400" />
-          </button>
-
-          {openRegionMenu && (
-            <div className="absolute right-0 mt-1.5 w-56 bg-[#111A2E] border border-[#1E293B] rounded-lg shadow-xl py-1 z-30">
-              <button
-                onClick={() => {
-                  setSelectedRegion('all');
-                  setOpenRegionMenu(false);
-                }}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-left text-slate-300 hover:text-white hover:bg-[#18233C]"
-              >
-                <span>All Regions</span>
-                {selectedRegion === 'all' && (
-                  <Check className="w-3.5 h-3.5 text-blue-500" />
-                )}
-              </button>
-              {availableRegions.map((reg) => (
-                <button
-                  key={reg.id}
-                  onClick={() => {
-                    setSelectedRegion(reg.region);
-                    setOpenRegionMenu(false);
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-left text-slate-300 hover:text-white hover:bg-[#18233C]"
-                >
-                  <div className="truncate">
-                    <span className="font-semibold text-white">{reg.region}</span>
-                    <span className="text-[10px] text-slate-400 block truncate">
-                      {reg.displayName}
-                    </span>
-                  </div>
-                  {selectedRegion === reg.region && (
-                    <Check className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* 5. Region Indicator (Static Badge: Defaults to All Regions) */}
+        <div
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-200 bg-[#111A2E] border border-[#1E293B] rounded-lg shadow-sm select-none"
+          title="Monitoring all active cloud and server regions"
+        >
+          <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+          <span>All Regions</span>
         </div>
 
         {/* 6. Live Monitoring Toggle */}

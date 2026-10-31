@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchResources } from '@/lib/storage';
+import { getUnifiedServerInventory, UnifiedServerResource } from '@/lib/serverMonitoring/inventoryService';
 import { ALL_AWS_REGIONS, ALL_AZURE_REGIONS } from '@/services/regionDiscoveryService';
-
-
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,50 +8,43 @@ export async function GET(request: NextRequest) {
     const targetRegion = searchParams.get('region');
     const provider = searchParams.get('provider');
 
-    // Fetch all active compute resources from storage
-    const allResources = await fetchResources({
-      resourceType: 'vm',
+    // Fetch unified inventory (merged cloud-discovered VMs and registered SSH servers)
+    const allResources = await getUnifiedServerInventory({
+      provider: provider && provider !== 'all' ? provider : null,
+      region: targetRegion || null,
     });
-
-    // Also fetch EC2 if available
-    const ec2Resources = await fetchResources({
-      resourceType: 'ec2',
-    });
-
-    const combinedResources = [...allResources, ...ec2Resources];
-
-    // Filter by provider if specified
-    const filtered = provider && provider !== 'all'
-      ? combinedResources.filter((r) => r.provider === provider)
-      : combinedResources;
 
     // Group resources by region
     const regionMap = new Map<string, {
       region: string;
       displayName: string;
-      cloud: 'aws' | 'azure';
+      cloud: 'aws' | 'azure' | 'other';
       resources: any[];
     }>();
 
-    for (const res of filtered) {
-      const regCode = (res.region || 'unknown').toLowerCase().replace(/[\s-_]+/g, '');
-      const rawReg = res.region || 'unknown';
+    for (const res of allResources) {
+      const rawReg = res.region || 'Region Not Available';
+      const regCode = rawReg.toLowerCase().replace(/[\s-_]+/g, '');
 
       if (!regionMap.has(regCode)) {
-        // Resolve display name from discovery catalogs
         let displayName = rawReg;
-        let cloud: 'aws' | 'azure' = res.provider === 'aws' ? 'aws' : 'azure';
+        let cloud: 'aws' | 'azure' | 'other' = 'other';
 
-        if (cloud === 'azure') {
+        if (res.cloudProvider === 'aws') {
+          cloud = 'aws';
+          const matched = ALL_AWS_REGIONS.find(
+            (r) => r.code.toLowerCase().replace(/[\s-_]+/g, '') === regCode
+          );
+          if (matched) displayName = matched.name;
+        } else if (res.cloudProvider === 'azure') {
+          cloud = 'azure';
           const matched = ALL_AZURE_REGIONS.find(
             (r) => r.code.toLowerCase().replace(/[\s-_]+/g, '') === regCode
           );
           if (matched) displayName = matched.name;
         } else {
-          const matched = ALL_AWS_REGIONS.find(
-            (r) => r.code.toLowerCase().replace(/[\s-_]+/g, '') === regCode
-          );
-          if (matched) displayName = matched.name;
+          cloud = 'other';
+          displayName = rawReg === 'Region Not Available' ? 'Unassigned / General Location' : rawReg;
         }
 
         regionMap.set(regCode, {
@@ -67,32 +58,56 @@ export async function GET(request: NextRequest) {
       const isRunning = (res.status || '').toLowerCase().includes('run');
 
       const normResource = {
-        id: res._id ? res._id.toString() : res.resourceId,
+        id: res.id,
         resourceId: res.resourceId,
         name: res.name,
-        cloudProvider: res.provider as 'aws' | 'azure',
+        cloudProvider: res.cloudProvider,
         region: res.region,
         status: isRunning ? 'Running' : (res.status || 'Stopped'),
-        type: res.provider === 'aws' ? 'EC2 Instance' : 'Virtual Machine',
-        size: res.size || (res.provider === 'aws' ? 't3.micro' : 'Standard_D2s_v3'),
+        type:
+          res.cloudProvider === 'aws'
+            ? 'EC2 Instance'
+            : res.cloudProvider === 'azure'
+            ? 'Virtual Machine'
+            : 'Linux Server Node',
+        size: res.vmSize || 'Standard',
         privateIp: res.privateIp || '-',
-        publicIp: res.publicIp || '-',
-        os: res.metadata?.os || 'Linux (ubuntu 22.04)',
-        creationTime: res.createdAt ? new Date(res.createdAt).toLocaleDateString() : 'Available in metadata',
-        startTime: isRunning ? 'Active (Current session)' : 'Stopped',
-        runningDuration: isRunning ? 'Running continuously (2d 14h)' : 'Offline',
-        tags: res.metadata?.tags || {},
+        publicIp: res.publicIp || res.host || '-',
+        os: res.os || 'Linux',
+        creationTime: res.lastSyncedAt ? new Date(res.lastSyncedAt).toLocaleDateString() : 'Active',
+        startTime: isRunning ? 'Online (Active)' : 'Stopped',
+        runningDuration: isRunning ? 'Active Telemetry' : 'Offline',
+        tags: res.tags || {},
+
+        // Verification & Telemetry flags
+        isSSHConnected: res.isSSHConnected,
+        sshServerId: res.sshServerId,
+        sshStatus: res.sshStatus,
+
+        // Actual Metrics
         metrics: {
-          cpu: res.metrics?.cpuUtilization !== null && res.metrics?.cpuUtilization !== undefined
-            ? res.metrics.cpuUtilization
-            : (isRunning ? 12.4 : 0),
-          memory: res.metrics?.memoryUtilization !== null && res.metrics?.memoryUtilization !== undefined
-            ? res.metrics.memoryUtilization
-            : (isRunning ? 38.6 : 0),
-          disk: res.metrics?.diskUtilization !== null && res.metrics?.diskUtilization !== undefined
-            ? res.metrics.diskUtilization
-            : (isRunning ? 24.2 : 0),
-          network: `${res.metrics?.networkIn || 1.4} MB/s in / ${res.metrics?.networkOut || 0.8} MB/s out`,
+          cpu: res.metrics?.cpu ?? null,
+          memory: res.metrics?.memory ?? null,
+          disk: res.metrics?.disk ?? null,
+          network:
+            res.metrics?.networkIn !== null && res.metrics?.networkIn !== undefined
+              ? `${res.metrics.networkIn} MB/s in / ${res.metrics.networkOut || 0} MB/s out`
+              : 'N/A',
+        },
+
+        // Real Docker Telemetry
+        docker: {
+          detected: res.docker?.detected || false,
+          status: res.docker?.status || 'not_installed',
+          version: res.docker?.version || '',
+          containersCount: res.docker?.containersCount || 0,
+        },
+
+        // Real Kubernetes Telemetry
+        kubernetes: {
+          detected: res.kubernetes?.detected || false,
+          version: res.kubernetes?.version || '',
+          podsCount: res.kubernetes?.podsCount || 0,
         },
       };
 
@@ -121,13 +136,25 @@ export async function GET(request: NextRequest) {
         (s) => s.region.toLowerCase().replace(/[\s-_]+/g, '') === normTarget
       );
       if (!found) {
-        return NextResponse.json({ error: `Region ${targetRegion} has no connected resources` }, { status: 404 });
+        return NextResponse.json(
+          {
+            region: targetRegion,
+            displayName: targetRegion,
+            cloud: 'other' as const,
+            resourceCount: 0,
+            runningCount: 0,
+            stoppedCount: 0,
+            resources: [],
+          },
+          { status: 200 }
+        );
       }
       return NextResponse.json(found);
     }
 
     return NextResponse.json(summaries);
   } catch (err: any) {
+    console.error('Dynamic regions error:', err);
     return NextResponse.json({ error: err.message || 'Failed to fetch dynamic regions' }, { status: 500 });
   }
 }

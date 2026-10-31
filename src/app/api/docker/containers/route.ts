@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
-import CloudResource from '@/models/CloudResource';
-import { syncDockerResources } from '@/lib/docker/sync';
+import Server from '@/models/Server';
+import { syncAllRegisteredServers } from '@/lib/serverMonitoring/serverSync';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,63 +10,92 @@ export async function GET(request: NextRequest) {
     const provider = searchParams.get('provider');
     const autoSync = searchParams.get('sync') === 'true';
 
-    // 1. If explicit sync requested, run live sync against hosts
+    // 1. If explicit sync requested, run live sync across connected SSH servers
     if (autoSync) {
       try {
-        await syncDockerResources();
+        await syncAllRegisteredServers();
       } catch (syncErr) {
-        console.warn('[Docker Containers API] Auto-sync note:', syncErr);
+        console.warn('[Docker Containers API] Live sync note:', syncErr);
       }
     }
 
-    // 2. Fetch active containers from DB
-    const query: any = {
-      resourceType: 'container',
-      isDeleted: { $ne: true },
-      status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
-    };
-
+    const query: any = {};
     if (provider && provider !== 'all') {
-      query.provider = provider;
+      query.cloudProvider = provider;
     }
 
-    let containers = await CloudResource.find(query).sort({ updatedAt: -1 }).lean();
+    let servers = await Server.find(query).lean();
 
-    // 3. If zero containers in DB, run one sync cycle to see if host has containers
-    if (containers.length === 0 && !autoSync) {
+    // 2. If servers are registered but no containers synced yet, run one initial sync
+    const totalContainersCount = servers.reduce((acc, s) => acc + (s.docker?.containers?.length || 0), 0);
+    if (totalContainersCount === 0 && !autoSync && servers.length > 0) {
       try {
-        await syncDockerResources();
-        containers = await CloudResource.find(query).sort({ updatedAt: -1 }).lean();
+        await syncAllRegisteredServers();
+        servers = await Server.find(query).lean();
       } catch {
-        // host may be unreachable
+        // preserve current state
       }
     }
 
-    return NextResponse.json(
-      containers.map((c: any) => ({
-        id: c._id ? c._id.toString() : c.resourceId,
-        containerId: c.resourceId,
-        name: c.name,
-        image: c.metadata?.image || 'unknown',
-        hostInstance: c.metadata?.host || 'vm01siva',
-        hostId: c.metadata?.hostId || c.resourceId,
-        cloudProvider: c.provider as 'aws' | 'azure',
-        region: c.region || 'centralindia',
-        status: (c.status || 'Stopped') as 'Running' | 'Stopped' | 'Restarting' | 'Paused' | 'Exited',
-        cpuUsage: c.metrics?.cpuUtilization !== undefined && c.metrics?.cpuUtilization !== null ? c.metrics.cpuUtilization : null,
-        memoryUsage: c.metrics?.memoryUtilization !== undefined && c.metrics?.memoryUtilization !== null ? c.metrics.memoryUtilization : null,
-        memoryLimit: c.metadata?.memoryLimit || 'Available',
-        diskIO: c.metadata?.diskIO || '0 B',
-        networkTraffic: c.metadata?.networkTraffic || '0 B',
-        restartCount: c.metadata?.restartCount || 0,
-        uptime: c.metadata?.uptime || 'Exited',
-        created: c.metadata?.created || 'recently',
-        publishedPorts: c.metadata?.publishedPorts || '-',
-        healthStatus: c.metadata?.healthStatus || 'Healthy',
-        metricSource: c.metricSource || 'Docker Engine API',
-        lastUpdated: c.updatedAt ? new Date(c.updatedAt).toISOString() : new Date().toISOString(),
-      }))
-    );
+    const containerList: any[] = [];
+
+    for (const server of servers) {
+      const docker = server.docker;
+      if (!docker || !docker.containers || docker.containers.length === 0) continue;
+
+      for (const c of docker.containers) {
+        const stateLower = (c.state || '').toLowerCase();
+        let normalizedStatus: 'Running' | 'Stopped' | 'Restarting' | 'Paused' | 'Exited' = 'Stopped';
+        if (stateLower.includes('run')) normalizedStatus = 'Running';
+        else if (stateLower.includes('restart')) normalizedStatus = 'Restarting';
+        else if (stateLower.includes('pause')) normalizedStatus = 'Paused';
+        else if (stateLower.includes('exit')) normalizedStatus = 'Stopped';
+
+        const shortId = (c.id || '').substring(0, 12);
+
+        // Memory usage: if numeric percent available use it, otherwise show used/limit
+        let cpuVal: number | null = null;
+        if (c.cpuPercent !== undefined && c.cpuPercent !== null) {
+          cpuVal = c.cpuPercent;
+        }
+
+        let memVal: number | null = null;
+        if (c.memoryPercent !== undefined && c.memoryPercent !== null && c.memoryPercent > 0) {
+          memVal = c.memoryPercent;
+        }
+
+        containerList.push({
+          id: (c as any)._id ? (c as any)._id.toString() : shortId,
+          containerId: shortId,
+          fullContainerId: c.id,
+          name: c.name,
+          image: c.image,
+          hostInstance: server.name,
+          hostId: server._id.toString(),
+          hostIp: server.host,
+          cloudProvider: (server.cloudProvider === 'azure' ? 'azure' : server.cloudProvider === 'aws' ? 'aws' : 'other') as 'aws' | 'azure' | 'other',
+          region: server.region || 'centralindia',
+          status: normalizedStatus,
+          cpuUsage: cpuVal,
+          memoryUsage: memVal,
+          memoryLimit: c.memoryLimit || (c.memoryUsage ? c.memoryUsage.split('/')[1]?.trim() : 'Available'),
+          diskIO: c.diskIO || '0 B',
+          networkTraffic: c.networkTraffic || '0 B',
+          restartCount: 0,
+          uptime: c.status || (normalizedStatus === 'Running' ? 'Up' : 'Exited'),
+          created: c.created || 'recently',
+          publishedPorts: c.ports || '-',
+          healthStatus: 'Healthy',
+          metricSource: 'Direct SSH (Docker Engine)',
+          lastUpdated: docker.lastSyncedAt ? new Date(docker.lastSyncedAt).toISOString() : new Date().toISOString(),
+          dockerDaemonStatus: docker.status || (docker.detected ? 'running' : 'not_installed'),
+          dockerDaemonMessage: docker.statusMessage || (docker.detected ? 'Docker Engine Running' : 'Docker: Not Installed'),
+          dockerVersion: docker.version || 'Docker Engine',
+        });
+      }
+    }
+
+    return NextResponse.json(containerList);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to fetch containers' }, { status: 500 });
   }

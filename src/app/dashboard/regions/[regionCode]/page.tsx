@@ -17,10 +17,12 @@ import {
   CheckCircle2,
   AlertCircle,
   Tag,
+  Shield,
+  ExternalLink,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
-import { AwsLogo, AzureLogo, AzureVmIcon } from '@/components/icons/CloudIcons';
+import { AwsLogo, AzureLogo, AzureVmIcon, DockerIcon, KubernetesIcon } from '@/components/icons/CloudIcons';
 import { DynamicRegionSummary, DynamicRegionResource } from '@/types/monitoring';
 
 function RegionDetailContent({ params }: { params: Promise<{ regionCode: string }> }) {
@@ -209,87 +211,177 @@ function RegionDetailContent({ params }: { params: Promise<{ regionCode: string 
               <table className="w-full text-left text-xs text-slate-300 border-collapse">
                 <thead>
                   <tr className="border-b border-[#1E293B] bg-[#0E1628]/60 text-slate-400 font-medium">
-                    <th className="py-3 px-4">Resource Name</th>
-                    <th className="py-3 px-4">Cloud Provider</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4">Size / Type</th>
-                    <th className="py-3 px-4">Private IP</th>
-                    <th className="py-3 px-4">Public IP</th>
-                    <th className="py-3 px-4">Operating System</th>
-                    <th className="py-3 px-4">Running Duration</th>
-                    <th className="py-3 px-4">Tags</th>
+                    <th className="py-3 px-4">Server Name & Host</th>
+                    <th className="py-3 px-4">Provider / Type</th>
+                    <th className="py-3 px-4">Status & Telemetry</th>
+                    <th className="py-3 px-4">CPU Usage</th>
+                    <th className="py-3 px-4">RAM Usage</th>
+                    <th className="py-3 px-4">Disk Space</th>
+                    <th className="py-3 px-4">Docker / K8s</th>
+                    <th className="py-3 px-4">IP Address</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#1E293B]/60 font-medium">
                   {filteredResources.map((r) => {
                     const isRunning = r.status.toLowerCase().includes('run');
+                    const cpuVal = r.metrics?.cpu ?? null;
+                    const memVal = r.metrics?.memory ?? null;
+                    const diskVal = r.metrics?.disk ?? null;
+
+                    const detailLink = r.isSSHConnected && r.sshServerId
+                      ? `/dashboard/servers/${r.sshServerId}`
+                      : r.cloudProvider === 'aws'
+                      ? `/dashboard/ec2/${r.resourceId}`
+                      : `/dashboard/azure-vms/${r.resourceId}`;
 
                     return (
                       <tr key={r.id} className="hover:bg-[#162238]/60 transition-colors">
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-5 h-5 rounded bg-blue-500/15 flex items-center justify-center text-blue-400 flex-shrink-0">
-                              <AzureVmIcon className="w-3.5 h-3.5" />
+                          <Link href={detailLink} className="group block">
+                            <div className="flex items-center gap-2">
+                              <div className="w-5 h-5 rounded bg-blue-500/15 flex items-center justify-center text-blue-400 flex-shrink-0">
+                                <Server className="w-3.5 h-3.5" />
+                              </div>
+                              <div>
+                                <span className="font-bold text-white group-hover:text-blue-400 transition-colors block">{r.name}</span>
+                                <span className="text-[10px] text-slate-400 font-mono">{r.publicIp || r.privateIp}</span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="font-bold text-white block">{r.name}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">{r.resourceId}</span>
-                            </div>
-                          </div>
+                          </Link>
                         </td>
 
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1.5">
-                            {r.cloudProvider === 'aws' ? <AwsLogo className="w-4 h-3" /> : <AzureLogo className="w-3.5 h-3.5" />}
+                            {r.cloudProvider === 'aws' ? (
+                              <AwsLogo className="w-4 h-3" />
+                            ) : r.cloudProvider === 'azure' ? (
+                              <AzureLogo className="w-3.5 h-3.5" />
+                            ) : (
+                              <Server className="w-3.5 h-3.5 text-blue-400" />
+                            )}
                             <span className="uppercase text-[11px] font-semibold text-slate-300">
                               {r.cloudProvider}
                             </span>
                           </div>
+                          <span className="text-[10px] text-slate-400 block font-mono">{r.type}</span>
                         </td>
 
                         <td className="py-3 px-4">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                              isRunning
-                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-slate-700/50 text-slate-400 border border-slate-600'
-                            }`}
-                          >
-                            {r.status}
-                          </span>
-                        </td>
-
-                        <td className="py-3 px-4 font-mono text-slate-300">{r.size}</td>
-                        <td className="py-3 px-4 font-mono text-blue-400">{r.privateIp || '-'}</td>
-                        <td className="py-3 px-4 font-mono text-emerald-400">{r.publicIp || '-'}</td>
-                        <td className="py-3 px-4 text-slate-300">{r.os || 'Linux'}</td>
-                        <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">{r.runningDuration}</td>
-
-                        <td className="py-3 px-4">
-                          <div className="flex flex-wrap gap-1 max-w-[140px]">
-                            {Object.entries(r.tags || {}).length > 0 ? (
-                              Object.entries(r.tags || {}).map(([k, v]) => (
-                                <span
-                                  key={k}
-                                  className="text-[9px] px-1.5 py-0.5 rounded bg-[#18233C] text-slate-300 border border-[#1E293B]"
-                                >
-                                  {k}: {v}
-                                </span>
-                              ))
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold w-fit ${
+                                isRunning
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-slate-700/50 text-slate-400 border border-slate-600'
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
+                              {r.status}
+                            </span>
+                            {r.isSSHConnected ? (
+                              <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                                <Shield className="w-2.5 h-2.5" />
+                                <span>SSH Telemetry Active</span>
+                              </span>
                             ) : (
-                              <span className="text-[11px] text-slate-500">-</span>
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                Cloud Only
+                              </span>
                             )}
                           </div>
                         </td>
 
+                        {/* CPU */}
+                        <td className="py-3 px-4">
+                          {cpuVal !== null ? (
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-200 font-mono">{cpuVal}%</span>
+                              <div className="w-12 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${cpuVal > 80 ? 'bg-rose-500' : cpuVal > 60 ? 'bg-amber-500' : 'bg-blue-500'}`}
+                                  style={{ width: `${Math.min(100, Math.max(0, cpuVal))}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-500 text-xs italic font-mono">N/A</span>
+                          )}
+                        </td>
+
+                        {/* RAM */}
+                        <td className="py-3 px-4">
+                          {memVal !== null ? (
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-200 font-mono">{memVal}%</span>
+                              <div className="w-12 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${memVal > 85 ? 'bg-rose-500' : memVal > 70 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                  style={{ width: `${Math.min(100, Math.max(0, memVal))}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-500 text-xs italic font-mono">N/A</span>
+                          )}
+                        </td>
+
+                        {/* Disk */}
+                        <td className="py-3 px-4">
+                          {diskVal !== null ? (
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-200 font-mono">{diskVal}%</span>
+                              <div className="w-12 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${diskVal > 85 ? 'bg-rose-500' : diskVal > 70 ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                                  style={{ width: `${Math.min(100, Math.max(0, diskVal))}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-500 text-xs italic font-mono">N/A</span>
+                          )}
+                        </td>
+
+                        {/* Docker / K8s */}
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col gap-1 text-[11px]">
+                            {r.docker?.detected ? (
+                              <span className="text-cyan-400 flex items-center gap-1 font-mono">
+                                <DockerIcon className="w-3 h-3" />
+                                <span>{r.docker.containersCount} containers</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 font-mono text-[10px]">Docker: No</span>
+                            )}
+                            {r.kubernetes?.detected ? (
+                              <span className="text-blue-400 flex items-center gap-1 font-mono">
+                                <KubernetesIcon className="w-3 h-3" />
+                                <span>{r.kubernetes.podsCount} pods</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 font-mono text-[10px]">K8s: No</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* IPs */}
+                        <td className="py-3 px-4">
+                          <div className="text-[11px] font-mono">
+                            <span className="text-emerald-400 block">{r.publicIp || '-'}</span>
+                            <span className="text-slate-500 block text-[10px]">{r.privateIp || '-'}</span>
+                          </div>
+                        </td>
+
+                        {/* Actions */}
                         <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1.5">
                             <Link
-                              href={`/dashboard/azure-vms/${r.resourceId}`}
-                              className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-[#202E4E] text-slate-200 rounded-lg border border-[#1E293B] transition-colors"
+                              href={detailLink}
+                              className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-blue-600 hover:text-white text-slate-200 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1"
                             >
-                              View
+                              <span>Inspect</span>
+                              <ExternalLink className="w-3 h-3" />
                             </Link>
                           </div>
                         </td>

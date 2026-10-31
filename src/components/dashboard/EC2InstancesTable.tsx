@@ -10,9 +10,12 @@ import {
   TrendingUp,
   ArrowUpDown,
   ExternalLink,
+  KeyRound,
 } from 'lucide-react';
 import { EC2InstanceDetail } from '@/types/monitoring';
 import { Ec2Icon } from '@/components/icons/CloudIcons';
+import { ConnectSSHModal, ConnectSSHTarget } from '@/components/dashboard/ConnectSSHModal';
+import { useMonitoring } from '@/context/MonitoringContext';
 
 interface EC2InstancesTableProps {
   instances: EC2InstanceDetail[];
@@ -26,13 +29,33 @@ export function EC2InstancesTable({
   limit,
 }: EC2InstancesTableProps) {
   const router = useRouter();
+  const { triggerRefresh } = useMonitoring();
   const [searchTerm, setSearchTerm] = useState('');
   const [regionFilter, setRegionFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortField, setSortField] = useState<string>('name');
   const [sortAsc, setSortAsc] = useState<boolean>(true);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [sshTarget, setSshTarget] = useState<ConnectSSHTarget | null>(null);
+  const [showSSHModal, setShowSSHModal] = useState<boolean>(false);
   const pageSize = limit || 5;
+
+  const handleOpenSSHModal = (inst: EC2InstanceDetail) => {
+    setSshTarget({
+      id: inst.id || inst.instanceId,
+      name: inst.name || inst.instanceId,
+      host: inst.publicIp && inst.publicIp !== '-' ? inst.publicIp : inst.privateIp,
+      cloudProvider: 'aws',
+      region: inst.region,
+      os: inst.os || 'Linux',
+    });
+    setShowSSHModal(true);
+  };
+
+  const handleSSHSuccess = () => {
+    triggerRefresh();
+    router.refresh();
+  };
 
   // Filter and sort instances
   const filteredInstances = useMemo(() => {
@@ -265,8 +288,30 @@ export function EC2InstancesTable({
                   </td>
 
                   {/* Name */}
-                  <td className="py-3 px-4 font-semibold text-white">
-                    {inst.name}
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-white">
+                        {inst.name}
+                      </span>
+                      {(inst as any).isSSHConnected ? (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+                          SSH Verified
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenSSHModal(inst);
+                          }}
+                          className="text-[9px] px-1.5 py-0.5 rounded bg-[#FF9900]/15 hover:bg-[#FF9900]/25 text-[#FF9900] border border-[#FF9900]/30 font-mono flex items-center gap-1 transition-colors"
+                          title="Connect SSH (PPK / PEM / Password) for real in-guest telemetry"
+                        >
+                          <KeyRound className="w-2.5 h-2.5" />
+                          <span>Connect SSH</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
 
                   {/* Region */}
@@ -370,6 +415,26 @@ export function EC2InstancesTable({
                   {/* Actions */}
                   <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
+                      {!(inst as any).isSSHConnected ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSSHModal(inst)}
+                          className="px-2 py-1 text-xs font-semibold bg-[#FF9900] hover:bg-[#FF9900]/85 text-black font-bold rounded border border-[#FF9900]/60 transition-colors flex items-center gap-1 shadow-sm shrink-0"
+                          title="Connect SSH (PPK / PEM / Password) to view real CPU, RAM, Disk, Docker & K8s"
+                        >
+                          <KeyRound className="w-3 h-3 text-black" />
+                          <span>Connect SSH</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSSHModal(inst)}
+                          className="p-1 text-slate-400 hover:text-emerald-400 rounded hover:bg-[#18233C] transition-colors"
+                          title="Reconfigure SSH Credentials"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <Link
                         href={`/dashboard/ec2/${inst.instanceId}`}
                         className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-blue-600 hover:text-white text-slate-300 rounded border border-[#1E293B] transition-colors"
@@ -427,6 +492,14 @@ export function EC2InstancesTable({
           </div>
         </div>
       )}
+
+      {/* Connect SSH Modal */}
+      <ConnectSSHModal
+        isOpen={showSSHModal}
+        onClose={() => setShowSSHModal(false)}
+        target={sshTarget}
+        onSuccess={handleSSHSuccess}
+      />
     </div>
   );
 }

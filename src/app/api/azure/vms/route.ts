@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchResources } from '@/lib/storage';
+import { getUnifiedServerInventory } from '@/lib/serverMonitoring/inventoryService';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,79 +9,93 @@ export async function GET(request: NextRequest) {
     const region = searchParams.get('region') || null;
     const status = searchParams.get('status')?.toLowerCase() || null;
 
-    const resources = await fetchResources({
+    // Fetch unified Azure VMs (cross-reconciled with SSH servers)
+    let resources = await getUnifiedServerInventory({
       provider: 'azure',
-      resourceType: 'vm',
-      subscriptionId,
       region,
       search,
     });
 
-    const filtered = status && status !== 'all'
-      ? resources.filter((r) => (r.status || '').toLowerCase().includes(status))
-      : resources;
+    if (subscriptionId && subscriptionId !== 'all') {
+      resources = resources.filter((r) => r.subscriptionId === subscriptionId);
+    }
+
+    if (status && status !== 'all') {
+      resources = resources.filter((r) =>
+        (r.status || '').toLowerCase().includes(status) ||
+        (r.powerState || '').toLowerCase().includes(status)
+      );
+    } else {
+      // Default: exclude terminated or deleted VMs
+      resources = resources.filter((r) => {
+        const s = (r.status || '').toLowerCase();
+        const p = (r.powerState || '').toLowerCase();
+        return !s.includes('terminate') && !s.includes('delete') && !p.includes('terminate') && !p.includes('delete');
+      });
+    }
 
     return NextResponse.json(
-      filtered.map((r: any) => {
-        const rawStatus = r.status || 'Stopped';
-        const isRunning = rawStatus.toLowerCase().includes('run');
-
-        const cpu = r.metrics?.cpuUtilization !== null && r.metrics?.cpuUtilization !== undefined
-          ? r.metrics.cpuUtilization
-          : null;
-
-        const memory = r.metrics?.memoryUtilization !== null && r.metrics?.memoryUtilization !== undefined
-          ? r.metrics.memoryUtilization
-          : null;
-
-        const disk = r.metrics?.diskUtilization !== null && r.metrics?.diskUtilization !== undefined
-          ? r.metrics.diskUtilization
-          : null;
-
-        const netIn = r.metrics?.networkIn !== null && r.metrics?.networkIn !== undefined
-          ? r.metrics.networkIn
-          : null;
-
-        const netOut = r.metrics?.networkOut !== null && r.metrics?.networkOut !== undefined
-          ? r.metrics.networkOut
-          : null;
+      resources.map((r) => {
+        const isRunning = (r.status || '').toLowerCase().includes('run');
 
         return {
-          id: r._id ? r._id.toString() : r.resourceId,
+          id: r.id,
           vmId: r.resourceId,
           name: r.name,
           resourceGroup: r.resourceGroup || 'default-rg',
           subscriptionId: r.subscriptionId,
           region: r.region,
-          vmSize: r.size || 'Standard_D2s_v3',
-          powerState: isRunning ? 'Running' : rawStatus.replace('PowerState/', ''),
+          vmSize: r.vmSize || 'Standard_D2s_v3',
+          powerState: isRunning ? 'Running' : (r.powerState || 'Stopped'),
           privateIp: r.privateIp || '-',
-          publicIp: r.publicIp || '-',
-          cpuUsage: cpu,
-          cpuUtilization: cpu,
-          cpuStatus: cpu !== null ? 'Available' : 'Unavailable',
-          memoryUsage: memory,
-          memoryUtilization: memory,
-          memoryStatus: memory !== null ? 'Available' : 'Unavailable',
-          memoryExplanation: memory === null ? 'Guest memory requires Azure Monitor Agent (AMA) extension on Linux host' : undefined,
-          diskUsage: disk,
-          diskUtilization: disk,
-          diskStatus: disk !== null ? 'Available' : 'Unavailable',
-          networkInMB: netIn,
-          networkIn: netIn,
-          networkOutMB: netOut,
-          networkOut: netOut,
-          metricSource: 'Azure Monitor (Microsoft.Insights)',
-          metricTimestamp: r.metrics?.lastUpdated ? new Date(r.metrics.lastUpdated).toISOString() : new Date().toISOString(),
+          publicIp: r.publicIp || r.host || '-',
+
+          // SSH Connection and Verification
+          isSSHConnected: r.isSSHConnected,
+          sshServerId: r.sshServerId,
+          sshStatus: r.sshStatus,
+          isCloudDiscovered: r.isCloudDiscovered,
+
+          // Metrics
+          cpuUsage: r.metrics.cpu,
+          cpuUtilization: r.metrics.cpu,
+          cpuStatus: r.metrics.cpu !== null ? 'Available' : 'Unavailable',
+
+          memoryUsage: r.metrics.memory,
+          memoryUtilization: r.metrics.memory,
+          memoryStatus: r.metrics.memory !== null ? 'Available' : 'Unavailable',
+          memoryExplanation:
+            r.metrics.memory === null
+              ? 'Guest memory requires Azure Monitor Agent (AMA) extension on Linux host or direct SSH registration'
+              : undefined,
+
+          diskUsage: r.metrics.disk,
+          diskUtilization: r.metrics.disk,
+          diskStatus: r.metrics.disk !== null ? 'Available' : 'Unavailable',
+          diskExplanation:
+            r.metrics.disk === null
+              ? 'Guest disk space requires Azure Monitor Agent (AMA) extension or direct SSH registration'
+              : undefined,
+
+          networkInMB: r.metrics.networkIn ?? null,
+          networkIn: r.metrics.networkIn ?? null,
+          networkOutMB: r.metrics.networkOut ?? null,
+          networkOut: r.metrics.networkOut ?? null,
+
+          metricSource: r.metrics.metricSource,
+          metricTimestamp: r.lastSyncedAt ? new Date(r.lastSyncedAt).toISOString() : new Date().toISOString(),
           uptime: isRunning ? 'Running' : 'Stopped / Deallocated',
-          os: r.metadata?.os || 'Linux (ubuntu 22.04)',
-          vnet: r.metadata?.vnet || 'vnet-centralindia-1',
-          subnet: r.metadata?.subnet || 'default',
-          tags: r.metadata?.tags || {},
+          os: r.os || 'Linux',
+          tags: r.tags || {},
+
+          // Docker & Kubernetes indicators
+          docker: r.docker,
+          kubernetes: r.kubernetes,
         };
       })
     );
   } catch (err: any) {
+    console.error('Azure VMs fetch error:', err);
     return NextResponse.json({ error: err.message || 'Failed to fetch Azure VMs' }, { status: 500 });
   }
 }
