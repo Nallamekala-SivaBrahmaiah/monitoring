@@ -1,111 +1,66 @@
 # Multi-Cloud Infrastructure Monitoring Platform
 
-A production-grade, full-stack observability and monitoring platform for **AWS** and **Azure** infrastructure built with **Next.js 16**, **React 19**, **Node.js Express**, **MongoDB**, **Prometheus**, **Docker Compose**, and **Nginx**.
-
-Deployed at: **http://multicloudwithsiva.online** (Server Public IP: `20.235.241.140`)
+A production-grade, full-stack observability and monitoring platform for **AWS** and **Azure** infrastructure built as a single, unified **Next.js** application with **React**, **Tailwind CSS**, **MongoDB & Mongoose**, **AWS SDK v3**, **Azure SDK**, and **Prometheus**.
 
 ---
 
 ## 🚀 Key Features
 
-### 1. Strict Cloud Provider Isolation
-- **All Clouds**: Unified dashboard with aggregated health metrics, cross-cloud compute status, and independent metric telemetry for both AWS and Azure.
-- **AWS Strict Mode**: Complete isolation. Displays EC2 instances, EKS clusters, AWS Docker hosts, and AWS alerts only. All Azure resources, regions, and subscriptions are hidden.
-- **Azure Strict Mode**: Complete isolation. Displays Azure Virtual Machines, AKS clusters, Azure Docker hosts, and Azure alerts only. All AWS resources, accounts, and regions are hidden.
-- **Dynamic Filter Synchronization**: Global state in React Context with `localStorage` persistence. Switching providers resets conflicting account and region selections.
+### 1. Unified Single Next.js Architecture
+- **Full-Stack Next.js**: No separate backend or Express server. Frontend pages and backend Route Handlers run inside a single Next.js App Router project using the Node.js runtime.
+- **Direct Database & Cloud SDKs**: Next.js server Route Handlers connect directly to MongoDB via Mongoose and use server-side AWS SDK v3 and Azure SDK.
 
-### 2. Multi-Cloud Resource Discovery & Monitoring
-- **AWS Compute**: EC2 instance inventory, CPU, memory, disk, network, and status telemetry.
-- **Azure Compute**: Virtual Machine inventory, power states, resource groups, and sizing metrics.
-- **Containers & Kubernetes**: Docker container monitoring and EKS/AKS cluster health.
-- **Alerting & Notification Engine**: Severity filtering, multi-channel alerting (Slack, PagerDuty, Webhooks, Email).
+### 2. Strict Cloud Provider Isolation
+- **All Clouds**: Unified dashboard with aggregated health metrics, cross-cloud compute status, and telemetry for both AWS and Azure.
+- **AWS Strict Mode**: Complete isolation. Displays EC2 instances, AWS regions, and AWS alerts only. All Azure resources, regions, and subscriptions are hidden.
+- **Azure Strict Mode**: Complete isolation. Displays Azure Virtual Machines, AKS clusters, Azure regions, and Azure alerts only. All AWS resources, accounts, and regions are hidden.
+- **Dynamic Filter Synchronization**: Global state in React Context with `localStorage` persistence.
 
-### 3. Backend & Database Filtering
-- Full REST API with query parameters: `?provider=aws|azure|all&accountId=...&subscriptionId=...&region=...`.
-- MongoDB `Resource` schema adhering to strict provider, account/subscription, and region boundaries.
+### 3. Real Azure Cloud Monitoring
+- **Service Principal Authentication**: Validates credentials (`Subscription ID`, `Tenant ID`, `Client ID`, `Client Secret`) via `@azure/identity` `ClientSecretCredential`.
+- **Dynamic Region Discovery**: Automatically queries the Azure Resource Manager Locations API (`/subscriptions/{subscriptionId}/locations`) and enables all available regions by default.
+- **Real VM Telemetry**: Queries the Azure Monitor Metrics API for live CPU, memory, disk, and network metrics. Displays *"Metric unavailable"* when metrics are not present; never generates fake numbers.
+
+### 4. Real AWS Cloud Monitoring
+- **STS Verification**: Validates credentials using `GetCallerIdentityCommand`.
+- **Dynamic EC2 Discovery**: Queries regions and active EC2 instances across monitored regions.
 
 ---
 
-## 🏗️ Architecture & Docker Deployment
+## ⚙️ Environment Variables
 
-The platform is containerized using `docker-compose.yml`:
+Create `.env.local` in the project root:
 
-```
-Internet (multicloudwithsiva.online / 20.235.241.140)
-       │
-   [Port 80 / 443]
-       ▼
- ┌───────────────────────────────────────┐
- │       Nginx Reverse Proxy             │
- └───────┬───────────────────────┬───────┘
-         │ /                     │ /api/ & /metrics
-         ▼                       ▼
- ┌───────────────┐       ┌───────────────┐
- │    Next.js    │       │ Express.js    │
- │   Frontend    │       │    Backend    │
- │  (Port 3000)  │       │  (Port 5000)  │
- └───────────────┘       └───────┬───────┘
-                                 │
-                                 ▼
-                         ┌───────────────┐
-                         │    MongoDB    │
-                         │  (Port 27017) │
-                         └───────────────┘
+```env
+# MongoDB Connection String
+MONGODB_URI=mongodb://127.0.0.1:27017/monitoring
+
+# Public API URL (Leave blank for same-origin Next.js Route Handlers)
+NEXT_PUBLIC_API_BASE_URL=
 ```
 
 ---
 
-## 🛠️ Quick Start with Docker Compose
+## 🛠️ Getting Started
 
-### Prerequisites
-- Docker and Docker Compose installed.
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git
-cd monitoring
-```
-
-### 2. Run with Docker Compose
-```bash
-docker compose up -d --build
-```
-
-### 3. Verify Containers
-```bash
-docker compose ps
-```
-
-Access the platform at:
-- **Web UI**: `http://multicloudwithsiva.online` or `http://localhost`
-- **Backend API**: `http://multicloudwithsiva.online/api/dashboard/overview`
-- **Prometheus Metrics**: `http://multicloudwithsiva.online/metrics`
-
----
-
-## 🔒 Free SSL Setup (HTTPS)
-
-To enable Let's Encrypt SSL certificates for `multicloudwithsiva.online`:
-
-```bash
-docker compose run --rm certbot certonly --webroot --webroot-path /var/www/certbot -d multicloudwithsiva.online -d www.multicloudwithsiva.online --email admin@multicloudwithsiva.online --agree-tos --no-eff-email
-```
-
----
-
-## 💻 Local Development
-
-### Frontend (Next.js)
+### 1. Install Dependencies
 ```bash
 npm install
-npm run dev
-# Running on http://localhost:3000
 ```
 
-### Backend (Express.js)
+### 2. Development Mode
 ```bash
-cd server
-npm install
 npm run dev
-# Running on http://localhost:5000
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### 3. Production Build & Start
+```bash
+npm run build
+npm run start
+```
+
+### 4. Production Process Management (PM2)
+```bash
+pm2 start npm --name "monitoring-platform" -- start -- -p 3000
 ```
