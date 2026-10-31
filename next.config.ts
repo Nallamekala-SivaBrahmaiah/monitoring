@@ -1,7 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: [
+    '@azure/identity',
+    '@azure/arm-compute',
+    '@azure/arm-resources',
+    '@aws-sdk/client-sts',
+    '@aws-sdk/client-ec2',
+    '@aws-sdk/client-cloudwatch',
+    'mongoose',
+    'prom-client',
+  ],
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

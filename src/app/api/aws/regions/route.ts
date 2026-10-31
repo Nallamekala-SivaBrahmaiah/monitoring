@@ -1,22 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { discoverAWSRegions } from '@/lib/aws/regions';
 import { ALL_AWS_REGIONS } from '@/services/regionDiscoveryService';
 
-let regions = [...ALL_AWS_REGIONS];
-
 export async function GET() {
-  return NextResponse.json({
-    success: true,
-    totalCount: regions.length,
-    regions,
-  });
-}
-
-export async function PUT(request: NextRequest) {
   try {
-    const { regionCode, enabled } = await request.json();
-    regions = regions.map((r) => (r.code === regionCode ? { ...r, enabled } : r));
-    return NextResponse.json({ success: true, regions });
-  } catch {
-    return NextResponse.json({ error: 'Failed to update region state' }, { status: 400 });
+    const live = await discoverAWSRegions();
+    if (live && live.length > 0) {
+      return NextResponse.json(live);
+    }
+  } catch (err) {
+    //
   }
+
+  return NextResponse.json(
+    ALL_AWS_REGIONS.map((r) => ({
+      code: r.code,
+      name: r.name,
+      geography: r.geography,
+      status: 'Available',
+    }))
+  );
 }

@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import connectToDatabase from '@/lib/mongodb';
+import CloudResource from '@/models/CloudResource';
+
 
 export async function GET(
   request: NextRequest,
@@ -7,18 +10,37 @@ export async function GET(
   const { vmId } = await context.params;
 
   try {
-    const backendUrl = process.env.BACKEND_API_URL || 'http://127.0.0.1:5000';
-    const res = await fetch(`${backendUrl}/api/azure/vms/${encodeURIComponent(vmId)}`, {
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
-  } catch (e) {
-    // Backend offline
-  }
+    await connectToDatabase();
+    const vm = await CloudResource.findOne({
+      provider: 'azure',
+      resourceType: 'vm',
+      $or: [{ resourceId: vmId }, { _id: vmId.match(/^[0-9a-fA-F]{24}$/) ? vmId : undefined }],
+    }).lean();
 
-  return NextResponse.json({ error: 'Azure VM not found' }, { status: 404 });
+    if (!vm) {
+      return NextResponse.json({ error: 'Azure Virtual Machine not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      id: vm._id.toString(),
+      vmId: vm.resourceId,
+      name: vm.name,
+      resourceGroup: vm.resourceGroup || 'default-rg',
+      subscriptionId: vm.subscriptionId,
+      region: vm.region,
+      vmSize: vm.size || 'Standard_B2s',
+      powerState: vm.status,
+      privateIp: vm.privateIp || '-',
+      publicIp: vm.publicIp || '-',
+      cpuUtilization: vm.metrics?.cpuUtilization,
+      memoryUtilization: vm.metrics?.memoryUtilization,
+      diskUtilization: vm.metrics?.diskUtilization,
+      networkIn: vm.metrics?.networkIn,
+      networkOut: vm.metrics?.networkOut,
+      tags: vm.metadata?.tags || {},
+      metadata: vm.metadata,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Failed to fetch VM details' }, { status: 500 });
+  }
 }

@@ -1,23 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
+import connectToDatabase from '@/lib/mongodb';
+import Metric from '@/models/Metric';
+import CloudResource from '@/models/CloudResource';
+
+
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-
   try {
-    const backendUrl = process.env.BACKEND_API_URL || 'http://127.0.0.1:5000';
-    const qs = searchParams.toString();
-    const res = await fetch(`${backendUrl}/api/dashboard/metrics${qs ? `?${qs}` : ''}`, {
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
-  } catch (e) {
-    // Backend offline
-  }
+    await connectToDatabase();
+    const { searchParams } = new URL(request.url);
+    const provider = searchParams.get('provider');
 
-  // Return empty list if no metrics collected yet
-  return NextResponse.json([]);
+    const query: any = {};
+    if (provider && provider !== 'all') {
+      query.provider = provider;
+    }
+
+    // Fetch latest time-series metrics from MongoDB
+    const metrics = await Metric.find(query).sort({ timestamp: -1 }).limit(100).lean();
+
+    if (metrics.length > 0) {
+      return NextResponse.json(
+        metrics.map((m: any) => ({
+          id: m._id.toString(),
+          resourceId: m.resourceId,
+          metricName: m.metricName,
+          value: m.value,
+          unit: m.unit,
+          timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString(),
+        }))
+      );
+    }
+
+    // Fallback: extract latest non-null metric points from CloudResource
+    const resources = await CloudResource.find({
+      ...query,
+      'metrics.cpuUtilization': { $ne: null },
+    })
+      .select('name resourceId provider region metrics updatedAt')
+      .lean();
+
+    return NextResponse.json(
+      resources.map((r: any) => ({
+        id: r._id.toString(),
+        resourceId: r.resourceId,
+        resourceName: r.name,
+        provider: r.provider,
+        cpu: r.metrics?.cpuUtilization,
+        memory: r.metrics?.memoryUtilization,
+        disk: r.metrics?.diskUtilization,
+        networkIn: r.metrics?.networkIn,
+        networkOut: r.metrics?.networkOut,
+        timestamp: r.updatedAt ? new Date(r.updatedAt).toISOString() : new Date().toISOString(),
+      }))
+    );
+  } catch (err: any) {
+    return NextResponse.json([], { status: 200 });
+  }
 }

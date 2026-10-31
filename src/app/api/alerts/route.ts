@@ -1,18 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mockRecentAlerts } from '@/mock/monitoringData';
+import { getActiveAlerts } from '@/lib/monitoring/alerts';
+
+
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const severity = searchParams.get('severity')?.toLowerCase();
-  const provider = searchParams.get('provider')?.toLowerCase();
+  try {
+    const { searchParams } = new URL(request.url);
+    const severity = searchParams.get('severity')?.toLowerCase();
+    const provider = searchParams.get('provider')?.toLowerCase();
 
-  let alerts = [...mockRecentAlerts];
-  if (provider && provider !== 'all') {
-    alerts = alerts.filter((a) => a.provider === provider);
-  }
-  if (severity && severity !== 'all') {
-    alerts = alerts.filter((a) => a.severity.toLowerCase() === severity);
-  }
+    let alerts = await getActiveAlerts(provider || 'all');
 
-  return NextResponse.json(alerts);
+    if (severity && severity !== 'all') {
+      alerts = alerts.filter((a: any) => a.severity.toLowerCase() === severity);
+    }
+
+    return NextResponse.json(
+      alerts.map((a: any) => ({
+        id: a._id.toString(),
+        resourceId: a.resourceId,
+        resourceName: a.resourceName,
+        severity: a.severity.charAt(0).toUpperCase() + a.severity.slice(1),
+        title: a.title,
+        message: a.message,
+        region: a.region,
+        cloud: a.provider,
+        provider: a.provider,
+        status: a.status,
+        timestamp: a.timestamp ? new Date(a.timestamp).toISOString() : new Date().toISOString(),
+      }))
+    );
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Failed to fetch alerts' }, { status: 500 });
+  }
 }

@@ -103,31 +103,45 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   // Real discovered infrastructure
   const [azureVMs, setAzureVMs] = useState<AzureVirtualMachine[]>([]);
   const [ec2Instances, setEc2Instances] = useState<EC2InstanceDetail[]>([]);
-  const [dockerContainers] = useState<DockerContainer[]>([]);
-  const [k8sClusters] = useState<K8sCluster[]>([]);
-  const [k8sPods] = useState<K8sPod[]>([]);
-  const [alerts] = useState<AlertItem[]>([]);
+  const [dockerContainers, setDockerContainers] = useState<DockerContainer[]>([]);
+  const [k8sClusters, setK8sClusters] = useState<K8sCluster[]>([]);
+  const [k8sPods, setK8sPods] = useState<K8sPod[]>([]);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
-  // Load real subscriptions and real VMs from backend
+  // Load real subscriptions, AWS accounts, real VMs, and real alerts from Next.js Route Handlers
   const loadRealData = useCallback(async () => {
     try {
-      const [subsRes, vmsRes] = await Promise.all([
+      const [subsRes, awsRes, azureVmsRes, ec2Res, alertsRes] = await Promise.all([
         fetch('/api/azure/subscriptions').catch(() => null),
+        fetch('/api/cloud-accounts?provider=aws').catch(() => null),
         fetch('/api/azure/vms').catch(() => null),
+        fetch('/api/aws/ec2').catch(() => null),
+        fetch('/api/alerts').catch(() => null),
       ]);
 
       if (subsRes && subsRes.ok) {
         const subs = await subsRes.json();
-        if (Array.isArray(subs)) {
-          setAzureSubscriptions(subs);
-        }
+        if (Array.isArray(subs)) setAzureSubscriptions(subs);
       }
 
-      if (vmsRes && vmsRes.ok) {
-        const vms = await vmsRes.json();
-        if (Array.isArray(vms)) {
-          setAzureVMs(vms);
-        }
+      if (awsRes && awsRes.ok) {
+        const accs = await awsRes.json();
+        if (Array.isArray(accs)) setAwsAccounts(accs);
+      }
+
+      if (azureVmsRes && azureVmsRes.ok) {
+        const vms = await azureVmsRes.json();
+        if (Array.isArray(vms)) setAzureVMs(vms);
+      }
+
+      if (ec2Res && ec2Res.ok) {
+        const ec2 = await ec2Res.json();
+        if (Array.isArray(ec2)) setEc2Instances(ec2);
+      }
+
+      if (alertsRes && alertsRes.ok) {
+        const alts = await alertsRes.json();
+        if (Array.isArray(alts)) setAlerts(alts);
       }
     } catch (e) {
       console.warn('Real data sync note:', e);
@@ -178,18 +192,28 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const addAwsAccount = async (
     data: Omit<AWSAccount, 'id' | 'resourcesCount' | 'lastSync' | 'status'>
   ) => {
-    if (!data.roleArn.startsWith('arn:aws:iam::')) {
-      return false;
+    try {
+      const res = await fetch('/api/cloud-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'aws',
+          accountName: data.accountName,
+          accountId: data.accountId,
+          roleArn: data.roleArn,
+          regions: data.enabledRegions,
+        }),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setAwsAccounts((prev) => [...prev.filter((a) => a.accountId !== created.accountId), created]);
+        await loadRealData();
+        return true;
+      }
+    } catch (e) {
+      console.warn('AWS account save note:', e);
     }
-    const newAcc: AWSAccount = {
-      ...data,
-      id: `acc-aws-${Date.now()}`,
-      status: 'Connected',
-      resourcesCount: 0,
-      lastSync: 'Just now',
-    };
-    setAwsAccounts((prev) => [...prev, newAcc]);
-    return true;
+    return false;
   };
 
   // Add Real Azure Subscription

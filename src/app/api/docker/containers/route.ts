@@ -1,20 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mockDockerContainers } from '@/mock/monitoringData';
+import connectToDatabase from '@/lib/mongodb';
+import CloudResource from '@/models/CloudResource';
+
+
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const provider = searchParams.get('provider')?.toLowerCase();
-  const hostId = searchParams.get('hostId');
+  try {
+    await connectToDatabase();
+    const { searchParams } = new URL(request.url);
+    const provider = searchParams.get('provider');
 
-  let containers = [...mockDockerContainers];
+    const query: any = { resourceType: 'container' };
+    if (provider && provider !== 'all') {
+      query.provider = provider;
+    }
 
-  if (provider && provider !== 'all') {
-    containers = containers.filter((c) => c.cloudProvider.toLowerCase() === provider);
+    const containers = await CloudResource.find(query).lean();
+
+    return NextResponse.json(
+      containers.map((c: any) => ({
+        id: c._id.toString(),
+        containerId: c.resourceId,
+        name: c.name,
+        cloud: c.provider,
+        status: c.status,
+        image: c.metadata?.image || 'unknown',
+        host: c.metadata?.host || c.region,
+        region: c.region,
+        cpuPercent: c.metrics?.cpuUtilization,
+        memoryUsageMB: c.metrics?.memoryUtilization,
+      }))
+    );
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Failed to fetch containers' }, { status: 500 });
   }
-
-  if (hostId) {
-    containers = containers.filter((c) => c.hostId === hostId);
-  }
-
-  return NextResponse.json(containers);
 }
