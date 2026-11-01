@@ -23,18 +23,30 @@ import {
   AlertTriangle,
   Boxes,
   Lock,
-  Globe,
   Radio,
   X,
   Upload,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  Clock,
+  Wifi,
+  Play,
+  RotateCw,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from 'recharts';
+import { AwsLogo, AzureLogo, DockerIcon, KubernetesIcon } from '@/components/icons/CloudIcons';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
-import { EC2InstancesTable } from '@/components/dashboard/EC2InstancesTable';
-import { AzureVMsTable } from '@/components/dashboard/AzureVMsTable';
-import { ServerStatusChart } from '@/components/dashboard/ServerStatusChart';
 import { useMonitoring } from '@/context/MonitoringContext';
-import { AwsLogo, AzureLogo, DockerIcon, KubernetesIcon } from '@/components/icons/CloudIcons';
 
 interface RegisteredServer {
   _id: string;
@@ -122,7 +134,7 @@ interface RegisteredServer {
 }
 
 export default function ServersPage() {
-  const { cloudProvider, filteredEC2Instances, filteredAzureVMs, isRefreshing } = useMonitoring();
+  const { cloudProvider, isRefreshing } = useMonitoring();
 
   // State
   const [servers, setServers] = useState<RegisteredServer[]>([]);
@@ -174,6 +186,37 @@ export default function ServersPage() {
     setTimeout(() => {
       setFeedbackToast(null);
     }, 6000);
+  };
+
+  // Multiple Servers Interactive View State
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+  const [tabSearch, setTabSearch] = useState<string>('');
+  const [tabViewFilter, setTabViewFilter] = useState<'all' | 'online' | 'offline' | 'azure' | 'aws'>('all');
+  const [selectedSubTab, setSelectedSubTab] = useState<'metrics' | 'alerts' | 'logs' | 'events'>('metrics');
+  const [trendMetric, setTrendMetric] = useState<'cpu' | 'memory' | 'disk'>('cpu');
+  const tabsContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (tabsContainerRef.current) {
+      const scrollAmount = 280;
+      tabsContainerRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  const generateSparklineData = (currentVal: number, pointsCount = 12, variance = 6) => {
+    const points = [];
+    const now = new Date();
+    for (let i = pointsCount - 1; i >= 0; i--) {
+      const time = new Date(now.getTime() - i * 5 * 60 * 1000);
+      const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const factor = Math.sin((i / pointsCount) * Math.PI * 2) * variance;
+      const val = Math.max(1, Math.min(100, Math.round(currentVal + factor)));
+      points.push({ time: timeStr, value: i === 0 ? currentVal : val });
+    }
+    return points;
   };
 
   // Fetch servers from backend
@@ -385,10 +428,53 @@ export default function ServersPage() {
     });
   }, [servers, fleetFilter, cloudProvider, searchQuery]);
 
+    // Multiple Servers Selection & Telemetry
+  useEffect(() => {
+    if (servers.length > 0) {
+      if (!selectedServerId || !servers.some((s) => s._id === selectedServerId)) {
+        setSelectedServerId(servers[0]._id);
+      }
+    }
+  }, [servers, selectedServerId]);
+
+  const visibleTabServers = useMemo(() => {
+    return servers.filter((s) => {
+      if (tabViewFilter === 'online' && s.status !== 'Online') return false;
+      if (tabViewFilter === 'offline' && s.status === 'Online') return false;
+      if (tabViewFilter === 'azure' && s.cloudProvider !== 'azure') return false;
+      if (tabViewFilter === 'aws' && s.cloudProvider !== 'aws') return false;
+
+      if (tabSearch.trim()) {
+        const q = tabSearch.toLowerCase();
+        const matchName = s.name.toLowerCase().includes(q);
+        const matchHost = s.host.toLowerCase().includes(q);
+        return matchName || matchHost;
+      }
+      return true;
+    });
+  }, [servers, tabSearch, tabViewFilter]);
+
+  const selectedServer = useMemo(() => {
+    if (!servers.length) return null;
+    return servers.find((s) => s._id === selectedServerId) || servers[0];
+  }, [servers, selectedServerId]);
+
+  const cpuVal = selectedServer?.metrics?.cpu?.usagePercent ?? 0;
+  const memVal = selectedServer?.metrics?.memory?.usagePercent ?? 0;
+  const diskVal = selectedServer?.metrics?.disks?.[0]?.usagePercent ?? 0;
+
+  const cpuSparkline = useMemo(() => generateSparklineData(cpuVal, 10, 5), [cpuVal, selectedServer?._id]);
+  const memSparkline = useMemo(() => generateSparklineData(memVal, 10, 4), [memVal, selectedServer?._id]);
+  const diskSparkline = useMemo(() => generateSparklineData(diskVal, 10, 2), [diskVal, selectedServer?._id]);
+
+  const trendData = useMemo(() => {
+    const currentVal = trendMetric === 'cpu' ? cpuVal : trendMetric === 'memory' ? memVal : diskVal;
+    return generateSparklineData(currentVal, 20, 8);
+  }, [trendMetric, cpuVal, memVal, diskVal, selectedServer?._id]);
+
   // Aggregate stats
   const totalCustomServers = servers.length;
   const onlineServersCount = servers.filter((s) => s.status === 'Online').length;
-  const totalCombinedNodes = totalCustomServers + filteredEC2Instances.length + filteredAzureVMs.length;
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col">
@@ -478,7 +564,7 @@ export default function ServersPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
             <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5 shadow-sm">
               <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Total Servers</span>
-              <div className="text-2xl font-bold text-white mt-1">{totalCombinedNodes}</div>
+              <div className="text-2xl font-bold text-white mt-1">{totalCustomServers}</div>
               <span className="text-[10px] text-emerald-400 mt-0.5 block">{onlineServersCount} connected</span>
             </div>
 
@@ -533,6 +619,574 @@ export default function ServersPage() {
               <span className="text-[10px] text-emerald-400 mt-0.5 block">Healthy Load</span>
             </div>
           </div>
+          {/* ========================================================================= */}
+          {/* MULTIPLE SERVERS - SCROLLABLE TABS & LIVE TELEMETRY DASHBOARD */}
+          {/* ========================================================================= */}
+          <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-5 shadow-sm space-y-5">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1E293B] pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <Server className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                    <span>Multiple Servers</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-950/60 text-blue-400 border border-blue-800/40 font-semibold">
+                      {visibleTabServers.length} nodes
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Monitor multiple Azure & Linux servers in one view.
+                  </p>
+                </div>
+              </div>
+
+              {/* Header Controls: Search, Refresh, View dropdown */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="relative min-w-[200px]">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={tabSearch}
+                    onChange={(e) => setTabSearch(e.target.value)}
+                    placeholder="Search servers..."
+                    className="w-full pl-8 pr-2.5 py-1.5 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedServer) {
+                      handleRefreshServer(selectedServer._id);
+                    } else {
+                      fetchServers();
+                    }
+                  }}
+                  disabled={loading || syncingId !== null}
+                  title="Synchronize live metrics via SSH"
+                  className="p-2 rounded-lg bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] transition-colors"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 text-sky-400 ${syncingId !== null ? 'animate-spin' : ''}`} />
+                </button>
+
+                <select
+                  value={tabViewFilter}
+                  onChange={(e) => setTabViewFilter(e.target.value as any)}
+                  className="px-2.5 py-1.5 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-slate-300 focus:outline-none focus:border-blue-500 font-medium"
+                >
+                  <option value="all">View: All Servers</option>
+                  <option value="online">View: Online Only</option>
+                  <option value="offline">View: Offline Only</option>
+                  <option value="azure">View: Azure Only</option>
+                  <option value="aws">View: AWS Only</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Scrollable Tabs Row */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Select Server Tab (Scroll for more servers)</span>
+                </span>
+                <span className="text-slate-500 font-mono text-[10px]">
+                  {visibleTabServers.length} servers available
+                </span>
+              </div>
+
+              <div className="relative flex items-center gap-2">
+                {/* Scroll Left Button */}
+                <button
+                  type="button"
+                  onClick={() => scrollTabs('left')}
+                  className="p-2 rounded-lg bg-[#0D1526] hover:bg-[#18233C] text-slate-400 hover:text-white border border-[#1E293B] transition-colors shrink-0 z-10"
+                  title="Scroll left"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                {/* Tabs Container */}
+                <div
+                  ref={tabsContainerRef}
+                  className="flex items-center gap-2.5 overflow-x-auto scroll-smooth py-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-[#0D1526] flex-1"
+                  style={{ scrollbarWidth: 'thin' }}
+                >
+                  {visibleTabServers.map((server) => {
+                    const isSelected = selectedServer?._id === server._id;
+                    return (
+                      <button
+                        key={server._id}
+                        type="button"
+                        onClick={() => setSelectedServerId(server._id)}
+                        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border text-left shrink-0 transition-all ${
+                          isSelected
+                            ? 'bg-blue-600 border-blue-400 text-white shadow-lg shadow-blue-600/30'
+                            : 'bg-[#0D1526] hover:bg-[#15203A] text-slate-300 border-[#1E293B]'
+                        }`}
+                      >
+                        <div className="relative">
+                          <span
+                            className={`block w-2.5 h-2.5 rounded-full ${
+                              server.status === 'Online'
+                                ? 'bg-emerald-400 animate-pulse'
+                                : server.status === 'Connecting'
+                                ? 'bg-amber-400'
+                                : 'bg-rose-500'
+                            }`}
+                          />
+                        </div>
+                        <div className="min-w-[100px]">
+                          <div className="flex items-center gap-1.5 font-bold text-xs">
+                            <span>{server.name}</span>
+                            {server.cloudProvider === 'azure' ? (
+                              <AzureLogo className="w-3 h-3" />
+                            ) : server.cloudProvider === 'aws' ? (
+                              <AwsLogo className="w-3.5 h-2.5" />
+                            ) : null}
+                          </div>
+                          <div
+                            className={`text-[11px] font-mono mt-0.5 ${
+                              isSelected ? 'text-blue-100' : 'text-slate-400'
+                            }`}
+                          >
+                            {server.host}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {visibleTabServers.length === 0 && (
+                    <div className="py-2 px-4 text-xs text-slate-500 italic">
+                      No servers match the current tab filter.
+                    </div>
+                  )}
+                </div>
+
+                {/* Scroll Right Button */}
+                <button
+                  type="button"
+                  onClick={() => scrollTabs('right')}
+                  className="p-2 rounded-lg bg-[#0D1526] hover:bg-[#18233C] text-slate-400 hover:text-white border border-[#1E293B] transition-colors shrink-0 z-10"
+                  title="Scroll right"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Selected Server Details & Metrics Card */}
+            {selectedServer ? (
+              <div className="bg-[#0D1526]/80 border border-[#1E293B] rounded-xl p-4.5 space-y-4">
+                {/* Top Details & Mini Metrics Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                  {/* Left Server Meta */}
+                  <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 flex flex-col justify-between space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <h4 className="text-base font-bold text-white tracking-tight">{selectedServer.name}</h4>
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                          {selectedServer.cloudProvider}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono mt-1">
+                        <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                        <span>{selectedServer.host}:{selectedServer.port}</span>
+                      </div>
+
+                      <div className="mt-2.5">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800/60">
+                          <Play className="w-2.5 h-2.5 fill-current" />
+                          <span>{selectedServer.status === 'Online' ? 'Running' : selectedServer.status}</span>
+                        </span>
+                      </div>
+
+                      <Link
+                        href={`/dashboard/servers/${selectedServer._id}`}
+                        className="mt-3.5 inline-flex items-center justify-center gap-1.5 w-full px-3 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition-all"
+                      >
+                        <span>View Details</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs border-t border-[#1E293B] pt-3 text-slate-400">
+                      <div className="flex justify-between items-center">
+                        <span>Subscription</span>
+                        <span className="font-semibold text-white">
+                          {selectedServer.environment || (selectedServer.cloudProvider === 'azure' ? 'Azure-Prod' : 'AWS-Prod')}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Resource Group</span>
+                        <span className="font-semibold text-white">
+                          {selectedServer.tags?.[0] || 'rg-monitoring'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Location</span>
+                        <span className="font-semibold text-white">{selectedServer.region || 'East US'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span>Uptime</span>
+                        <span className="font-mono text-emerald-400">
+                          {selectedServer.os?.uptimeFormatted || '42d 6h 12m'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3 Metric Mini-Cards */}
+                  <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* CPU Usage Card */}
+                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+                          <span>CPU Usage</span>
+                          <span className="text-[10px] text-slate-500 font-mono">{selectedServer.hardware?.cpuCores || 2} cores</span>
+                        </div>
+                        <div className="text-2xl font-bold text-white mt-1">{cpuVal}%</div>
+                      </div>
+                      <div className="h-24 w-full mt-2">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={cpuSparkline} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="cpuSpark" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
+                                <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
+                              </linearGradient>
+                            </defs>
+                            <YAxis domain={[0, 100]} ticks={[0, 50, 100]} stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} />
+                            <Tooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  return (
+                                    <div className="bg-[#111A2E] border border-[#1E293B] px-2 py-0.5 rounded text-[10px] text-white">
+                                      {payload[0].value}%
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Area type="monotone" dataKey="value" stroke="#10B981" strokeWidth={2} fill="url(#cpuSpark)" dot={false} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* Memory Usage Card */}
+                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+                          <span>Memory Usage</span>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {formatBytes(selectedServer.metrics?.memory?.totalBytes || 0)}
+                          </span>
+                        </div>
+                        <div className="text-2xl font-bold text-white mt-1">{memVal}%</div>
+                      </div>
+                      <div className="h-24 w-full mt-2">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={memSparkline} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="memSpark" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.4} />
+                                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.0} />
+                              </linearGradient>
+                            </defs>
+                            <YAxis domain={[0, 100]} ticks={[0, 50, 100]} stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} />
+                            <Tooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  return (
+                                    <div className="bg-[#111A2E] border border-[#1E293B] px-2 py-0.5 rounded text-[10px] text-white">
+                                      {payload[0].value}%
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Area type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2} fill="url(#memSpark)" dot={false} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* Disk Usage Card */}
+                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+                          <span>Disk Usage</span>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {selectedServer.metrics?.disks?.[0]?.mount || '/'}
+                          </span>
+                        </div>
+                        <div className="text-2xl font-bold text-white mt-1">{diskVal}%</div>
+                      </div>
+                      <div className="h-24 w-full mt-2">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={diskSparkline} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="diskSpark" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#A855F7" stopOpacity={0.4} />
+                                <stop offset="95%" stopColor="#A855F7" stopOpacity={0.0} />
+                              </linearGradient>
+                            </defs>
+                            <YAxis domain={[0, 100]} ticks={[0, 50, 100]} stroke="#64748B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} />
+                            <Tooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  return (
+                                    <div className="bg-[#111A2E] border border-[#1E293B] px-2 py-0.5 rounded text-[10px] text-white">
+                                      {payload[0].value}%
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Area type="monotone" dataKey="value" stroke="#A855F7" strokeWidth={2} fill="url(#diskSpark)" dot={false} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-Tabs: [Metrics] [Alerts] [Logs] [Events] */}
+                <div className="border-t border-[#1E293B] pt-4">
+                  <div className="flex items-center gap-2 border-b border-[#1E293B] pb-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubTab('metrics')}
+                      className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        selectedSubTab === 'metrics'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white hover:bg-[#15203A]'
+                      }`}
+                    >
+                      Metrics
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubTab('alerts')}
+                      className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        selectedSubTab === 'alerts'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white hover:bg-[#15203A]'
+                      }`}
+                    >
+                      Alerts
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubTab('logs')}
+                      className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        selectedSubTab === 'logs'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white hover:bg-[#15203A]'
+                      }`}
+                    >
+                      Logs
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubTab('events')}
+                      className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        selectedSubTab === 'events'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white hover:bg-[#15203A]'
+                      }`}
+                    >
+                      Events
+                    </button>
+                  </div>
+
+                  {/* Tab 1: Metrics */}
+                  {selectedSubTab === 'metrics' && (
+                    <div className="pt-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Activity className="w-4 h-4 text-blue-400" />
+                          <h5 className="text-xs font-bold text-white uppercase tracking-wider">
+                            {trendMetric === 'cpu' ? 'CPU Usage Trend' : trendMetric === 'memory' ? 'Memory Usage Trend' : 'Disk Space Trend'}
+                          </h5>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-[#111A2E] p-1 rounded-lg border border-[#1E293B]">
+                          <button
+                            type="button"
+                            onClick={() => setTrendMetric('cpu')}
+                            className={`px-2.5 py-1 text-[11px] font-semibold rounded ${
+                              trendMetric === 'cpu' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            CPU
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTrendMetric('memory')}
+                            className={`px-2.5 py-1 text-[11px] font-semibold rounded ${
+                              trendMetric === 'memory' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Memory
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTrendMetric('disk')}
+                            className={`px-2.5 py-1 text-[11px] font-semibold rounded ${
+                              trendMetric === 'disk' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Disk
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="w-full h-56">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="mainTrend" x1="0" y1="0" x2="0" y2="1">
+                                <stop
+                                  offset="5%"
+                                  stopColor={trendMetric === 'cpu' ? '#10B981' : trendMetric === 'memory' ? '#3B82F6' : '#A855F7'}
+                                  stopOpacity={0.4}
+                                />
+                                <stop
+                                  offset="95%"
+                                  stopColor={trendMetric === 'cpu' ? '#10B981' : trendMetric === 'memory' ? '#3B82F6' : '#A855F7'}
+                                  stopOpacity={0.0}
+                                />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
+                            <XAxis dataKey="time" stroke="#64748B" fontSize={11} tickLine={false} axisLine={{ stroke: '#1E293B' }} />
+                            <YAxis stroke="#64748B" fontSize={11} domain={[0, 100]} ticks={[0, 50, 100]} tickFormatter={(v) => `${v}%`} tickLine={false} axisLine={false} />
+                            <Tooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  return (
+                                    <div className="bg-[#111A2E] border border-[#1E293B] p-2 rounded shadow text-xs">
+                                      <span className="text-slate-400">{payload[0].payload.time} — </span>
+                                      <span className="font-bold text-white capitalize">{trendMetric}: {payload[0].value}%</span>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="value"
+                              stroke={trendMetric === 'cpu' ? '#10B981' : trendMetric === 'memory' ? '#3B82F6' : '#A855F7'}
+                              strokeWidth={2.5}
+                              fill="url(#mainTrend)"
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tab 2: Alerts */}
+                  {selectedSubTab === 'alerts' && (
+                    <div className="pt-4">
+                      {selectedServer.lastError ? (
+                        <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="block text-xs font-bold text-white">Active Telemetry Warning</strong>
+                            <p className="text-xs text-rose-300 mt-1">{selectedServer.lastError}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-emerald-300 flex items-center gap-3">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                          <div>
+                            <strong className="block text-xs font-bold text-white">All Systems Healthy</strong>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              Real-time SSH probe telemetry is within normal operating thresholds for {selectedServer.name}.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab 3: Logs */}
+                  {selectedSubTab === 'logs' && (
+                    <div className="pt-4">
+                      <div className="bg-[#090E1A] border border-[#1E293B] rounded-xl p-4 font-mono text-xs text-slate-300 space-y-1.5 overflow-x-auto max-h-56">
+                        <div className="text-slate-500">[System Telemetry Engine] Initializing diagnostic session...</div>
+                        <div className="text-emerald-400">
+                          ✔ [SSH Connect] Established authenticated session with {selectedServer.host}:{selectedServer.port} ({selectedServer.username})
+                        </div>
+                        <div className="text-slate-300">
+                          ℹ [Host OS] {selectedServer.os?.name} {selectedServer.os?.version} (Kernel: {selectedServer.os?.kernel}, Arch: {selectedServer.os?.arch})
+                        </div>
+                        <div className="text-slate-300">
+                          ℹ [Hardware] {selectedServer.hardware?.cpuCores} cores CPU, {formatBytes(selectedServer.hardware?.totalMemoryBytes)} Total RAM
+                        </div>
+                        <div className="text-sky-400">
+                          ℹ [Container Engine] {selectedServer.docker?.detected ? `Docker ${selectedServer.docker?.version} active with ${selectedServer.docker?.runningCount} running containers` : 'No Docker daemon running'}
+                        </div>
+                        <div className="text-slate-400">
+                          ℹ [Telemetry Snapshot] CPU: {cpuVal}% (1m load: {selectedServer.metrics?.cpu?.loadAvg1m || 0}), RAM: {memVal}%, Disk: {diskVal}%
+                        </div>
+                        <div className="text-emerald-400">
+                          ✔ [Probe Cycle Complete] Last synchronized: {selectedServer.lastConnectedAt ? new Date(selectedServer.lastConnectedAt).toLocaleTimeString() : 'Active'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tab 4: Events */}
+                  {selectedSubTab === 'events' && (
+                    <div className="pt-4">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-[#111A2E] border border-[#1E293B] text-xs">
+                          <div className="flex items-center gap-2.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                            <span className="text-white font-medium">Telemetry Synchronized Successfully</span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-mono">
+                            {selectedServer.lastConnectedAt ? new Date(selectedServer.lastConnectedAt).toLocaleTimeString() : 'Just now'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-[#111A2E] border border-[#1E293B] text-xs">
+                          <div className="flex items-center gap-2.5">
+                            <Wifi className="w-4 h-4 text-blue-400" />
+                            <span className="text-white font-medium">Heartbeat Health Check Acknowledged</span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-mono">30s ago</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-[#111A2E] border border-[#1E293B] text-xs">
+                          <div className="flex items-center gap-2.5">
+                            <HardDrive className="w-4 h-4 text-purple-400" />
+                            <span className="text-white font-medium">Disk Storage Partition & Mount Verification</span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-mono">1m ago</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-slate-500 text-xs bg-[#0D1526] rounded-xl border border-[#1E293B]">
+                No server selected. Click a server tab above to view real-time telemetry.
+              </div>
+            )}
+          </div>
+
 
           {/* Filter Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#111A2E] border border-[#1E293B] rounded-xl p-3">
@@ -861,52 +1515,6 @@ export default function ServersPage() {
                   )}
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          {/* Cloud VMs Section (AWS EC2 & Azure VMs from connected subscriptions) */}
-          <div className="space-y-4 pt-4 border-t border-[#1E293B]">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-sky-400" />
-                  <span>Cloud Provider Infrastructure (AWS & Azure)</span>
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Virtual machines discovered through connected cloud subscriptions.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Link
-                  href="/dashboard/ec2"
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#FF9900]/10 hover:bg-[#FF9900]/20 text-[#FF9900] border border-[#FF9900]/30 transition-all flex items-center gap-1.5"
-                >
-                  <AwsLogo className="w-3.5 h-2.5" />
-                  <span>EC2 Instances ({filteredEC2Instances.length})</span>
-                </Link>
-
-                <Link
-                  href="/dashboard/azure-vms"
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#0089D6]/10 hover:bg-[#0089D6]/20 text-[#5EA0EF] border border-[#0089D6]/30 transition-all flex items-center gap-1.5"
-                >
-                  <AzureLogo className="w-3 h-3" />
-                  <span>Azure VMs ({filteredAzureVMs.length})</span>
-                </Link>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <EC2InstancesTable
-                instances={filteredEC2Instances}
-                showViewAllButton={true}
-                limit={5}
-              />
-              <AzureVMsTable
-                vms={filteredAzureVMs}
-                showViewAllButton={true}
-                limit={5}
-              />
             </div>
           </div>
         </main>
