@@ -6,6 +6,7 @@ import { encryptSecret, generateAgentToken } from '@/lib/serverMonitoring/crypto
 import { collectServerViaSSH } from '@/lib/serverMonitoring/sshCollector';
 import { formatConnectionDiagnostic } from '@/lib/serverMonitoring/errorDiagnostic';
 import { convertPPKToOpenSSH } from '@/lib/serverMonitoring/ppkConverter';
+import { evaluateResourceMetrics } from '@/lib/monitoring/alertEvaluationEngine';
 
 /**
  * GET /api/servers
@@ -298,6 +299,23 @@ export async function POST(request: NextRequest) {
       },
       { upsert: true }
     );
+
+    // 7. Evaluate real-time alerts on newly registered server metrics
+    if (initialSpecs?.metrics) {
+      evaluateResourceMetrics({
+        resourceId: 'srv-' + serverDoc._id.toString(),
+        resourceName: serverDoc.name,
+        resourceType: 'Server',
+        provider: cloudProvider,
+        region: region || 'global',
+        metrics: {
+          cpuUtilization: initialSpecs.metrics.cpu.usagePercent,
+          memoryUtilization: initialSpecs.metrics.memory.usagePercent,
+          disks: initialSpecs.metrics.disks || [],
+          timestamp: initialSpecs.metrics.cpu.timestamp || new Date(),
+        },
+      }).catch((e) => console.warn('[Server Reg] Alert eval note:', e.message));
+    }
 
     // Return sanitized server doc
     const sanitized = typeof serverDoc.toObject === 'function' ? serverDoc.toObject() : serverDoc;

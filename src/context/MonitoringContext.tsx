@@ -141,17 +141,30 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
 
     let hadSuccess = false;
     try {
+      const fetchWithTimeout = async (url: string) => {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 12000);
+        try {
+          const res = await fetch(url, { signal: controller.signal });
+          clearTimeout(tid);
+          return res;
+        } catch {
+          clearTimeout(tid);
+          return null;
+        }
+      };
+
       const [subsRes, awsRes, azureVmsRes, ec2Res, alertsRes, dockerRes, k8sClustersRes, k8sPodsRes, serversRes, syncRes] = await Promise.all([
-        fetch('/api/azure/subscriptions').catch(() => null),
-        fetch('/api/cloud-accounts?provider=aws').catch(() => null),
-        fetch('/api/azure/vms').catch(() => null),
-        fetch('/api/aws/ec2').catch(() => null),
-        fetch('/api/alerts').catch(() => null),
-        fetch('/api/docker/containers').catch(() => null),
-        fetch('/api/kubernetes/clusters').catch(() => null),
-        fetch('/api/kubernetes/pods').catch(() => null),
-        fetch('/api/servers').catch(() => null),
-        fetch('/api/sync').catch(() => null),
+        fetchWithTimeout('/api/azure/subscriptions'),
+        fetchWithTimeout('/api/cloud-accounts?provider=aws'),
+        fetchWithTimeout('/api/azure/vms'),
+        fetchWithTimeout('/api/aws/ec2'),
+        fetchWithTimeout('/api/alerts'),
+        fetchWithTimeout('/api/docker/containers'),
+        fetchWithTimeout('/api/kubernetes/clusters'),
+        fetchWithTimeout('/api/kubernetes/pods'),
+        fetchWithTimeout('/api/servers'),
+        fetchWithTimeout('/api/sync'),
       ]);
 
       if (subsRes && subsRes.ok) {
@@ -219,7 +232,6 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
         setRefreshError(null);
         lastFetchTimestampRef.current = Date.now();
       } else {
-        // If all requests failed, preserve existing cached data and flag stale/error
         setRefreshError('Network timeout or server unavailable. Preserving latest cached data.');
       }
     } catch (e: any) {
@@ -227,11 +239,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
       setRefreshError('Failed to refresh latest data; displaying cached infrastructure.');
     } finally {
       isFetchingRef.current = false;
-      if (!silent) {
-        setTimeout(() => setIsRefreshing(false), 300);
-      } else {
-        setIsRefreshing(false);
-      }
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -459,19 +467,29 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const filteredAzureVMs = useMemo(() => {
     if (cloudProvider === 'aws') return [];
     const connectedSubs = azureSubscriptions.filter((s) => s.status === 'Connected');
-    if (connectedSubs.length === 0) return [];
+    // Only suppress if there are configured subscriptions and none are connected
+    if (azureSubscriptions.length > 0 && connectedSubs.length === 0) return [];
 
     const targetSubs =
       selectedAzureSubId === 'all'
         ? connectedSubs
         : connectedSubs.filter((s) => s.id === selectedAzureSubId || s.subscriptionId === selectedAzureSubId);
 
-    const activeSelectedRegions = new Set(targetSubs.flatMap((s) => s.enabledRegions));
+    const activeSelectedRegions = new Set(
+      targetSubs
+        .flatMap((s) => (s.enabledRegions || (s as any).selectedRegions || []))
+        .map((r: string) => (r || '').toLowerCase().replace(/[\s-_]+/g, ''))
+        .filter(Boolean)
+    );
 
     return azureVMs.filter((vm) => {
-      if (activeSelectedRegions.size > 0 && !activeSelectedRegions.has(vm.region)) return false;
+      const vmReg = (vm.region || '').toLowerCase().replace(/[\s-_]+/g, '');
+      if (activeSelectedRegions.size > 0 && !activeSelectedRegions.has(vmReg)) return false;
       if (selectedAzureSubId !== 'all' && vm.subscriptionId !== selectedAzureSubId) return false;
-      if (selectedRegion !== 'all' && vm.region !== selectedRegion) return false;
+      if (selectedRegion !== 'all') {
+        const selReg = selectedRegion.toLowerCase().replace(/[\s-_]+/g, '');
+        if (vmReg !== selReg && !vmReg.includes(selReg) && !selReg.includes(vmReg)) return false;
+      }
       return true;
     });
   }, [cloudProvider, azureSubscriptions, azureVMs, selectedAzureSubId, selectedRegion]);
@@ -545,7 +563,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     const azureCount = filteredAzureVMs.length;
     const dockerCount = filteredDockerContainers.length;
     const k8sCount = filteredK8sClusters.length;
-    const alertCount = filteredAlerts.length;
+    const alertCount = filteredAlerts.filter((a) => a.status === 'active').length;
 
     // Known IPs and names from cloud VMs to prevent duplicate counting
     const knownIps = new Set([

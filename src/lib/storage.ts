@@ -63,23 +63,7 @@ async function checkMongo(): Promise<boolean> {
 // Cloud Account Storage
 // -----------------------------------------------------------------------------
 export async function upsertAccount(data: any): Promise<any> {
-  const hasMongo = await checkMongo();
-  if (hasMongo) {
-    try {
-      const filter = data.subscriptionId
-        ? { provider: data.provider, subscriptionId: data.subscriptionId }
-        : { provider: data.provider, accountId: data.accountId };
-      return await CloudAccount.findOneAndUpdate(filter, data, {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-      });
-    } catch (e) {
-      console.warn('[Storage] Mongo upsert failed, falling back to local file storage');
-    }
-  }
-
-  // Fallback to local file store
+  // Always mirror to local file store for persistent fallback
   const store = getFileStore();
   const existingIdx = store.accounts.findIndex(
     (a) =>
@@ -99,8 +83,24 @@ export async function upsertAccount(data: any): Promise<any> {
   } else {
     store.accounts.push(accountRecord);
   }
-
   saveFileStore(store);
+
+  const hasMongo = await checkMongo();
+  if (hasMongo) {
+    try {
+      const filter = data.subscriptionId
+        ? { provider: data.provider, subscriptionId: data.subscriptionId }
+        : { provider: data.provider, accountId: data.accountId };
+      return await CloudAccount.findOneAndUpdate(filter, data, {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      });
+    } catch (e) {
+      console.warn('[Storage] Mongo upsert failed, mirrored to local file storage');
+    }
+  }
+
   return accountRecord;
 }
 
@@ -110,7 +110,10 @@ export async function fetchAccounts(provider?: string): Promise<any[]> {
     try {
       const q: any = {};
       if (provider && provider !== 'all') q.provider = provider;
-      return await CloudAccount.find(q).lean();
+      const mongoList = await CloudAccount.find(q).lean();
+      if (mongoList && mongoList.length > 0) {
+        return mongoList;
+      }
     } catch {
       // Fallback
     }
@@ -165,6 +168,22 @@ export async function removeAccount(provider: string, identifier: string): Promi
 export async function bulkUpsertResources(resources: any[]): Promise<void> {
   if (resources.length === 0) return;
 
+  // Always mirror to local file store
+  const store = getFileStore();
+  const resMap = new Map<string, any>();
+  for (const r of store.resources) {
+    resMap.set(`${r.provider}:${r.resourceId}`, r);
+  }
+  for (const r of resources) {
+    resMap.set(`${r.provider}:${r.resourceId}`, {
+      _id: r._id || `res-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      ...r,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+  store.resources = Array.from(resMap.values());
+  saveFileStore(store);
+
   const hasMongo = await checkMongo();
   if (hasMongo) {
     try {
@@ -178,25 +197,9 @@ export async function bulkUpsertResources(resources: any[]): Promise<void> {
       await CloudResource.bulkWrite(bulkOps as any);
       return;
     } catch (e) {
-      console.warn('[Storage] Mongo bulk write failed, using local file store');
+      console.warn('[Storage] Mongo bulk write failed, mirrored to local file store');
     }
   }
-
-  const store = getFileStore();
-  const resMap = new Map<string, any>();
-  for (const r of store.resources) {
-    resMap.set(`${r.provider}:${r.resourceId}`, r);
-  }
-  for (const r of resources) {
-    resMap.set(`${r.provider}:${r.resourceId}`, {
-      _id: r._id || `res-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      ...r,
-      updatedAt: new Date().toISOString(),
-    });
-  }
-
-  store.resources = Array.from(resMap.values());
-  saveFileStore(store);
 }
 
 export async function fetchResources(query: {
@@ -225,7 +228,10 @@ export async function fetchResources(query: {
           { resourceId: { $regex: query.search, $options: 'i' } },
         ];
       }
-      return await CloudResource.find(mongoQ).sort({ updatedAt: -1 }).limit(200).lean();
+      const mongoResults = await CloudResource.find(mongoQ).sort({ updatedAt: -1 }).limit(200).lean();
+      if (mongoResults && mongoResults.length > 0) {
+        return mongoResults;
+      }
     } catch {
       //
     }

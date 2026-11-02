@@ -48,7 +48,7 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
   ];
 
   return (
-    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col justify-between h-full">
+    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col h-full">
       <div className="flex items-center gap-2 mb-2">
         <div className="p-1.5 rounded-md bg-amber-500/10 text-amber-400">
           <Zap className="w-4 h-4" />
@@ -56,8 +56,8 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
         <h3 className="text-sm font-semibold text-white">Server Status</h3>
       </div>
 
-      <div className="flex items-center justify-between gap-2 h-56">
-        <div className="relative w-44 h-44 flex-shrink-0 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-between gap-3 min-h-[190px]">
+        <div className="relative w-32 h-32 sm:w-36 sm:h-36 shrink-0 flex items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Tooltip
@@ -80,8 +80,8 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
                 data={statusData}
                 cx="50%"
                 cy="50%"
-                innerRadius={52}
-                outerRadius={70}
+                innerRadius={42}
+                outerRadius={58}
                 paddingAngle={3}
                 dataKey="count"
                 stroke="none"
@@ -97,23 +97,23 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
             <span className="text-xl font-bold text-white tracking-tight leading-none">
               {healthyPct}%
             </span>
-            <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+            <span className="text-[10px] text-slate-400 font-medium mt-0.5 whitespace-nowrap">
               Healthy
             </span>
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col justify-center space-y-3 pl-2">
+        <div className="flex-1 flex flex-col justify-center space-y-3.5 min-w-0 pr-1">
           {statusData.map((item) => (
-            <div key={item.status} className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
+            <div key={item.status} className="flex items-center justify-between gap-2 text-xs whitespace-nowrap">
+              <div className="flex items-center gap-2 min-w-0">
                 <span
-                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: item.color }}
                 />
-                <span className="text-slate-300 font-medium">{item.status}</span>
+                <span className="text-slate-300 font-medium truncate">{item.status}</span>
               </div>
-              <span className="text-slate-300 font-semibold">{item.count}</span>
+              <span className="text-slate-200 font-semibold tabular-nums shrink-0">{item.count}</span>
             </div>
           ))}
         </div>

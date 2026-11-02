@@ -43,6 +43,22 @@ export function Sidebar({
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggedOutToast, setLoggedOutToast] = useState(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
+
+  React.useEffect(() => {
+    async function loadUnreadCount() {
+      try {
+        const res = await fetch('/api/notifications?unreadOnly=true&limit=1');
+        if (res.ok) {
+          const data = await res.json();
+          setUnreadNotifCount(data.unreadCount || 0);
+        }
+      } catch {}
+    }
+    loadUnreadCount();
+    const interval = setInterval(loadUnreadCount, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   const alertBadgeCount =
     activeAlertsCount !== undefined
@@ -70,16 +86,21 @@ export function Sidebar({
       icon: AlertTriangle,
       badge: alertBadgeCount,
     },
-    { label: 'Notification Channels', href: '/dashboard/notifications', icon: BellRing },
+    {
+      label: 'Notification Channels',
+      href: '/dashboard/notifications',
+      icon: BellRing,
+      badge: unreadNotifCount,
+    },
     { label: 'Settings', href: '/dashboard/settings', icon: Settings },
   ];
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setShowLogoutConfirm(false);
-    setLoggedOutToast(true);
-    setTimeout(() => {
-      setLoggedOutToast(false);
-    }, 3000);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
+    window.location.href = '/login';
   };
 
   const sidebarContent = (

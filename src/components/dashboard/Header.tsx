@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Cloud,
@@ -52,6 +52,24 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
   const [openCloudMenu, setOpenCloudMenu] = useState(false);
   const [openAccountMenu, setOpenAccountMenu] = useState(false);
   const [openAlertsMenu, setOpenAlertsMenu] = useState(false);
+  const [inAppNotifs, setInAppNotifs] = useState<any[]>([]);
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
+
+  useEffect(() => {
+    async function loadNotifs() {
+      try {
+        const res = await fetch('/api/notifications?unreadOnly=true&limit=6');
+        if (res.ok) {
+          const data = await res.json();
+          setInAppNotifs(data.notifications || []);
+          setUnreadNotifCount(data.unreadCount || 0);
+        }
+      } catch {}
+    }
+    loadNotifs();
+    const interval = setInterval(loadNotifs, 12000);
+    return () => clearInterval(interval);
+  }, [lastRefreshedAt]);
 
   const cloudOptions: { label: string; value: CloudProvider; icon: React.ReactNode }[] = [
     { label: 'All Clouds', value: 'all', icon: <Cloud className="w-3.5 h-3.5 text-blue-400" /> },
@@ -393,51 +411,110 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
             aria-label="View notifications"
           >
             <Bell className="w-4 h-4" />
-            {activeAlerts.length > 0 && (
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+            {(unreadNotifCount > 0 || activeAlerts.length > 0) && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center font-mono border-2 border-[#0B1120] shadow-sm animate-pulse">
+                {unreadNotifCount > 0 ? unreadNotifCount : activeAlerts.length}
+              </span>
             )}
           </button>
 
           {openAlertsMenu && (
-            <div className="absolute right-0 mt-1.5 w-72 sm:w-80 bg-[#111A2E] border border-[#1E293B] rounded-xl shadow-2xl p-3 z-30 text-xs">
+            <div className="absolute right-0 mt-1.5 w-80 sm:w-96 bg-[#111A2E] border border-[#1E293B] rounded-xl shadow-2xl p-3 z-30 text-xs">
               <div className="flex items-center justify-between pb-2 border-b border-[#1E293B] mb-2">
-                <span className="font-semibold text-white">Active Alerts ({activeAlerts.length})</span>
+                <span className="font-semibold text-white flex items-center gap-1.5">
+                  <Bell className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Notifications &amp; Alerts ({unreadNotifCount > 0 ? unreadNotifCount : activeAlerts.length})</span>
+                </span>
                 <Link
-                  href="/dashboard/alerts"
+                  href="/dashboard/notifications"
                   onClick={() => setOpenAlertsMenu(false)}
                   className="text-blue-400 hover:underline flex items-center gap-0.5 text-[11px]"
                 >
-                  <span>View All</span>
+                  <span>Channels</span>
                   <ExternalLink className="w-3 h-3" />
                 </Link>
               </div>
 
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {activeAlerts.map((al) => (
-                  <div
-                    key={al.id}
-                    className="p-2 rounded-lg bg-[#0D1526] border border-[#1E293B] space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-white truncate max-w-[180px]">
-                        {al.title}
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                          al.severity === 'Critical'
-                            ? 'bg-rose-500/20 text-rose-400'
-                            : 'bg-amber-500/20 text-amber-400'
-                        }`}
-                      >
-                        {al.severity}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-400 flex justify-between">
-                      <span>{al.resourceName}</span>
-                      <span>{al.timeAgo}</span>
-                    </div>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {inAppNotifs.length > 0 ? (
+                  inAppNotifs.map((n) => (
+                    <Link
+                      key={n.id}
+                      href={n.link || '/dashboard/servers'}
+                      onClick={() => setOpenAlertsMenu(false)}
+                      className="block p-2 rounded-lg bg-[#0D1526] hover:bg-[#152038] border border-[#1E293B] space-y-1 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-white truncate max-w-[200px]">
+                          {n.title}
+                        </span>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                            n.severity === 'critical'
+                              ? 'bg-rose-500/20 text-rose-400'
+                              : 'bg-amber-500/20 text-amber-400'
+                          }`}
+                        >
+                          {n.severity.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 line-clamp-1">{n.message}</p>
+                      <div className="text-[10px] text-slate-400 flex justify-between pt-0.5">
+                        <span className="text-blue-400">{n.resourceName}</span>
+                        <span>{new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    </Link>
+                  ))
+                ) : activeAlerts.length > 0 ? (
+                  activeAlerts.map((al) => (
+                    <Link
+                      key={al.id}
+                      href="/dashboard/alerts"
+                      onClick={() => setOpenAlertsMenu(false)}
+                      className="block p-2 rounded-lg bg-[#0D1526] hover:bg-[#152038] border border-[#1E293B] space-y-1 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-white truncate max-w-[200px]">
+                          {al.title}
+                        </span>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                            al.severity === 'Critical'
+                              ? 'bg-rose-500/20 text-rose-400'
+                              : 'bg-amber-500/20 text-amber-400'
+                          }`}
+                        >
+                          {al.severity}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 flex justify-between">
+                        <span>{al.resourceName}</span>
+                        <span>{al.timeAgo}</span>
+                      </div>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-slate-400 text-xs">
+                    No unread notifications. All systems healthy.
                   </div>
-                ))}
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-[#1E293B] mt-2 flex justify-between text-[11px]">
+                <Link
+                  href="/dashboard/alerts"
+                  onClick={() => setOpenAlertsMenu(false)}
+                  className="text-slate-400 hover:text-white"
+                >
+                  View All Alerts
+                </Link>
+                <Link
+                  href="/dashboard/notifications"
+                  onClick={() => setOpenAlertsMenu(false)}
+                  className="text-blue-400 hover:underline"
+                >
+                  Notification Feed &rarr;
+                </Link>
               </div>
             </div>
           )}

@@ -89,11 +89,23 @@ async function runCommandOnAzureVM(
 
       const pollData = await pollRes.json();
       if (pollData.status === 'Succeeded') {
-        const outputArr = pollData.properties?.output || [];
-        for (const out of outputArr) {
-          if (out.message && out.message.includes('[stdout]')) {
-            const stdoutPart = out.message.split('[stdout]')[1]?.split('[stderr]')[0] || '';
-            return stdoutPart.trim();
+        const rawOutput = pollData.properties?.output || pollData.value || [];
+        let safeArr: any[] = [];
+        if (Array.isArray(rawOutput)) {
+          safeArr = rawOutput;
+        } else if (rawOutput && typeof rawOutput === 'object') {
+          try {
+            safeArr = Object.values(rawOutput);
+          } catch {
+            safeArr = [];
+          }
+        }
+        for (const out of safeArr) {
+          if (out && typeof out === 'object' && 'message' in out && typeof (out as any).message === 'string') {
+            if ((out as any).message.includes('[stdout]')) {
+              const stdoutPart = (out as any).message.split('[stdout]')[1]?.split('[stderr]')[0] || '';
+              return stdoutPart.trim();
+            }
           }
         }
         return '';

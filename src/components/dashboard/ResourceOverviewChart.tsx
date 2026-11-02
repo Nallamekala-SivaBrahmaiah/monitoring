@@ -59,7 +59,7 @@ export function ResourceOverviewChart({
   initialMetric = 'CPU',
   data,
 }: ResourceOverviewChartProps) {
-  const { cloudProvider, isRefreshing, customServers, filteredAzureVMs, filteredEC2Instances } =
+  const { cloudProvider, lastRefreshedAt, customServers, filteredAzureVMs, filteredEC2Instances } =
     useMonitoring();
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>(initialMetric);
@@ -236,9 +236,15 @@ export function ResourceOverviewChart({
     let isMounted = true;
 
     async function loadTelemetry() {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
       try {
         setLoading(true);
-        const res = await fetch(`/api/dashboard/metrics?provider=${cloudProvider}`);
+        const serverParam = selectedServer !== 'all' ? `&server=${encodeURIComponent(selectedServer)}` : '';
+        const res = await fetch(
+          `/api/dashboard/metrics?provider=${cloudProvider}&metric=${selectedMetric}${serverParam}`,
+          { signal: controller.signal }
+        );
         if (res.ok) {
           const list = await res.json();
           if (Array.isArray(list) && isMounted) {
@@ -248,6 +254,7 @@ export function ResourceOverviewChart({
       } catch (e) {
         console.warn('Real telemetry fetch note:', e);
       } finally {
+        clearTimeout(timeoutId);
         if (isMounted) setLoading(false);
       }
     }
@@ -256,7 +263,7 @@ export function ResourceOverviewChart({
     return () => {
       isMounted = false;
     };
-  }, [cloudProvider, selectedMetric, isRefreshing, data]);
+  }, [cloudProvider, selectedMetric, selectedServer, lastRefreshedAt, data]);
 
   const metricTabs: MetricType[] = ['CPU', 'Memory', 'Disk', 'Network'];
 
@@ -268,13 +275,30 @@ export function ResourceOverviewChart({
     return allServers.find((s) => s.name === selectedServer) || null;
   }, [selectedServer, allServers]);
 
-  // Filter raw time-series data for selected server
+  // Filter raw time-series data for selected server and selected metric
   const filteredList = useMemo(() => {
-    if (selectedServer === 'all') return rawList;
-    return rawList.filter(
-      (item: any) => (item.serverName || item.resourceName) === selectedServer
+    let list = rawList;
+
+    // 1. Strict filter by metricName: NEVER mix CPU with Memory or Disk!
+    list = list.filter((item: any) => {
+      if (item.metricName) {
+        return item.metricName.toUpperCase() === selectedMetric.toUpperCase();
+      }
+      return true;
+    });
+
+    // 2. Filter by server if a specific server is selected
+    if (selectedServer !== 'all') {
+      list = list.filter(
+        (item: any) => (item.serverName || item.resourceName) === selectedServer
+      );
+    }
+
+    // 3. Ensure ascending chronological order (oldest to newest)
+    return [...list].sort(
+      (a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
-  }, [rawList, selectedServer]);
+  }, [rawList, selectedServer, selectedMetric]);
 
   // Transform raw telemetry points into Recharts data
   const chartData: EnhancedMetricPoint[] = useMemo(() => {
@@ -282,7 +306,7 @@ export function ResourceOverviewChart({
       const fallback = data[selectedMetric] || data['CPU'] || [];
       return fallback.map((p) => ({
         time: p.time,
-        serverName: activeServerDetail?.name || 'vm01siva',
+        serverName: activeServerDetail?.name || 'vm01',
         host: activeServerDetail?.host || '',
         provider: 'azure',
         value: p.azure || p.aws || 0,
@@ -295,17 +319,19 @@ export function ResourceOverviewChart({
       const date = new Date(item.timestamp || Date.now());
       const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const metricVal =
-        selectedMetric === 'CPU'
-          ? (item.cpu ?? (item.metricName === 'CPU' ? item.value : 0))
+        typeof item.value === 'number'
+          ? item.value
+          : selectedMetric === 'CPU'
+          ? (item.cpu ?? 0)
           : selectedMetric === 'Memory'
-          ? (item.memory ?? (item.metricName === 'Memory' ? item.value : 0))
+          ? (item.memory ?? 0)
           : selectedMetric === 'Disk'
-          ? (item.disk ?? (item.metricName === 'Disk' ? item.value : 0))
+          ? (item.disk ?? 0)
           : (item.networkIn ?? 0);
 
       const num = typeof metricVal === 'number' ? Math.round(metricVal) : 0;
       const isAws = item.provider === 'aws';
-      const sName = item.serverName || item.resourceName || activeServerDetail?.name || 'vm01siva';
+      const sName = item.serverName || item.resourceName || activeServerDetail?.name || 'vm01';
 
       return {
         time: timeStr,
@@ -641,7 +667,7 @@ export function ResourceOverviewChart({
                         <div className="flex items-center justify-between gap-3 border-b border-[#1E293B] pb-1">
                           <span className="text-slate-400 font-semibold">{label}</span>
                           <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-400">
-                            {dataPoint?.serverName || activeServerDetail?.name || 'vm01siva'}
+                            {dataPoint?.serverName || activeServerDetail?.name || 'vm01'}
                           </span>
                         </div>
                         {(dataPoint?.host || activeServerDetail?.host) && (
@@ -656,25 +682,28 @@ export function ResourceOverviewChart({
                                 (showAws && p.dataKey === 'aws') ||
                                 (showAzure && p.dataKey === 'azure')
                             )
-                            .map((p, idx) => (
-                              <div key={idx} className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5">
-                                  <span
-                                    className="w-2 h-2 rounded-full"
-                                    style={{ backgroundColor: p.stroke }}
-                                  />
-                                  <span className="text-slate-300 font-medium">
-                                    {dataPoint?.serverName ||
-                                      activeServerDetail?.name ||
-                                      (p.dataKey === 'aws' ? 'AWS' : 'Azure')}
-                                    :
+                            .map((p, idx) => {
+                              const labelName =
+                                p.dataKey === 'aws'
+                                  ? 'AWS'
+                                  : dataPoint?.serverName || activeServerDetail?.name || 'Azure';
+                              return (
+                                <div key={idx} className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className="w-2 h-2 rounded-full"
+                                      style={{ backgroundColor: p.stroke }}
+                                    />
+                                    <span className="text-slate-300 font-medium">
+                                      {labelName}:
+                                    </span>
+                                  </div>
+                                  <span className="font-bold text-white font-mono">
+                                    {p.value}% {selectedMetric}
                                   </span>
                                 </div>
-                                <span className="font-bold text-white font-mono">
-                                  {p.value}% {selectedMetric}
-                                </span>
-                              </div>
-                            ))}
+                              );
+                            })}
                         </div>
                       </div>
                     );

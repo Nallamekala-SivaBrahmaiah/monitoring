@@ -10,10 +10,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const provider = searchParams.get('provider');
     const serverFilter = searchParams.get('server');
+    const metricParam = searchParams.get('metric');
 
     const query: any = {};
     if (provider && provider !== 'all') {
       query.provider = provider;
+    }
+    if (metricParam && metricParam !== 'all') {
+      query.metricName = { $regex: new RegExp(`^${metricParam}$`, 'i') };
     }
 
     // Build server and cloud resource name mapping
@@ -34,15 +38,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch latest time-series metrics from MongoDB
-    let metrics = await Metric.find(query).sort({ timestamp: -1 }).limit(100).lean();
-
     if (serverFilter && serverFilter !== 'all') {
-      metrics = metrics.filter((m: any) => {
-        const info = nameMap[m.resourceId];
-        return info && (info.name === serverFilter || m.resourceId === serverFilter);
-      });
+      const matchedIds = Object.keys(nameMap).filter(
+        (id) => nameMap[id].name.toLowerCase() === serverFilter.toLowerCase() || id === serverFilter
+      );
+      if (matchedIds.length > 0) {
+        query.resourceId = { $in: matchedIds };
+      }
     }
+
+    // Fetch latest time-series metrics from MongoDB in ascending chronological order (oldest to newest)
+    let metrics = await Metric.find(query).sort({ timestamp: 1 }).limit(100).lean();
 
     if (metrics.length > 0) {
       return NextResponse.json(

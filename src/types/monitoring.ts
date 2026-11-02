@@ -138,16 +138,37 @@ export interface RunningServiceItem {
   status: 'healthy' | 'warning' | 'critical';
 }
 
+export interface AlertHistoryEntry {
+  timestamp: string;
+  status: 'active' | 'acknowledged' | 'resolved';
+  value: number;
+  message: string;
+}
+
 export interface AlertItem {
   id: string;
+  alertKey?: string;
   title: string;
+  message?: string;
+  resourceId?: string;
   resourceName: string;
   resourceType: string;
-  provider: 'aws' | 'azure' | 'docker' | 'k8s';
-  timeAgo: string;
+  provider: string;
+  region?: string;
+  metricName?: 'cpu' | 'memory' | 'disk' | string;
+  filesystem?: string;
+  value?: number;
+  peakValue?: number | null;
+  threshold?: number;
+  timeAgo?: string;
   timestamp: string;
+  triggeredAt?: string;
+  lastEvaluatedAt?: string;
+  resolvedAt?: string | null;
+  acknowledgedAt?: string | null;
   severity: AlertSeverity;
   status: 'active' | 'acknowledged' | 'resolved';
+  history?: AlertHistoryEntry[];
 }
 
 export interface EC2Instance {

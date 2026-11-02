@@ -26,17 +26,6 @@ export async function GET(request: NextRequest) {
 
     let servers = await Server.find(query).lean();
 
-    // 2. If servers are registered but no containers synced yet, run one initial sync
-    const totalContainersCount = servers.reduce((acc, s) => acc + (s.docker?.containers?.length || 0), 0);
-    if (totalContainersCount === 0 && !autoSync && servers.length > 0) {
-      try {
-        await syncAllRegisteredServers();
-        servers = await Server.find(query).lean();
-      } catch {
-        // preserve current state
-      }
-    }
-
     const containerList: any[] = [];
 
     for (const server of servers) {

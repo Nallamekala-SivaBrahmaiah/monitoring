@@ -6,6 +6,7 @@ import { discoverEC2InstancesInRegion } from '@/lib/aws/ec2';
 import { syncDockerResources } from '@/lib/docker/sync';
 import { syncKubernetesResources } from '@/lib/kubernetes/sync';
 import { syncAllRegisteredServers } from '@/lib/serverMonitoring/serverSync';
+import { evaluateAllMonitoredResources } from '@/lib/monitoring/alertEvaluationEngine';
 
 export interface ReconciliationResult {
   success: boolean;
@@ -243,6 +244,19 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
       await syncAllRegisteredServers();
     } catch (serverErr: any) {
       const msg = `Server synchronization error: ${serverErr.message || serverErr}`;
+      console.warn(msg);
+      errors.push(msg);
+    }
+
+    // -------------------------------------------------------------
+    // 6. EVALUATE ALL COLLECTED METRICS FOR THRESHOLD-BASED ALERTS
+    // -------------------------------------------------------------
+    try {
+      console.log('[Reconciliation] 🔍 Running threshold evaluation for all monitored resources...');
+      const evalResult = await evaluateAllMonitoredResources();
+      console.log('[Reconciliation] 📊 Evaluation completed:', JSON.stringify(evalResult));
+    } catch (evalErr: any) {
+      const msg = `Threshold alert evaluation error: ${evalErr.message || evalErr}`;
       console.warn(msg);
       errors.push(msg);
     }

@@ -4,6 +4,7 @@ import CloudResource from '@/models/CloudResource';
 import Metric from '@/models/Metric';
 import { decryptSecret } from './crypto';
 import { collectServerViaSSH } from './sshCollector';
+import { evaluateResourceMetrics } from '@/lib/monitoring/alertEvaluationEngine';
 
 /**
  * Synchronize a single server via SSH, update MongoDB models and CloudResources.
@@ -64,6 +65,11 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
     await server.save();
 
     // 1. Record time-series points to Metric model for performance charting
+    const primaryDiskUsage =
+      Array.isArray(specs.metrics.disks) && specs.metrics.disks.length > 0
+        ? specs.metrics.disks[0].usagePercent
+        : null;
+
     await Metric.create([
       {
         resourceId: `srv-${server._id.toString()}`,
@@ -83,6 +89,19 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
         provider: server.cloudProvider === 'azure' ? 'azure' : server.cloudProvider === 'aws' ? 'aws' : 'other',
         timestamp: new Date(),
       },
+      ...(primaryDiskUsage !== null
+        ? [
+            {
+              resourceId: `srv-${server._id.toString()}`,
+              resourceType: 'Server',
+              metricName: 'Disk',
+              value: primaryDiskUsage,
+              unit: 'Percent',
+              provider: server.cloudProvider === 'azure' ? 'azure' : server.cloudProvider === 'aws' ? 'aws' : 'other',
+              timestamp: new Date(),
+            },
+          ]
+        : []),
     ]).catch(() => null);
 
     // 2. Mirror into CloudResource for unified multi-cloud inventory
@@ -115,6 +134,21 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
       { $set: cloudResourceDoc },
       { upsert: true }
     );
+
+    // 3. Real-time threshold-based alert evaluation (CPU, Memory, Disks)
+    await evaluateResourceMetrics({
+      resourceId: `srv-${server._id.toString()}`,
+      resourceName: server.name,
+      resourceType: 'Server',
+      provider: server.cloudProvider || 'other',
+      region: server.region || 'global',
+      metrics: {
+        cpuUtilization: specs.metrics.cpu.usagePercent,
+        memoryUtilization: specs.metrics.memory.usagePercent,
+        disks: specs.metrics.disks || [],
+        timestamp: specs.metrics.cpu.timestamp || new Date(),
+      },
+    }).catch((err) => console.warn('[ServerSync] Alert evaluation note:', err.message));
 
     return server;
   } catch (syncErr: any) {
