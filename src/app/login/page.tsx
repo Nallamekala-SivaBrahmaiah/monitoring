@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Activity,
   Zap,
-  Film,
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 
@@ -25,11 +24,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Background Video Preview State (Allows user to test all 3 videos live)
-  const [selectedVideo, setSelectedVideo] = useState<string>(
-    '/videos/video-1-digital-world-mesh.mp4'
-  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,88 +62,23 @@ export default function LoginPage() {
 
   return (
     <div className="login-page relative min-h-screen w-full bg-[#020617] text-white flex items-center justify-center overflow-x-hidden selection:bg-cyan-500 selection:text-white">
-      {/* Background Video Player with Fallback Still Graphic */}
-      {selectedVideo ? (
-        <video
-          key={selectedVideo}
-          autoPlay
-          loop
-          muted
-          playsInline
-          poster="/images/cloud-infrastructure-bg.webp"
-          className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none z-0"
-        >
-          <source src={selectedVideo} type="video/mp4" />
-        </video>
-      ) : (
-        <div
-          className="absolute inset-0 w-full h-full pointer-events-none z-0"
-          style={{
-            backgroundImage: "url('/images/cloud-infrastructure-bg.webp')",
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
-          }}
-        />
-      )}
+      {/* Option 3: Connected Cloud Nodes Full-Screen Video Background */}
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        poster="/videos/video-3-preview.jpg"
+        className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none z-0"
+      >
+        <source src="/videos/video-3-connected-cloud-nodes.mp4" type="video/mp4" />
+      </video>
 
       {/* High-Contrast Gradient Overlays for Razor-Sharp Readability */}
       <div className="absolute inset-0 bg-gradient-to-r from-[#020617]/90 via-[#020617]/50 to-[#020617]/85 pointer-events-none z-[1]" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_30%,_#020617_90%)] pointer-events-none z-[1]" />
       <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-[#020617] to-transparent pointer-events-none z-[1]" />
       <div className="absolute bottom-0 inset-x-0 h-32 bg-gradient-to-t from-[#020617] to-transparent pointer-events-none z-[1]" />
-
-      {/* Interactive Video Switcher Pill (Preview and select between options) */}
-      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-30 flex items-center gap-1.5 p-1.5 rounded-2xl bg-[#07132B]/85 border border-cyan-500/30 backdrop-blur-xl shadow-[0_0_20px_rgba(6,182,212,0.25)] text-xs">
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 text-slate-300 font-semibold text-[11px]">
-          <Film className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Video Options:</span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setSelectedVideo('/videos/video-1-digital-world-mesh.mp4')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-            selectedVideo === '/videos/video-1-digital-world-mesh.mp4'
-              ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/20'
-              : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          Option 1: World Mesh
-        </button>
-        <button
-          type="button"
-          onClick={() => setSelectedVideo('/videos/video-2-global-data-network.mp4')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-            selectedVideo === '/videos/video-2-global-data-network.mp4'
-              ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/20'
-              : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          Option 2: Data Highway
-        </button>
-        <button
-          type="button"
-          onClick={() => setSelectedVideo('/videos/video-3-connected-cloud-nodes.mp4')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-            selectedVideo === '/videos/video-3-connected-cloud-nodes.mp4'
-              ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/20'
-              : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          Option 3: Cloud Nodes
-        </button>
-        <button
-          type="button"
-          onClick={() => setSelectedVideo('')}
-          className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-            selectedVideo === ''
-              ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-md shadow-cyan-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          Still
-        </button>
-      </div>
 
       {/* Main Responsive Two-Column Grid */}
       <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-16 flex flex-col lg:flex-row items-center justify-between gap-12 lg:gap-8">
