@@ -14,6 +14,7 @@ import {
 import { AzureVirtualMachine } from '@/types/monitoring';
 import { AzureVmIcon } from '@/components/icons/CloudIcons';
 import { ConnectSSHModal, ConnectSSHTarget } from '@/components/dashboard/ConnectSSHModal';
+import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
 import { useMonitoring } from '@/context/MonitoringContext';
 
 interface AzureVMsTableProps {
@@ -39,7 +40,23 @@ export function AzureVMsTable({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sshTarget, setSshTarget] = useState<ConnectSSHTarget | null>(null);
   const [showSSHModal, setShowSSHModal] = useState<boolean>(false);
+  const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
+  const [showTerminalModal, setShowTerminalModal] = useState<boolean>(false);
   const pageSize = limit || 5;
+
+  const handleOpenTerminal = (vm: AzureVirtualMachine) => {
+    setTerminalTarget({
+      id: vm.id,
+      vmId: vm.vmId || vm.id,
+      name: vm.name,
+      host: vm.publicIp && vm.publicIp !== '-' ? vm.publicIp : vm.privateIp,
+      port: 22,
+      sshServerId: (vm as any).sshServerId,
+      cloudProvider: 'azure',
+      isSSHConnected: (vm as any).isSSHConnected,
+    });
+    setShowTerminalModal(true);
+  };
 
   const handleOpenSSHModal = (vm: AzureVirtualMachine) => {
     setSshTarget({
@@ -286,17 +303,25 @@ export function AzureVMsTable({
                             {vm.name}
                           </span>
                           {(vm as any).isSSHConnected ? (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
-                              SSH Verified
-                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenTerminal(vm);
+                              }}
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 font-mono flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Click to Open SSH Terminal"
+                            >
+                              <span>SSH Verified</span>
+                            </button>
                           ) : (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleOpenSSHModal(vm);
+                                handleOpenTerminal(vm);
                               }}
-                              className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 font-mono flex items-center gap-1 transition-colors"
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 font-mono flex items-center gap-1 transition-colors cursor-pointer"
                               title="Connect SSH (PPK / PEM / Password) for in-guest CPU, RAM, Disk, Docker & K8s telemetry"
                             >
                               <KeyRound className="w-2.5 h-2.5" />
@@ -421,9 +446,9 @@ export function AzureVMsTable({
                       {!(vm as any).isSSHConnected ? (
                         <button
                           type="button"
-                          onClick={() => handleOpenSSHModal(vm)}
-                          className="px-2 py-1 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded border border-blue-500/50 transition-colors flex items-center gap-1 shadow-sm shrink-0"
-                          title="Connect SSH (PPK / PEM / Password) to view real CPU, RAM, Disk, Docker & K8s"
+                          onClick={() => handleOpenTerminal(vm)}
+                          className="px-2 py-1 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded border border-blue-500/50 transition-colors flex items-center gap-1 shadow-sm shrink-0 cursor-pointer"
+                          title="Open Secure SSH Terminal"
                         >
                           <KeyRound className="w-3 h-3" />
                           <span>Connect SSH</span>
@@ -431,11 +456,11 @@ export function AzureVMsTable({
                       ) : (
                         <button
                           type="button"
-                          onClick={() => handleOpenSSHModal(vm)}
-                          className="p-1 text-slate-400 hover:text-emerald-400 rounded hover:bg-[#18233C] transition-colors"
-                          title="Reconfigure SSH Credentials"
+                          onClick={() => handleOpenTerminal(vm)}
+                          className="p-1 text-slate-400 hover:text-cyan-400 rounded hover:bg-[#18233C] transition-colors cursor-pointer"
+                          title="Open Direct SSH Terminal (Real Shell Session)"
                         >
-                          <KeyRound className="w-3.5 h-3.5" />
+                          <KeyRound className="w-3.5 h-3.5 text-slate-300 hover:text-cyan-400" />
                         </button>
                       )}
                       <Link
@@ -509,6 +534,21 @@ export function AzureVMsTable({
         onClose={() => setShowSSHModal(false)}
         target={sshTarget}
         onSuccess={handleSSHSuccess}
+      />
+
+      {/* Direct Interactive SSH Terminal Modal */}
+      <SSHTerminalModal
+        isOpen={showTerminalModal}
+        onClose={() => setShowTerminalModal(false)}
+        target={terminalTarget}
+        onConfigureSSH={(t) => {
+          const matching = vms.find(
+            (v) => v.name === t.name || (v.id || v.vmId) === (t.id || t.vmId)
+          );
+          if (matching) {
+            handleOpenSSHModal(matching);
+          }
+        }}
       />
     </div>
   );

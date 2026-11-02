@@ -16,6 +16,9 @@
     "@azure/arm-resources": "^8.0.0",
     "@azure/identity": "^4.14.1",
     "@types/nodemailer": "^8.0.2",
+    "@types/ws": "^8.18.2",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.66.0",
     "mongoose": "^9.11.4",
@@ -26,7 +29,8 @@
     "react-dom": "19.3.0",
     "recharts": "^3.10.1",
     "ssh2": "^1.17.0",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "ws": "^8.22.1"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
