@@ -65,6 +65,7 @@ export const ALL_AZURE_REGIONS: DiscoveredRegion[] = [
   { name: 'Mexico Central (Querétaro)', code: 'mexicocentral', status: 'available', geography: 'Americas', enabled: false },
 
   // Europe
+  { name: 'Austria East (Vienna)', code: 'austriaeast', status: 'available', geography: 'Europe', enabled: true },
   { name: 'North Europe (Ireland)', code: 'northeurope', status: 'available', geography: 'Europe', enabled: false },
   { name: 'West Europe (Netherlands)', code: 'westeurope', status: 'available', geography: 'Europe', enabled: true },
   { name: 'UK South (London)', code: 'uksouth', status: 'available', geography: 'Europe', enabled: false },

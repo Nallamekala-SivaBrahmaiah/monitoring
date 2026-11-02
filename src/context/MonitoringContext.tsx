@@ -532,22 +532,34 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     });
   }, [cloudProvider, alerts]);
 
-  // Dynamically compute real resource counts for all discovered regions based on actual VMs & EC2
+  // Dynamically compute real resource counts for all discovered regions based on actual VMs, EC2 & custom servers
   const computedRegions: RegionInfo[] = useMemo(() => {
     return regions.map((reg) => {
       let count = 0;
       const normReg = (reg.region || '').toLowerCase().replace(/[\s-_]+/g, '');
 
       if (reg.cloud === 'azure') {
-        count = azureVMs.filter((v) => {
-          const vReg = (v.region || '').toLowerCase().replace(/[\s-_]+/g, '');
+        const vmMatches = azureVMs.filter((v) => {
+          const vReg = (v.region || (v as any).location || '').toLowerCase().replace(/[\s-_]+/g, '');
           return vReg === normReg || (vReg.includes(normReg) || normReg.includes(vReg));
         }).length;
+        const customMatches = customServers.filter((s) => {
+          if (s.cloudProvider && s.cloudProvider !== 'azure') return false;
+          const sReg = (s.region || 'austriaeast').toLowerCase().replace(/[\s-_]+/g, '');
+          return sReg === normReg || (sReg.includes(normReg) || normReg.includes(sReg));
+        }).length;
+        count = Math.max(vmMatches, customMatches);
       } else if (reg.cloud === 'aws') {
-        count = ec2Instances.filter((e) => {
+        const ec2Matches = ec2Instances.filter((e) => {
           const eReg = (e.region || '').toLowerCase().replace(/[\s-_]+/g, '');
           return eReg === normReg;
         }).length;
+        const customMatches = customServers.filter((s) => {
+          if (s.cloudProvider !== 'aws') return false;
+          const sReg = (s.region || 'us-east-1').toLowerCase().replace(/[\s-_]+/g, '');
+          return sReg === normReg;
+        }).length;
+        count = Math.max(ec2Matches, customMatches);
       }
 
       return {
@@ -555,7 +567,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
         resourceCount: count,
       };
     });
-  }, [regions, azureVMs, ec2Instances]);
+  }, [regions, azureVMs, ec2Instances, customServers]);
 
   // Real Dynamic Overview Metrics (No hardcoded trend arrays or fallback numbers)
   const overviewMetrics = useMemo<OverviewMetrics>(() => {

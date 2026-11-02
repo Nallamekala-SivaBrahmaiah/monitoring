@@ -12,7 +12,7 @@ interface ServerStatusChartProps {
 }
 
 export function ServerStatusChart({}: ServerStatusChartProps) {
-  const { cloudProvider, filteredEC2Instances, filteredAzureVMs } = useMonitoring();
+  const { cloudProvider, filteredEC2Instances, filteredAzureVMs, customServers } = useMonitoring();
 
   let healthy = 0;
   let warning = 0;
@@ -37,14 +37,41 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
     });
   }
 
+  // Account for custom servers if not already counted in cloud lists
+  if (customServers.length > 0) {
+    const cloudCount = (cloudProvider === 'aws' ? filteredEC2Instances.length : cloudProvider === 'azure' ? filteredAzureVMs.length : (filteredEC2Instances.length + filteredAzureVMs.length));
+    if (cloudCount === 0) {
+      customServers.forEach((s) => {
+        if (cloudProvider === 'aws' && s.cloudProvider !== 'aws') return;
+        if (cloudProvider === 'azure' && s.cloudProvider && s.cloudProvider !== 'azure') return;
+        const isOnline = s.status === 'Online' || (s.status || '').toLowerCase().includes('run');
+        const cpu = s.metrics?.cpu?.usagePercent ?? 0;
+        const mem = s.metrics?.memory?.usagePercent ?? 0;
+        if (!isOnline) critical++;
+        else if (cpu > 80 || mem > 85) warning++;
+        else healthy++;
+      });
+    }
+  }
+
   const actualTotal = healthy + warning + critical;
   const total = actualTotal > 0 ? actualTotal : 1;
-  const healthyPct = actualTotal > 0 ? Math.round((healthy / total) * 100) : 0;
+  const healthyPct = actualTotal > 0 ? Math.round((healthy / total) * 100) : 100;
 
   const statusData: ServerStatusItem[] = [
     { status: 'Healthy', count: healthy, percentage: healthyPct, color: '#10B981' },
-    { status: 'Warning', count: warning, percentage: actualTotal > 0 ? Math.round((warning / total) * 100) : 0, color: '#F59E0B' },
-    { status: 'Critical', count: critical, percentage: actualTotal > 0 ? Math.round((critical / total) * 100) : 0, color: '#EF4444' },
+    {
+      status: 'Warning',
+      count: warning,
+      percentage: actualTotal > 0 ? Math.round((warning / total) * 100) : 0,
+      color: '#F59E0B',
+    },
+    {
+      status: 'Critical',
+      count: critical,
+      percentage: actualTotal > 0 ? Math.round((critical / total) * 100) : 0,
+      color: '#EF4444',
+    },
   ];
 
   return (
@@ -57,7 +84,7 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
       </div>
 
       <div className="flex-1 flex items-center justify-between gap-3 min-h-[190px]">
-        <div className="relative w-32 h-32 sm:w-36 sm:h-36 shrink-0 flex items-center justify-center">
+        <div className="relative w-28 h-28 sm:w-32 sm:h-32 shrink-0 flex items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Tooltip
@@ -80,9 +107,9 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
                 data={statusData}
                 cx="50%"
                 cy="50%"
-                innerRadius={42}
-                outerRadius={58}
-                paddingAngle={3}
+                innerRadius={38}
+                outerRadius={52}
+                paddingAngle={actualTotal > 0 ? 3 : 0}
                 dataKey="count"
                 stroke="none"
               >
@@ -103,17 +130,19 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col justify-center space-y-3.5 min-w-0 pr-1">
+        <div className="flex-1 flex flex-col justify-center space-y-3 min-w-0 pl-2">
           {statusData.map((item) => (
-            <div key={item.status} className="flex items-center justify-between gap-2 text-xs whitespace-nowrap">
+            <div key={item.status} className="flex items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2 min-w-0">
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: item.color }}
                 />
-                <span className="text-slate-300 font-medium truncate">{item.status}</span>
+                <span className="text-slate-300 font-medium whitespace-nowrap">{item.status}</span>
               </div>
-              <span className="text-slate-200 font-semibold tabular-nums shrink-0">{item.count}</span>
+              <span className="text-slate-200 font-semibold tabular-nums shrink-0 ml-2">
+                {item.count}
+              </span>
             </div>
           ))}
         </div>

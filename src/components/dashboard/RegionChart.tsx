@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -20,25 +20,131 @@ interface RegionChartProps {
 }
 
 export function RegionChart({}: RegionChartProps) {
-  const { cloudProvider, regions } = useMonitoring();
+  const {
+    cloudProvider,
+    regions,
+    filteredAzureVMs,
+    filteredEC2Instances,
+    customServers,
+  } = useMonitoring();
 
-  const filteredRegions = regions
-    .filter((r) => {
-      if (cloudProvider === 'aws') return r.cloud === 'aws' && r.resourceCount > 0;
-      if (cloudProvider === 'azure') return r.cloud === 'azure' && r.resourceCount > 0;
-      return r.resourceCount > 0;
-    })
-    .sort((a, b) => b.resourceCount - a.resourceCount)
-    .slice(0, 6)
-    .map((r) => ({
-      region: r.region,
-      displayName: r.displayName,
-      count: r.resourceCount,
-      color: r.color || (r.cloud === 'azure' ? '#0089D6' : '#F97316'),
-      cloud: r.cloud,
-    }));
+  // Compile real active regional distribution from all live resources
+  const filteredRegions = useMemo(() => {
+    const regionMap = new Map<
+      string,
+      { region: string; displayName: string; count: number; color: string; cloud: string }
+    >();
+
+    // 1. Pull from regions in context
+    for (const r of regions) {
+      if (r.resourceCount > 0) {
+        if (cloudProvider === 'aws' && r.cloud !== 'aws') continue;
+        if (cloudProvider === 'azure' && r.cloud !== 'azure') continue;
+
+        regionMap.set(r.region.toLowerCase(), {
+          region: r.region,
+          displayName: r.displayName,
+          count: r.resourceCount,
+          color: r.color || (r.cloud === 'azure' ? '#0089D6' : '#F97316'),
+          cloud: r.cloud,
+        });
+      }
+    }
+
+    // 2. Ensure all active Azure VMs are represented
+    if (cloudProvider === 'all' || cloudProvider === 'azure') {
+      for (const v of filteredAzureVMs) {
+        const rawReg = (v.region || (v as any).location || 'austriaeast').toLowerCase().trim();
+        const key = rawReg;
+        const displayName =
+          rawReg === 'austriaeast'
+            ? 'Austria East'
+            : rawReg === 'eastus'
+            ? 'East US'
+            : rawReg === 'westeurope'
+            ? 'West Europe'
+            : rawReg.toUpperCase();
+
+        if (regionMap.has(key)) {
+          // Increment or ensure count
+          const entry = regionMap.get(key)!;
+          if (entry.count < filteredAzureVMs.length) {
+            entry.count = filteredAzureVMs.length;
+          }
+        } else {
+          regionMap.set(key, {
+            region: rawReg,
+            displayName,
+            count: 1,
+            color: '#0089D6',
+            cloud: 'azure',
+          });
+        }
+      }
+    }
+
+    // 3. Ensure custom servers (e.g. vm01, vm02) regions are counted if not in cloud SDK
+    for (const s of customServers) {
+      const provider = s.cloudProvider || 'azure';
+      if (cloudProvider === 'aws' && provider !== 'aws') continue;
+      if (cloudProvider === 'azure' && provider !== 'azure') continue;
+
+      const rawReg = (s.region || (provider === 'azure' ? 'austriaeast' : 'us-east-1'))
+        .toLowerCase()
+        .trim();
+      const key = rawReg;
+      const displayName =
+        rawReg === 'austriaeast'
+          ? 'Austria East'
+          : rawReg === 'eastus'
+          ? 'East US'
+          : rawReg === 'westeurope'
+          ? 'West Europe'
+          : rawReg.toUpperCase();
+
+      if (regionMap.has(key)) {
+        const entry = regionMap.get(key)!;
+        if (entry.count < customServers.length) {
+          entry.count = customServers.length;
+        }
+      } else {
+        regionMap.set(key, {
+          region: rawReg,
+          displayName,
+          count: customServers.length || 1,
+          color: provider === 'aws' ? '#F97316' : '#0089D6',
+          cloud: provider,
+        });
+      }
+    }
+
+    // 4. Ensure active AWS EC2 instances are represented
+    if (cloudProvider === 'all' || cloudProvider === 'aws') {
+      for (const e of filteredEC2Instances) {
+        const rawReg = (e.region || 'us-east-1').toLowerCase().trim();
+        const key = rawReg;
+        if (regionMap.has(key)) {
+          const entry = regionMap.get(key)!;
+          entry.count += 1;
+        } else {
+          regionMap.set(key, {
+            region: rawReg,
+            displayName: rawReg,
+            count: 1,
+            color: '#F97316',
+            cloud: 'aws',
+          });
+        }
+      }
+    }
+
+    return Array.from(regionMap.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+  }, [regions, filteredAzureVMs, filteredEC2Instances, customServers, cloudProvider]);
 
   const maxVal = Math.max(3, ...filteredRegions.map((r) => r.count));
+  const totalInstances = filteredRegions.reduce((sum, r) => sum + r.count, 0);
 
   return (
     <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col justify-between h-full">
@@ -55,9 +161,9 @@ export function RegionChart({}: RegionChartProps) {
           </div>
         </div>
 
-        {filteredRegions.length > 0 && (
+        {totalInstances > 0 && (
           <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-            {filteredRegions.reduce((sum, r) => sum + r.count, 0)} Active Instances
+            {totalInstances} {totalInstances === 1 ? 'Active Instance' : 'Active Instances'}
           </span>
         )}
       </div>

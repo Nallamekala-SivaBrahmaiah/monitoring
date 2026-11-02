@@ -14,10 +14,17 @@ interface CloudDistributionChartProps {
 export function CloudDistributionChart({
   totalServers: propTotalServers,
 }: CloudDistributionChartProps) {
-  const { cloudProvider, filteredEC2Instances, filteredAzureVMs } = useMonitoring();
+  const { cloudProvider, filteredEC2Instances, filteredAzureVMs, customServers } = useMonitoring();
 
-  const awsCount = filteredEC2Instances.length;
-  const azureCount = filteredAzureVMs.length;
+  const awsCount = Math.max(
+    filteredEC2Instances.length,
+    customServers.filter((s) => s.cloudProvider === 'aws').length
+  );
+  const azureCount = Math.max(
+    filteredAzureVMs.length,
+    customServers.filter((s) => (s.cloudProvider || 'azure') === 'azure').length
+  );
+
   const total =
     cloudProvider === 'aws'
       ? awsCount
@@ -59,7 +66,7 @@ export function CloudDistributionChart({
       </div>
 
       <div className="flex-1 flex items-center justify-between gap-3 min-h-[190px]">
-        <div className="relative w-32 h-32 sm:w-36 sm:h-36 shrink-0 flex items-center justify-center">
+        <div className="relative w-28 h-28 sm:w-32 sm:h-32 shrink-0 flex items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Tooltip
@@ -82,8 +89,8 @@ export function CloudDistributionChart({
                 data={distributionData}
                 cx="50%"
                 cy="50%"
-                innerRadius={42}
-                outerRadius={58}
+                innerRadius={38}
+                outerRadius={52}
                 paddingAngle={distributionData.length > 1 ? 3 : 0}
                 dataKey="value"
                 stroke="none"
@@ -105,9 +112,9 @@ export function CloudDistributionChart({
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col justify-center space-y-3.5 min-w-0 pr-1">
+        <div className="flex-1 flex flex-col justify-center space-y-3 min-w-0 pl-2">
           {distributionData.map((item) => (
-            <div key={item.name} className="flex items-center justify-between gap-2 text-xs whitespace-nowrap">
+            <div key={item.name} className="flex items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-2 min-w-0">
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
@@ -115,7 +122,7 @@ export function CloudDistributionChart({
                 />
                 <span className="text-slate-300 font-medium truncate">{item.name}</span>
               </div>
-              <div className="text-slate-300 font-semibold shrink-0 text-right">
+              <div className="text-slate-300 font-semibold shrink-0 text-right whitespace-nowrap ml-2">
                 <span>{item.value}</span>{' '}
                 <span className="text-slate-400 font-normal text-[11px]">
                   ({item.percentage}%)
