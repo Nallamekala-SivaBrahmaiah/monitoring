@@ -32,8 +32,16 @@ export async function runMonitoringCycle(): Promise<{
   error?: string;
 }> {
   if (global.__monitoringSchedulerIsRunningCycle) {
-    console.log('[Scheduler] ⏳ Previous monitoring cycle is still running. Skipping overlapping execution.');
-    return { success: false, timestamp: new Date(), error: 'Previous cycle in progress' };
+    const elapsed = global.__monitoringSchedulerLastRun
+      ? Date.now() - global.__monitoringSchedulerLastRun.getTime()
+      : 0;
+    if (elapsed > 45000) {
+      console.log('[Scheduler] ⚠️ Force-resetting stale monitoring cycle lock.');
+      global.__monitoringSchedulerIsRunningCycle = false;
+    } else {
+      console.log('[Scheduler] ⏳ Previous monitoring cycle is still running. Skipping overlapping execution.');
+      return { success: false, timestamp: new Date(), error: 'Previous cycle in progress' };
+    }
   }
 
   global.__monitoringSchedulerIsRunningCycle = true;

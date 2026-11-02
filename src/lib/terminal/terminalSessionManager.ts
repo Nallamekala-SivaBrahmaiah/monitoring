@@ -34,8 +34,9 @@ interface ActiveSession {
   error?: string | null;
 }
 
-// Global active sessions map
-const sessions = new Map<string, ActiveSession>();
+// Global active sessions map (stored on global to survive Turbopack/Next.js module reloads)
+const sessions: Map<string, ActiveSession> =
+  (global as any).__terminalSessions || ((global as any).__terminalSessions = new Map<string, ActiveSession>());
 
 // Cleanup interval: auto-close sessions inactive for > 20 minutes
 if (!(global as any).__terminalCleanupInterval) {
@@ -337,3 +338,4 @@ export function subscribeToTerminalSession(
     session.closeListeners.delete(onClose);
   };
 }
+

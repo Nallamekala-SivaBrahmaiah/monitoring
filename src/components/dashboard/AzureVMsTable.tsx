@@ -10,6 +10,7 @@ import {
   ArrowUpDown,
   Trash2,
   KeyRound,
+  Terminal,
 } from 'lucide-react';
 import { AzureVirtualMachine } from '@/types/monitoring';
 import { AzureVmIcon } from '@/components/icons/CloudIcons';
@@ -272,7 +273,6 @@ export function AzureVMsTable({
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
-              <th className="py-3 px-4">Network In/Out</th>
               <th className="py-3 px-4">Public IP</th>
               <th className="py-3 px-4 text-right">Actions</th>
             </tr>
@@ -283,8 +283,6 @@ export function AzureVMsTable({
               const cpuVal = vm.cpuUsage ?? (vm as any).cpuUtilization ?? null;
               const memVal = vm.memoryUsage ?? (vm as any).memoryUtilization ?? null;
               const diskVal = vm.diskUsage ?? (vm as any).diskUtilization ?? null;
-              const netInVal = vm.networkInMB ?? (vm as any).networkIn ?? null;
-              const netOutVal = vm.networkOutMB ?? (vm as any).networkOut ?? null;
 
               return (
                 <tr
@@ -303,23 +301,15 @@ export function AzureVMsTable({
                             {vm.name}
                           </span>
                           {(vm as any).isSSHConnected ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenTerminal(vm);
-                              }}
-                              className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 font-mono flex items-center gap-1 cursor-pointer transition-colors"
-                              title="Click to Open SSH Terminal"
-                            >
-                              <span>SSH Verified</span>
-                            </button>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+                              SSH Verified
+                            </span>
                           ) : (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleOpenTerminal(vm);
+                                handleOpenSSHModal(vm);
                               }}
                               className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 font-mono flex items-center gap-1 transition-colors cursor-pointer"
                               title="Connect SSH (PPK / PEM / Password) for in-guest CPU, RAM, Disk, Docker & K8s telemetry"
@@ -429,40 +419,32 @@ export function AzureVMsTable({
                     )}
                   </td>
 
-                  <td className="py-3 px-4 text-slate-300 font-mono text-xs">
-                    {netInVal !== null && netOutVal !== null ? (
-                      `${netInVal} MB / ${netOutVal} MB`
-                    ) : (
-                      <span className="text-slate-500">-</span>
-                    )}
-                  </td>
-
-                  <td className="py-3 px-4 font-mono text-emerald-400">
+                  <td className="py-3 px-4 font-mono text-emerald-400 whitespace-nowrap">
                     {vm.publicIp || '-'}
                   </td>
 
-                  <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                  <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
-                      {!(vm as any).isSSHConnected ? (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenTerminal(vm)}
-                          className="px-2 py-1 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded border border-blue-500/50 transition-colors flex items-center gap-1 shadow-sm shrink-0 cursor-pointer"
-                          title="Open Secure SSH Terminal"
-                        >
-                          <KeyRound className="w-3 h-3" />
-                          <span>Connect SSH</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenTerminal(vm)}
-                          className="p-1 text-slate-400 hover:text-cyan-400 rounded hover:bg-[#18233C] transition-colors cursor-pointer"
-                          title="Open Direct SSH Terminal (Real Shell Session)"
-                        >
-                          <KeyRound className="w-3.5 h-3.5 text-slate-300 hover:text-cyan-400" />
-                        </button>
-                      )}
+                      {/* 1. Login button (on the LEFT side of the key icon) */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTerminal(vm)}
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-md transition-all shadow-sm shrink-0 cursor-pointer whitespace-nowrap"
+                        title="Login into Server (Real Interactive SSH Terminal)"
+                      >
+                        <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Login</span>
+                      </button>
+
+                      {/* 2. Key icon on the RIGHT: strictly for SSH Credentials configuration (ConnectSSHModal) */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSSHModal(vm)}
+                        className="p-1 text-slate-400 hover:text-amber-400 rounded hover:bg-[#18233C] transition-colors shrink-0 cursor-pointer"
+                        title="Configure / Reconfigure SSH Credentials"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                      </button>
                       <Link
                         href={`/dashboard/azure-vms/${vm.vmId}`}
                         className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-[#0089D6] hover:text-white text-slate-300 rounded border border-[#1E293B] transition-colors"
@@ -493,7 +475,7 @@ export function AzureVMsTable({
             {paginatedVMs.length === 0 && (
               <tr>
                 <td
-                  colSpan={11}
+                  colSpan={10}
                   className="py-8 text-center text-slate-400 font-medium"
                 >
                   No Azure Virtual Machines found matching current filters.

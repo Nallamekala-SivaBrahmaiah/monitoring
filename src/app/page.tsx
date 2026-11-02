@@ -35,7 +35,7 @@ export default function DashboardPage() {
   } = useMonitoring();
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [activeAllViewTab, setActiveAllViewTab] = useState<'ec2' | 'azure'>('ec2');
+  const [activeAllViewTab, setActiveAllViewTab] = useState<'all' | 'azure' | 'ec2'>('all');
 
   const hasConnectedAws = awsAccounts.some((a) => a.status === 'Connected');
   const hasConnectedAzure = azureSubscriptions.some((s) => s.status === 'Connected');
@@ -234,43 +234,81 @@ export default function DashboardPage() {
 
             {/* If Cloud Provider is All Clouds */}
             {cloudProvider === 'all' && (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 p-1 bg-[#111A2E] border border-[#1E293B] rounded-lg">
                     <button
-                      onClick={() => setActiveAllViewTab('ec2')}
-                      className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                        activeAllViewTab === 'ec2'
-                          ? 'bg-blue-600 text-white shadow-sm'
+                      onClick={() => setActiveAllViewTab('all')}
+                      className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                        activeAllViewTab === 'all'
+                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm shadow-blue-500/20'
                           : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      <AwsLogo className="w-4 h-3" />
-                      <span>AWS EC2 Instances ({filteredEC2Instances.length})</span>
+                      <Server className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>All Compute Instances ({filteredAzureVMs.length + filteredEC2Instances.length})</span>
                     </button>
                     <button
                       onClick={() => setActiveAllViewTab('azure')}
                       className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
                         activeAllViewTab === 'azure'
-                          ? 'bg-[#0089D6] text-white shadow-sm'
+                          ? 'bg-[#0089D6] text-white shadow-sm shadow-blue-500/20'
                           : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
                       <AzureLogo className="w-3.5 h-3.5" />
                       <span>Azure Virtual Machines ({filteredAzureVMs.length})</span>
                     </button>
+                    <button
+                      onClick={() => setActiveAllViewTab('ec2')}
+                      className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                        activeAllViewTab === 'ec2'
+                          ? 'bg-[#FF9900] text-slate-900 font-bold shadow-sm shadow-amber-500/20'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <AwsLogo className="w-4 h-3" />
+                      <span>AWS EC2 Instances ({filteredEC2Instances.length})</span>
+                    </button>
                   </div>
                 </div>
 
-                {activeAllViewTab === 'ec2' ? (
-                  <EC2InstancesTable
-                    instances={filteredEC2Instances}
+                {/* Tab: ALL COMPUTE (Displays both Azure VMs and AWS EC2 instances) */}
+                {activeAllViewTab === 'all' && (
+                  <div className="space-y-6">
+                    {/* Azure Virtual Machines Section */}
+                    <div>
+                      <AzureVMsTable
+                        vms={filteredAzureVMs}
+                        showViewAllButton={true}
+                        limit={5}
+                      />
+                    </div>
+
+                    {/* AWS EC2 Instances Section */}
+                    <div>
+                      <EC2InstancesTable
+                        instances={filteredEC2Instances}
+                        showViewAllButton={true}
+                        limit={5}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab: Azure Only */}
+                {activeAllViewTab === 'azure' && (
+                  <AzureVMsTable
+                    vms={filteredAzureVMs}
                     showViewAllButton={true}
                     limit={5}
                   />
-                ) : (
-                  <AzureVMsTable
-                    vms={filteredAzureVMs}
+                )}
+
+                {/* Tab: AWS EC2 Only */}
+                {activeAllViewTab === 'ec2' && (
+                  <EC2InstancesTable
+                    instances={filteredEC2Instances}
                     showViewAllButton={true}
                     limit={5}
                   />

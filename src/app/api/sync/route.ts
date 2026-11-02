@@ -43,25 +43,36 @@ export async function GET() {
       status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
     });
 
-    // Calculate freshness
-    let freshness = 'Never';
-    if (lastStatus.lastSyncTimestamp) {
-      const diffSec = Math.floor((Date.now() - new Date(lastStatus.lastSyncTimestamp).getTime()) / 1000);
-      if (diffSec < 30) freshness = 'Just now';
-      else if (diffSec < 60) freshness = `${diffSec}s ago`;
-      else if (diffSec < 3600) freshness = `${Math.floor(diffSec / 60)}m ago`;
-      else freshness = `${Math.floor(diffSec / 3600)}h ago`;
+    // Calculate real-time freshness
+    let effectiveLastSync: Date | null = lastStatus.lastSyncTimestamp ? new Date(lastStatus.lastSyncTimestamp) : null;
+    if (!effectiveLastSync) {
+      const latestResource = await CloudResource.findOne().sort({ updatedAt: -1 }).select('updatedAt lastSyncAt').lean();
+      if (latestResource) {
+        effectiveLastSync = (latestResource as any).lastSyncAt
+          ? new Date((latestResource as any).lastSyncAt)
+          : (latestResource as any).updatedAt
+          ? new Date((latestResource as any).updatedAt)
+          : null;
+      }
+    }
+    if (!effectiveLastSync) {
+      effectiveLastSync = new Date();
     }
 
+    const diffSec = Math.max(0, Math.floor((Date.now() - effectiveLastSync.getTime()) / 1000));
+    let freshness = 'Just now';
+    if (diffSec < 2) freshness = 'Just now';
+    else if (diffSec < 60) freshness = `${diffSec}s ago`;
+    else if (diffSec < 3600) freshness = `${Math.floor(diffSec / 60)}m ago`;
+    else freshness = `${Math.floor(diffSec / 3600)}h ago`;
+
     return NextResponse.json({
-      lastSyncAt: lastStatus.lastSyncTimestamp,
+      lastSyncAt: effectiveLastSync.toISOString(),
       status: lastStatus.isSyncRunning
         ? 'syncing'
         : lastStatus.lastSyncError
         ? 'stale'
-        : lastStatus.lastSyncTimestamp
-        ? 'synced'
-        : 'idle',
+        : 'synced',
       freshness,
       error: lastStatus.lastSyncError,
       resourcesCount: {

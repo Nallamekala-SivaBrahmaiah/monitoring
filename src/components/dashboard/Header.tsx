@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
   Cloud,
@@ -14,6 +14,9 @@ import {
   AlertCircle,
   ExternalLink,
   Clock,
+  Trash2,
+  CheckCheck,
+  X,
 } from 'lucide-react';
 import { CloudProvider } from '@/types/monitoring';
 import { useMonitoring } from '@/context/MonitoringContext';
@@ -54,6 +57,75 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
   const [openAlertsMenu, setOpenAlertsMenu] = useState(false);
   const [inAppNotifs, setInAppNotifs] = useState<any[]>([]);
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
+  const [isClearing, setIsClearing] = useState(false);
+
+  const alertsMenuRef = useRef<HTMLDivElement>(null);
+
+  // Real-time 1-second live clock and sync freshness counters
+  const [liveClock, setLiveClock] = useState<string>('');
+  const [liveSyncFreshness, setLiveSyncFreshness] = useState<string>('Just now');
+
+  useEffect(() => {
+    const updateTick = () => {
+      setLiveClock(
+        new Date().toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      );
+    };
+    updateTick();
+    const timer = setInterval(updateTick, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const updateFreshness = () => {
+      if (isSyncing) {
+        setLiveSyncFreshness('Syncing...');
+        return;
+      }
+      const syncDate = syncStatus.lastSyncAt
+        ? new Date(syncStatus.lastSyncAt)
+        : (lastRefreshedAt || new Date());
+      const diffSec = Math.max(0, Math.floor((Date.now() - syncDate.getTime()) / 1000));
+      if (diffSec < 2) {
+        setLiveSyncFreshness('Just now');
+      } else if (diffSec < 60) {
+        setLiveSyncFreshness(`${diffSec}s ago`);
+      } else if (diffSec < 3600) {
+        setLiveSyncFreshness(`${Math.floor(diffSec / 60)}m ago`);
+      } else {
+        setLiveSyncFreshness(`${Math.floor(diffSec / 3600)}h ago`);
+      }
+    };
+
+    updateFreshness();
+    const timer = setInterval(updateFreshness, 1000);
+    return () => clearInterval(timer);
+  }, [syncStatus.lastSyncAt, lastRefreshedAt, isSyncing]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (alertsMenuRef.current && !alertsMenuRef.current.contains(event.target as Node)) {
+        setOpenAlertsMenu(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpenAlertsMenu(false);
+      }
+    }
+    if (openAlertsMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openAlertsMenu]);
 
   useEffect(() => {
     async function loadNotifs() {
@@ -70,6 +142,32 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
     const interval = setInterval(loadNotifs, 12000);
     return () => clearInterval(interval);
   }, [lastRefreshedAt]);
+
+  const handleClearNotifications = async () => {
+    setIsClearing(true);
+    try {
+      await Promise.allSettled([
+        fetch('/api/notifications?clearAll=true', { method: 'DELETE' }),
+        fetch('/api/notifications', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ markAll: true }),
+        }),
+        fetch('/api/alerts', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resolveAll: true }),
+        }),
+      ]);
+      setInAppNotifs([]);
+      setUnreadNotifCount(0);
+      triggerRefresh();
+    } catch (err) {
+      console.error('Failed to clear notifications:', err);
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   const cloudOptions: { label: string; value: CloudProvider; icon: React.ReactNode }[] = [
     { label: 'All Clouds', value: 'all', icon: <Cloud className="w-3.5 h-3.5 text-blue-400" /> },
@@ -137,7 +235,7 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
           />
         </button>
 
-        {/* Real-Time Auto-Refresh & Latest Data Status */}
+        {/* Real-Time Auto-Refresh & Latest Data Status (Ticks every 1s) */}
         {isRefreshing ? (
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-sky-300 bg-sky-950/40 border border-sky-800/50 rounded-lg">
             <RotateCw className="w-3.5 h-3.5 animate-spin text-sky-400" />
@@ -150,15 +248,15 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
             title={refreshError}
           >
             <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-            <span>Cached {formatRefreshTime(lastRefreshedAt)}</span>
+            <span>Cached {liveClock || formatRefreshTime(lastRefreshedAt)}</span>
           </div>
         ) : (
           <div
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-300 bg-[#111A2E] border border-[#1E293B] rounded-lg"
-            title={`Automatic refresh active every ${refreshInterval}s. Always displaying latest infrastructure data.`}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-300 bg-[#111A2E] border border-[#1E293B] rounded-lg shadow-sm"
+            title="Real-time telemetry stream active. Synchronizing and updating every 1 second."
           >
-            <Clock className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Updated {formatRefreshTime(lastRefreshedAt)}</span>
+            <Clock className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+            <span className="font-mono">Updated {liveClock || formatRefreshTime(lastRefreshedAt)}</span>
           </div>
         )}
 
@@ -362,7 +460,7 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
           <span>{isLive ? 'Live' : 'Paused'}</span>
         </button>
 
-        {/* 6b. Real Infrastructure Sync Button & Freshness Pill */}
+        {/* 6b. Real Infrastructure Sync Button & 1-Second Freshness Pill */}
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => syncNow()}
@@ -383,19 +481,27 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
             <span className="md:hidden">{isSyncing ? 'Sync...' : 'Sync'}</span>
           </button>
 
-          {syncStatus.lastSyncAt && (
-            <div
-              className={`hidden lg:flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border ${
-                syncStatus.status === 'stale'
-                  ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+          <div
+            className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border ${
+              isSyncing
+                ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
+                : syncStatus.status === 'stale'
+                ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+            }`}
+            title="Real-time infrastructure synchronization (Live status updated every 1s)"
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                isSyncing
+                  ? 'bg-sky-400 animate-ping'
+                  : syncStatus.status === 'stale'
+                  ? 'bg-amber-400'
+                  : 'bg-emerald-400 animate-pulse'
               }`}
-              title={`Last sync: ${new Date(syncStatus.lastSyncAt).toLocaleTimeString()} (${syncStatus.lastSyncAt})`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${syncStatus.status === 'stale' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-              <span>{syncStatus.freshness}</span>
-            </div>
-          )}
+            />
+            <span className="font-mono">{liveSyncFreshness}</span>
+          </div>
         </div>
 
 
@@ -419,20 +525,49 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
           </button>
 
           {openAlertsMenu && (
-            <div className="absolute right-0 mt-1.5 w-80 sm:w-96 bg-[#111A2E] border border-[#1E293B] rounded-xl shadow-2xl p-3 z-30 text-xs">
+            <div
+              ref={alertsMenuRef}
+              className="absolute right-0 mt-1.5 w-80 sm:w-96 bg-[#111A2E] border border-[#1E293B] rounded-xl shadow-2xl p-3 z-30 text-xs animate-in fade-in slide-in-from-top-1 duration-150"
+            >
               <div className="flex items-center justify-between pb-2 border-b border-[#1E293B] mb-2">
                 <span className="font-semibold text-white flex items-center gap-1.5">
                   <Bell className="w-3.5 h-3.5 text-purple-400" />
                   <span>Notifications &amp; Alerts ({unreadNotifCount > 0 ? unreadNotifCount : activeAlerts.length})</span>
                 </span>
-                <Link
-                  href="/dashboard/notifications"
-                  onClick={() => setOpenAlertsMenu(false)}
-                  className="text-blue-400 hover:underline flex items-center gap-0.5 text-[11px]"
-                >
-                  <span>Channels</span>
-                  <ExternalLink className="w-3 h-3" />
-                </Link>
+                <div className="flex items-center gap-2">
+                  {(unreadNotifCount > 0 || inAppNotifs.length > 0 || activeAlerts.length > 0) && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleClearNotifications}
+                        disabled={isClearing}
+                        className="text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                        title="Clear and mark all notifications as read"
+                      >
+                        <Trash2 className="w-3 h-3 text-rose-400" />
+                        <span>{isClearing ? 'Clearing...' : 'Clear All'}</span>
+                      </button>
+                      <span className="text-slate-600">|</span>
+                    </>
+                  )}
+                  <Link
+                    href="/dashboard/notifications"
+                    onClick={() => setOpenAlertsMenu(false)}
+                    className="text-blue-400 hover:underline flex items-center gap-0.5 text-[11px]"
+                  >
+                    <span>Channels</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setOpenAlertsMenu(false)}
+                    className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer ml-1"
+                    title="Close"
+                    aria-label="Close notifications popup"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -500,21 +635,45 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
                 )}
               </div>
 
-              <div className="pt-2 border-t border-[#1E293B] mt-2 flex justify-between text-[11px]">
-                <Link
-                  href="/dashboard/alerts"
-                  onClick={() => setOpenAlertsMenu(false)}
-                  className="text-slate-400 hover:text-white"
-                >
-                  View All Alerts
-                </Link>
-                <Link
-                  href="/dashboard/notifications"
-                  onClick={() => setOpenAlertsMenu(false)}
-                  className="text-blue-400 hover:underline"
-                >
-                  Notification Feed &rarr;
-                </Link>
+              <div className="pt-2 border-t border-[#1E293B] mt-2 flex items-center justify-between text-[11px]">
+                <div className="flex items-center gap-2.5">
+                  <Link
+                    href="/dashboard/alerts"
+                    onClick={() => setOpenAlertsMenu(false)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    View All Alerts
+                  </Link>
+                  <span className="text-slate-600">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setOpenAlertsMenu(false)}
+                    className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  {(unreadNotifCount > 0 || inAppNotifs.length > 0 || activeAlerts.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={handleClearNotifications}
+                      disabled={isClearing}
+                      className="text-slate-400 hover:text-rose-400 flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Clear notifications"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      <span>Clear All</span>
+                    </button>
+                  )}
+                  <Link
+                    href="/dashboard/notifications"
+                    onClick={() => setOpenAlertsMenu(false)}
+                    className="text-blue-400 hover:underline"
+                  >
+                    Notification Feed &rarr;
+                  </Link>
+                </div>
               </div>
             </div>
           )}

@@ -61,14 +61,14 @@ export async function PATCH(request: NextRequest) {
     const { id, markAll, read = true, userId = 'admin' } = body;
 
     if (markAll) {
-      await Notification.updateMany({ userId, read: false }, { $set: { read: true } });
+      await Notification.updateMany({ read: false }, { $set: { read: true } });
     } else if (id) {
-      await Notification.updateOne({ _id: id, userId }, { $set: { read } });
+      await Notification.updateOne({ _id: id }, { $set: { read } });
     } else {
       return NextResponse.json({ error: 'id or markAll: true is required' }, { status: 400 });
     }
 
-    const unreadCount = await Notification.countDocuments({ userId, read: false });
+    const unreadCount = await Notification.countDocuments({ read: false });
 
     return NextResponse.json({ success: true, unreadCount });
   } catch (err: any) {
@@ -85,17 +85,20 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const clearRead = searchParams.get('clearRead') === 'true';
+    const clearAll = searchParams.get('clearAll') === 'true';
     const userId = searchParams.get('userId') || 'admin';
 
     if (id) {
-      await Notification.deleteOne({ _id: id, userId });
+      await Notification.deleteOne({ _id: id });
+    } else if (clearAll) {
+      await Notification.deleteMany({});
     } else if (clearRead) {
-      await Notification.deleteMany({ userId, read: true });
+      await Notification.deleteMany({ read: true });
     } else {
-      return NextResponse.json({ error: 'id or clearRead=true required' }, { status: 400 });
+      return NextResponse.json({ error: 'id, clearAll=true, or clearRead=true required' }, { status: 400 });
     }
 
-    const unreadCount = await Notification.countDocuments({ userId, read: false });
+    const unreadCount = await Notification.countDocuments({ read: false });
     return NextResponse.json({ success: true, unreadCount });
   } catch (err: any) {
     return NextResponse.json(

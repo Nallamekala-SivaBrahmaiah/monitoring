@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Server Details - UI Design Models</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0B1120;
+      color: #E2E8F0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 30px;
+    }
+    h1 {
+      font-size: 24px;
+      color: #FFFFFF;
+      margin-bottom: 8px;
+    }
+    p.subtitle {
+      color: #94A3B8;
+      font-size: 14px;
+      margin-bottom: 30px;
+    }
+    .grid {
+      display: flex;
+      flex-direction: column;
+      gap: 40px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #111A2E;
+      border: 1px solid #1E293B;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      transition: border-color 0.2s;
+    }
+    .card:hover {
+      border-color: #3B82F6;
+    }
+    .card-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid #1E293B;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-header h2 {
+      font-size: 18px;
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+    }
+    .badge-cyan { background: rgba(6, 182, 212, 0.15); color: #22D3EE; border: 1px solid rgba(6, 182, 212, 0.3); }
+    .badge-blue { background: rgba(59, 130, 246, 0.15); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .badge-emerald { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .img-wrap {
+      width: 100%;
+      background: #070B14;
+      text-align: center;
+      padding: 12px;
+    }
+    .img-wrap img {
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+      border: 1px solid #1E293B;
+      display: block;
+      cursor: zoom-in;
+    }
+    .card-body {
+      padding: 20px 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      background: #0E1627;
+      border-top: 1px solid #1E293B;
+    }
+    .feature-item {
+      display: flex;
+      gap: 10px;
+      font-size: 13px;
+      color: #CBD5E1;
+      line-height: 1.5;
+    }
+    .dot {
+      width: 6px;
+      height: 6px;
+      background: #3B82F6;
+      border-radius: 50%;
+      margin-top: 7px;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <div>
+      <h1>Server Details ("Server Inside") - UI Design Models</h1>
+      <p class="subtitle">Select your preferred design model below. Click any image to view in full resolution.</p>
+    </div>
+
+    <!-- Model 1 -->
+    <div class="card">
+      <div class="card-header">
+        <h2><span>Option 1: Cyber Ops Command Center</span> <span class="badge badge-cyan">Datadog & Grafana Style</span></h2>
+      </div>
+      <div class="img-wrap">
+        <a href="/previews/model1_cyber_ops.jpg" target="_blank">
+          <img src="/previews/model1_cyber_ops.jpg" alt="Model 1: Cyber Ops Command Center" />
+        </a>
+      </div>
+      <div class="card-body">
+        <div class="feature-item"><div class="dot"></div><div><strong>4 Radial Dials:</strong> Glowing circular gauges for CPU (14%), RAM (30%), Disk (/dev/sda1 - 18%), and Network I/O (12.4 MB/s).</div></div>
+        <div class="feature-item"><div class="dot"></div><div><strong>Real-Time Heartbeat Waveform:</strong> Glowing ECG line chart with live telemetry pulses and range selector.</div></div>
+        <div class="feature-item"><div class="dot"></div><div><strong>Live Process Table:</strong> Browser-native <code>htop</code> inspector with PID, User, CPU%, Mem%, and Commands without needing to SSH.</div></div>
+        <div class="feature-item"><div class="dot"></div><div><strong>Docker Container Health:</strong> Real-time container statuses, image versions, and runtime health.</div></div>
+      </div>
+    </div>
+
+    <!-- Model 2 -->
+    <div class="card">
+      <div class="card-header">
+        <h2><span>Option 2: Cloud Native Cockpit</span> <span class="badge badge-blue">Azure Monitor & CloudWatch Style</span></h2>
+      </div>
+      <div class="img-wrap">
+        <a href="/previews/model2_cloud_cockpit.jpg" target="_blank">
+          <img src="/previews/model2_cloud_cockpit.jpg" alt="Model 2: Cloud Native Cockpit" />
+        </a>
+      </div>
+      <div class="card-body">
+        <div class="feature-item"><div class="dot"></div><div><strong>Correlated Area Charts:</strong> Dual-axis graphs overlaying CPU Load vs RAM Pressure vs Disk IOPS over time.</div></div>
+        <div class="feature-item"><div class="dot"></div><div><strong>Storage Partition Breakdown:</strong> Visual disk usage progress bars for root (<code>/</code>), <code>/var/log</code>, and <code>/data</code> with available space.</div></div>
+        <div class="feature-item"><div class="dot"></div><div><strong>Hardware Ecosystem Right Rail:</strong> Azure VM SKU, vCPUs, NIC throughput, and container allocation quotas.</div></div>
+        <div class="feature-item"><div class="dot"></div><div><strong>Incident History Timeline:</strong> Automated threshold alert history and diagnostic logs.</div></div>
+      </div>
+    </div>
+
+    <!-- Model 3 -->
+    <div class="card">
+      <div class="card-header">
+        <h2><span>Option 3: Terminal-Centric DevOps Deck</span> <span class="badge badge-emerald">Warp & Vercel Infra Style</span></h2>
+      </div>
+      <div class="img-wrap">
+        <a href="/previews/model3_terminal_deck.jpg" target="_blank">
+          <img src="/previews/model3_terminal_deck.jpg" alt="Model 3: Terminal-Centric DevOps Deck" />
+        </a>
+      </div>
+      <div class="card-body">
+        <div class="feature-item"><div class="dot"></div><div><strong>50/50 Split Cockpit:</strong> Left side displays compact telemetry HUD (per-core CPU bars, stacked RAM bar, Disk IOPS).</div></div>
+        <div class="feature-item"><div class="dot"></div><div><strong>Embedded Web-SSH Terminal:</strong> Right side features an active interactive Linux terminal session right on the page.</div></div>
+        <div class="feature-item"><div class="dot"></div><div><strong>One-Click CLI Pills:</strong> Fast command shortcuts for <code>htop</code>, <code>df -h</code>, <code>docker ps</code>, <code>journalctl -f</code>.</div></div>
+        <div class="feature-item"><div class="dot"></div><div><strong>Firewall & Port Security Matrix:</strong> Active UFW rule matrix showing open ports (22, 80, 443, 2375).</div></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+

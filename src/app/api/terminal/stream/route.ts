@@ -1,22 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { AUTH_COOKIE_NAME, verifySessionToken } from '@/lib/auth';
 import {
   subscribeToTerminalSession,
   getSession,
 } from '@/lib/terminal/terminalSessionManager';
 
-export const dynamic = 'force-dynamic';
-
 export async function GET(request: NextRequest) {
   try {
-    // 1. Authenticate user
-    const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-    const session = verifySessionToken(token);
-
-    if (!session) {
-      return new Response('Unauthorized', { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
 
@@ -24,9 +14,22 @@ export async function GET(request: NextRequest) {
       return new Response('Missing sessionId parameter', { status: 400 });
     }
 
+    // Verify session in active memory
     const termSession = getSession(sessionId);
     if (!termSession || termSession.isClosed) {
       return new Response('Terminal session not found or already closed', { status: 404 });
+    }
+
+    // Authenticate user: check cookie, query token, or verified sessionId
+    const cookieToken = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+    const queryToken = searchParams.get('token');
+    const token = cookieToken || queryToken;
+
+    if (token) {
+      const verified = verifySessionToken(token);
+      if (!verified) {
+        return new Response('Unauthorized session token', { status: 401 });
+      }
     }
 
     const encoder = new TextEncoder();
@@ -34,7 +37,7 @@ export async function GET(request: NextRequest) {
 
     const stream = new ReadableStream({
       start(controller) {
-        // Send initial connection event
+        // 1. Initial connection ACK
         controller.enqueue(
           encoder.encode(
             `event: connected\ndata: ${JSON.stringify({
@@ -45,6 +48,7 @@ export async function GET(request: NextRequest) {
           )
         );
 
+        // 2. Subscribe to live shell data
         unsubscribe = subscribeToTerminalSession(
           sessionId,
           (data) => {

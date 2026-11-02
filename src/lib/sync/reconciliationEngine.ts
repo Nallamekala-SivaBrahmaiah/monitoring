@@ -31,19 +31,24 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
   const errors: string[] = [];
 
   if (isSyncRunning) {
-    return {
-      success: false,
-      timestamp: lastSyncTimestamp ? lastSyncTimestamp.toISOString() : new Date().toISOString(),
-      durationMs: 0,
-      stats: {
-        azureResourcesDiscovered: 0,
-        awsResourcesDiscovered: 0,
-        dockerContainersDiscovered: 0,
-        k8sClustersDiscovered: 0,
-        prunedDeletedCount: 0,
-      },
-      errors: ['A synchronization cycle is already currently running.'],
-    };
+    const elapsed = lastSyncTimestamp ? Date.now() - lastSyncTimestamp.getTime() : 0;
+    if (elapsed > 45000) {
+      isSyncRunning = false;
+    } else {
+      return {
+        success: false,
+        timestamp: lastSyncTimestamp ? lastSyncTimestamp.toISOString() : new Date().toISOString(),
+        durationMs: 0,
+        stats: {
+          azureResourcesDiscovered: 0,
+          awsResourcesDiscovered: 0,
+          dockerContainersDiscovered: 0,
+          k8sClustersDiscovered: 0,
+          prunedDeletedCount: 0,
+        },
+        errors: ['A synchronization cycle is already currently running.'],
+      };
+    }
   }
 
   isSyncRunning = true;

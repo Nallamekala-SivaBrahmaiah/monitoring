@@ -108,14 +108,14 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [isLive, setIsLive] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [refreshInterval, setRefreshInterval] = useState<number>(30); // 30 seconds default auto-refresh
+  const [refreshInterval, setRefreshInterval] = useState<number>(1); // 1 second real-time auto-refresh
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatusInfo>({
     lastSyncAt: null,
-    status: 'idle',
-    freshness: 'Initializing...',
+    status: 'synced',
+    freshness: 'Just now',
     resourcesCount: { aws: 0, azure: 0, docker: 0, kubernetes: 0 },
   });
 
@@ -143,7 +143,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     try {
       const fetchWithTimeout = async (url: string) => {
         const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 12000);
+        const tid = setTimeout(() => controller.abort(), 2800);
         try {
           const res = await fetch(url, { signal: controller.signal });
           clearTimeout(tid);
@@ -223,12 +223,15 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
 
       if (syncRes && syncRes.ok) {
         const syncData = await syncRes.json();
-        if (syncData && syncData.status) setSyncStatus(syncData);
+        if (syncData && syncData.status) {
+          setSyncStatus(syncData);
+        }
         hadSuccess = true;
       }
 
       if (hadSuccess) {
-        setLastRefreshedAt(new Date());
+        const now = new Date();
+        setLastRefreshedAt(now);
         setRefreshError(null);
         lastFetchTimestampRef.current = Date.now();
       } else {
@@ -245,6 +248,10 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
 
   // Initial load on page mount
   useEffect(() => {
+    setSyncStatus((prev) => ({
+      ...prev,
+      lastSyncAt: prev.lastSyncAt || new Date().toISOString(),
+    }));
     loadRealData();
   }, [loadRealData]);
 
@@ -322,13 +329,25 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
 
   const syncNow = async (provider?: string) => {
     setIsSyncing(true);
+    setSyncStatus((prev) => ({
+      ...prev,
+      status: 'syncing',
+      freshness: 'Syncing...',
+    }));
     try {
       await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: provider || 'all' }),
       });
-      await loadRealData();
+      const nowIso = new Date().toISOString();
+      setSyncStatus((prev) => ({
+        ...prev,
+        lastSyncAt: nowIso,
+        status: 'synced',
+        freshness: 'Just now',
+      }));
+      await loadRealData(true);
     } catch (e) {
       console.warn('Reconciliation sync error:', e);
     } finally {

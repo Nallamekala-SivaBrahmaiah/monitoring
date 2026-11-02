@@ -112,17 +112,17 @@ export function CloudDistributionChart({
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col justify-center space-y-3 min-w-0 pl-2">
+        <div className="flex-1 flex flex-col justify-center space-y-3 pl-3">
           {distributionData.map((item) => (
-            <div key={item.name} className="flex items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2 min-w-0">
+            <div key={item.name} className="flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 shrink-0">
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: item.color }}
                 />
-                <span className="text-slate-300 font-medium truncate">{item.name}</span>
+                <span className="text-slate-200 font-semibold whitespace-nowrap">{item.name}</span>
               </div>
-              <div className="text-slate-300 font-semibold shrink-0 text-right whitespace-nowrap ml-2">
+              <div className="text-slate-300 font-semibold shrink-0 text-right whitespace-nowrap">
                 <span>{item.value}</span>{' '}
                 <span className="text-slate-400 font-normal text-[11px]">
                   ({item.percentage}%)

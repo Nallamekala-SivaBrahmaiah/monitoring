@@ -138,7 +138,29 @@ export async function PATCH(request: NextRequest) {
   try {
     await connectToDatabase();
     const body = await request.json();
-    const { id, status } = body;
+    const { id, status, resolveAll } = body;
+
+    if (resolveAll) {
+      const now = new Date();
+      await Alert.updateMany(
+        { status: 'active' },
+        {
+          $set: {
+            status: 'resolved',
+            resolvedAt: now,
+            lastEvaluatedAt: now,
+          },
+          $push: {
+            history: {
+              timestamp: now,
+              status: 'resolved',
+              message: 'Alert resolved by user (Clear All).',
+            },
+          },
+        }
+      );
+      return NextResponse.json({ success: true, message: 'All active alerts marked as resolved' });
+    }
 
     if (!id || !['acknowledged', 'resolved'].includes(status)) {
       return NextResponse.json(

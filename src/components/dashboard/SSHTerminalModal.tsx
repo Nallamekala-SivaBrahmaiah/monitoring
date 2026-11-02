@@ -10,8 +10,6 @@ import {
   PowerOff,
   Trash2,
   AlertCircle,
-  CheckCircle2,
-  KeyRound,
   ShieldAlert,
 } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
@@ -54,17 +52,11 @@ export function SSHTerminalModal({
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
 
   const activeSessionIdRef = useRef<string | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
+  const streamAbortControllerRef = useRef<AbortController | null>(null);
   const isClosingRef = useRef<boolean>(false);
 
-  // Send input to backend (supports either active WebSocket or HTTP endpoint)
+  // Send keystrokes / user command input to backend
   const sendInput = useCallback((data: string) => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: 'input', data }));
-      return;
-    }
-
     if (activeSessionIdRef.current) {
       fetch('/api/terminal/input', {
         method: 'POST',
@@ -77,13 +69,8 @@ export function SSHTerminalModal({
     }
   }, []);
 
-  // Send window resize
+  // Send terminal viewport resize
   const sendResize = useCallback((cols: number, rows: number) => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: 'resize', cols, rows }));
-      return;
-    }
-
     if (activeSessionIdRef.current) {
       fetch('/api/terminal/resize', {
         method: 'POST',
@@ -102,17 +89,9 @@ export function SSHTerminalModal({
     setStatus('disconnected');
     setStatusMessage('Terminal disconnected by user.');
 
-    if (socketRef.current) {
-      try {
-        socketRef.current.send(JSON.stringify({ type: 'disconnect' }));
-        socketRef.current.close();
-      } catch {}
-      socketRef.current = null;
-    }
-
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
+    if (streamAbortControllerRef.current) {
+      streamAbortControllerRef.current.abort();
+      streamAbortControllerRef.current = null;
     }
 
     if (activeSessionIdRef.current) {
@@ -129,12 +108,12 @@ export function SSHTerminalModal({
     }
   }, []);
 
-  // Connect via HTTP streaming
+  // Connect via Direct HTTP Streaming on port 3000
   const connectHttpStreaming = useCallback(
     async (term: any, targetVm: SSHTerminalTarget, cols: number, rows: number) => {
       try {
         setStatus('connecting');
-        setStatusMessage('Connecting via SSH (HTTP Gateway)...');
+        setStatusMessage('Connecting via SSH...');
         setErrorMessage(null);
         setIsUnconfigured(false);
 
@@ -164,46 +143,70 @@ export function SSHTerminalModal({
         activeSessionIdRef.current = sessionId;
 
         setStatus('connected');
-        setStatusMessage(`Connected to ${data.username || 'user'}@${data.host || targetVm.host}`);
+        setStatusMessage(`Connected: ${data.username || 'user'}@${data.host || targetVm.host}`);
+        term.write('\x1b[32m✔ Authenticated successfully. Establishing interactive session...\x1b[0m\r\n\r\n');
 
-        // Open SSE stream for terminal output
-        const es = new EventSource(`/api/terminal/stream?sessionId=${encodeURIComponent(sessionId)}`);
-        eventSourceRef.current = es;
+        // Open live streaming reader
+        const abortController = new AbortController();
+        streamAbortControllerRef.current = abortController;
 
-        es.addEventListener('connected', () => {
-          setStatus('connected');
+        const streamRes = await fetch(`/api/terminal/stream?sessionId=${encodeURIComponent(sessionId)}`, {
+          credentials: 'include',
+          signal: abortController.signal,
         });
 
-        es.addEventListener('data', (e) => {
+        if (!streamRes.ok || !streamRes.body) {
+          throw new Error(`Terminal stream connection failed (${streamRes.status})`);
+        }
+
+        const reader = streamRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        (async () => {
           try {
-            const parsed = JSON.parse(e.data);
-            if (parsed.data) {
-              term.write(parsed.data);
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) {
+                if (!isClosingRef.current) {
+                  setStatus('disconnected');
+                  setStatusMessage('Session closed by remote server');
+                  term.write('\r\n\x1b[33m[Connection closed by remote host]\x1b[0m\r\n');
+                }
+                break;
+              }
+
+              const chunk = decoder.decode(value, { stream: true });
+              buffer += chunk;
+              const packets = buffer.split('\n\n');
+              buffer = packets.pop() || '';
+
+              for (const packet of packets) {
+                if (!packet.trim()) continue;
+                if (packet.includes('event: close')) {
+                  setStatus('disconnected');
+                  term.write('\r\n\x1b[33m[Session disconnected]\x1b[0m\r\n');
+                  return;
+                }
+                const match = packet.match(/^data:\s*(.*)$/m);
+                if (match) {
+                  try {
+                    const parsed = JSON.parse(match[1]);
+                    if (parsed.data) {
+                      term.write(parsed.data);
+                    }
+                  } catch {
+                    term.write(match[1]);
+                  }
+                }
+              }
             }
-          } catch {
-            term.write(e.data);
+          } catch (e: any) {
+            if (!isClosingRef.current && e.name !== 'AbortError') {
+              console.warn('Terminal stream read note:', e);
+            }
           }
-        });
-
-        es.addEventListener('close', (e) => {
-          setStatus('disconnected');
-          try {
-            const parsed = JSON.parse(e.data);
-            setStatusMessage(parsed.reason || 'Remote server closed the shell session.');
-            term.write(`\r\n\x1b[33m[${parsed.reason || 'Remote session closed'}]\x1b[0m\r\n`);
-          } catch {
-            setStatusMessage('Connection closed by remote host.');
-          }
-          es.close();
-        });
-
-        es.onerror = () => {
-          if (!isClosingRef.current && status === 'connected') {
-            setStatus('disconnected');
-            setStatusMessage('Connection stream interrupted.');
-          }
-          es.close();
-        };
+        })();
       } catch (err: any) {
         setStatus('error');
         setErrorMessage(err.message || 'SSH connection failed.');
@@ -211,7 +214,7 @@ export function SSHTerminalModal({
         term.write(`\r\n\x1b[31;1mError: ${err.message || 'SSH Connection failed'}\x1b[0m\r\n`);
       }
     },
-    [status]
+    []
   );
 
   // Initialize terminal and attempt connection
@@ -222,7 +225,7 @@ export function SSHTerminalModal({
     const { Terminal } = await import('@xterm/xterm');
     const { FitAddon } = await import('@xterm/addon-fit');
 
-    // Clean up previous terminal if any
+    // Clean up previous terminal instance if any
     if (xtermInstanceRef.current) {
       xtermInstanceRef.current.dispose();
       xtermInstanceRef.current = null;
@@ -282,93 +285,8 @@ export function SSHTerminalModal({
     const cols = term.cols || 80;
     const rows = term.rows || 24;
 
-    // Attempt WebSocket connection first on port 3001
-    const wsPort = typeof window !== 'undefined' ? 3001 : 3001;
-    const wsUrl = `ws://${window.location.hostname}:${wsPort}`;
-    let wsSuccess = false;
-
-    try {
-      const ws = new WebSocket(wsUrl);
-      socketRef.current = ws;
-
-      const wsTimeout = setTimeout(() => {
-        if (!wsSuccess) {
-          try {
-            ws.close();
-          } catch {}
-          socketRef.current = null;
-          // Fallback to HTTP streaming
-          connectHttpStreaming(term, target, cols, rows);
-        }
-      }, 1500);
-
-      ws.onopen = () => {
-        wsSuccess = true;
-        clearTimeout(wsTimeout);
-        setStatus('connecting');
-        setStatusMessage('WebSocket connected. Initializing interactive SSH session...');
-
-        ws.send(
-          JSON.stringify({
-            type: 'init',
-            sshServerId: target.sshServerId,
-            vmId: target.vmId || target.id,
-            name: target.name,
-            host: target.host && target.host !== '-' ? target.host : '',
-            cols,
-            rows,
-          })
-        );
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'data' && msg.data) {
-            term.write(msg.data);
-          } else if (msg.type === 'status') {
-            if (msg.status === 'connected') {
-              setStatus('connected');
-              setStatusMessage(`Connected to ${target.name} (${target.host || 'SSH'})`);
-              activeSessionIdRef.current = msg.sessionId;
-            } else if (msg.status === 'disconnected') {
-              setStatus('disconnected');
-              setStatusMessage(msg.message || 'Session disconnected');
-              term.write(`\r\n\x1b[33m[${msg.message || 'Session disconnected'}]\x1b[0m\r\n`);
-            }
-          } else if (msg.type === 'error') {
-            setStatus('error');
-            setErrorMessage(msg.error);
-            setStatusMessage('Connection Failed');
-            term.write(`\r\n\x1b[31;1m${msg.error}\x1b[0m\r\n`);
-            if (msg.error.includes('No saved SSH credentials')) {
-              setIsUnconfigured(true);
-            }
-          }
-        } catch {
-          term.write(event.data);
-        }
-      };
-
-      ws.onerror = () => {
-        if (!wsSuccess) {
-          clearTimeout(wsTimeout);
-          socketRef.current = null;
-          // Fallback seamlessly to HTTP streaming
-          connectHttpStreaming(term, target, cols, rows);
-        }
-      };
-
-      ws.onclose = () => {
-        if (wsSuccess && !isClosingRef.current) {
-          setStatus('disconnected');
-          setStatusMessage('Terminal connection closed.');
-        }
-      };
-    } catch {
-      // Direct fallback
-      connectHttpStreaming(term, target, cols, rows);
-    }
+    // Connect via HTTP streaming directly on port 3000
+    connectHttpStreaming(term, target, cols, rows);
   }, [target, sendInput, connectHttpStreaming]);
 
   // Handle open/close lifecycle
@@ -380,15 +298,9 @@ export function SSHTerminalModal({
 
     return () => {
       isClosingRef.current = true;
-      if (socketRef.current) {
-        try {
-          socketRef.current.close();
-        } catch {}
-        socketRef.current = null;
-      }
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      if (streamAbortControllerRef.current) {
+        streamAbortControllerRef.current.abort();
+        streamAbortControllerRef.current = null;
       }
       if (activeSessionIdRef.current) {
         fetch('/api/terminal/disconnect', {

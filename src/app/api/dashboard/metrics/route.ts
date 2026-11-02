@@ -47,10 +47,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch latest time-series metrics from MongoDB in ascending chronological order (oldest to newest)
-    let metrics = await Metric.find(query).sort({ timestamp: 1 }).limit(100).lean();
+    // Fetch latest time-series metrics from MongoDB (most recent first)
+    let metrics = await Metric.find(query).sort({ timestamp: -1 }).limit(60).lean();
 
-    if (metrics.length > 0) {
+    // Verify if metrics are recent (within last 2 hours). If older (e.g. from afternoon hours ago), allow live present timing
+    const nowMs = Date.now();
+    const isRecent = metrics.length > 0 && (nowMs - new Date(metrics[0].timestamp).getTime()) < 2 * 3600 * 1000;
+
+    if (isRecent) {
+      metrics.reverse();
       return NextResponse.json(
         metrics.map((m: any) => {
           const info = nameMap[m.resourceId] || {
