@@ -123,6 +123,59 @@ export async function GET(request: NextRequest) {
       // Mark matched alerts
       serverAlerts.forEach((a) => matchedAlertIds.add(a._id.toString()));
 
+      // Current live metrics from collector (strictly live telemetry - never overwritten by old alert numbers)
+      const currentCpu =
+        typeof s.metrics?.cpu === 'number' && !isNaN(s.metrics.cpu)
+          ? Math.round(s.metrics.cpu * 10) / 10
+          : null;
+      const currentMem =
+        typeof s.metrics?.memory === 'number' && !isNaN(s.metrics.memory)
+          ? Math.round(s.metrics.memory * 10) / 10
+          : null;
+      const currentDisk =
+        typeof s.metrics?.disk === 'number' && !isNaN(s.metrics.disk)
+          ? Math.round(s.metrics.disk * 10) / 10
+          : null;
+
+      // Reconcile active alerts against live telemetry:
+      // If live metrics for this server are below threshold, auto-resolve any stale active alerts
+      for (const alert of serverAlerts) {
+        if (alert.status === 'active') {
+          const m = (alert.metricName || '').toLowerCase();
+          const currentVal = m === 'cpu' ? currentCpu : m === 'memory' ? currentMem : currentDisk;
+          const thresh =
+            m === 'cpu'
+              ? thresholds.cpuThreshold
+              : m === 'memory'
+              ? thresholds.memoryThreshold
+              : thresholds.diskThreshold;
+
+          if (currentVal !== null && currentVal < thresh) {
+            // Asynchronously mark resolved in MongoDB
+            Alert.updateOne(
+              { _id: alert._id, status: 'active' },
+              {
+                $set: {
+                  status: 'resolved',
+                  resolvedAt: new Date(),
+                  lastEvaluatedAt: new Date(),
+                  value: currentVal,
+                },
+                $push: {
+                  history: {
+                    timestamp: new Date(),
+                    status: 'resolved',
+                    value: currentVal,
+                    message: `${alert.metricName || 'Metric'} returned to ${currentVal}% (below threshold ${thresh}%). Auto-resolved.`,
+                  },
+                },
+              }
+            ).exec().catch(() => null);
+            alert.status = 'resolved';
+          }
+        }
+      }
+
       // Active vs resolved check
       const activeAlerts = serverAlerts.filter((a) => a.status === 'active');
       const hasActive = activeAlerts.length > 0;
@@ -163,20 +216,6 @@ export async function GET(request: NextRequest) {
       const cpuPeak = getPeak(cpuAlerts);
       const memPeak = getPeak(memAlerts);
       const diskPeak = getPeak(diskAlerts);
-
-      // Current live metrics from collector (strictly live telemetry - never overwritten by old alert numbers)
-      const currentCpu =
-        typeof s.metrics?.cpu === 'number' && !isNaN(s.metrics.cpu)
-          ? Math.round(s.metrics.cpu * 10) / 10
-          : null;
-      const currentMem =
-        typeof s.metrics?.memory === 'number' && !isNaN(s.metrics.memory)
-          ? Math.round(s.metrics.memory * 10) / 10
-          : null;
-      const currentDisk =
-        typeof s.metrics?.disk === 'number' && !isNaN(s.metrics.disk)
-          ? Math.round(s.metrics.disk * 10) / 10
-          : null;
 
       const diskMount = diskAlerts[0]?.filesystem || '/';
 

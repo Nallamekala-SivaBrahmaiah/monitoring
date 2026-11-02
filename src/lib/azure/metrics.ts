@@ -76,9 +76,10 @@ export async function fetchAzureVMMetrics(
         const memPercent = Math.round((1 - lastPoint.average / totalRam) * 100);
         result.memoryUtilization = Math.max(0, Math.min(100, memPercent));
       } else if (name === 'Disk Read Bytes' || name === 'Disk Write Bytes') {
-        const bytes = lastPoint.total ?? lastPoint.average ?? 0;
-        const percent = Math.min(100, Math.round((bytes / (100 * 1024 * 1024)) * 100));
-        result.diskUtilization = percent;
+        // Disk Read/Write Bytes represent I/O throughput, NOT disk storage space.
+        // True in-guest filesystem storage utilization is collected via the verified SSH agent (df -h)
+        // or Azure Monitor Agent (AMA). Host-level Azure Monitor metrics do not track OS filesystem capacity.
+        result.diskUtilization = null;
       } else if (name === 'Network In Total' && lastPoint.total !== null && lastPoint.total !== undefined) {
         result.networkIn = Math.round((lastPoint.total / (1024 * 1024)) * 10) / 10;
       } else if (name === 'Network Out Total' && lastPoint.total !== null && lastPoint.total !== undefined) {
