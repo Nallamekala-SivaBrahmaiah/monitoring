@@ -53,17 +53,15 @@ export async function GET(request: NextRequest) {
 
         const candidateRegions = Array.from(
           new Set([
-            ...accountSelected,
-            ...existingResourceRegions,
             'ap-southeast-2',
+            ...existingResourceRegions,
+            ...(accountSelected.slice(0, 3)),
           ])
         ).filter((r): r is string => Boolean(r) && !isInaccessibleRegion(r));
 
         const targetRegions = regionParam && regionParam !== 'all'
           ? [regionParam]
-          : candidateRegions.length > 0
-          ? candidateRegions
-          : enabledRegions.slice(0, 3);
+          : candidateRegions;
 
         let accountActiveCount = 0;
 
@@ -90,14 +88,36 @@ export async function GET(request: NextRequest) {
                 resourceId: { $nin: Array.from(liveIds) },
               });
 
-              // Clean up any terminated AWS EC2 instances from the Server collection
-              if (liveIds.size > 0) {
-                await Server.deleteMany({
-                  cloudProvider: 'aws',
-                  region: reg,
-                  name: { $nin: Array.from(liveNames) },
-                  host: { $nin: Array.from(liveIps) },
-                });
+              // Clean up any legacy mirrored srv- records if a real EC2 instance exists for that name
+              for (const liveName of liveNames) {
+                if (liveName) {
+                  await CloudResource.deleteMany({
+                    provider: 'aws',
+                    region: reg,
+                    resourceId: { $regex: /^srv-/ },
+                    name: { $regex: new RegExp(`^${liveName}$`, 'i') },
+                  }).catch(() => null);
+                }
+              }
+
+              // Sync status with any matching registered servers in Server collection
+              for (const inst of discovery.instances) {
+                await Server.updateMany(
+                  {
+                    $or: [
+                      { name: inst.name },
+                      { host: inst.publicIp },
+                      { host: inst.privateIp },
+                      { tags: inst.resourceId },
+                    ],
+                  },
+                  {
+                    $set: {
+                      status: inst.status === 'Running' ? 'Online' : 'Offline',
+                      lastError: inst.status === 'Running' ? null : 'Server stopped in AWS console',
+                    },
+                  }
+                ).catch(() => null);
               }
 
               // Upsert live active instances with AWS account ID + region + instance ID

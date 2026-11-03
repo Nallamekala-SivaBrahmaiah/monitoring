@@ -32,8 +32,11 @@ export async function GET(request: NextRequest) {
     // Cross-reconcile server status with live cloud compute resource status
     const cloudResources = (await CloudResource.find({
       provider: { $in: ['aws', 'azure'] },
-      resourceType: { $in: ['ec2', 'vm'] },
+      isDeleted: { $ne: true },
+      status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
     }).lean()) as any[];
+
+    const matchedCloudIds = new Set<string>();
 
     const reconciledServers = await Promise.all(
       servers.map(async (s: any) => {
@@ -48,10 +51,15 @@ export async function GET(request: NextRequest) {
           const sshId = c.metadata?.sshServerId || c.tags?.sshServerId || '';
           if (sshId && sshId === s._id?.toString()) return true;
           if (cResId && (cResId === sName || cResId === sHost)) return true;
-          if (cName && cName === sName) return true;
+          if (cName && (cName === sName || cName === sHost.toLowerCase())) return true;
           if (sHost && (sHost === cPub || sHost === cPriv)) return true;
           return false;
         });
+
+        if (cr) {
+          matchedCloudIds.add(cr.resourceId);
+          matchedCloudIds.add(cr._id.toString());
+        }
 
         const cloudStatus = cr ? (cr.status as string) : null;
         let effectiveStatus = s.status;
@@ -59,8 +67,7 @@ export async function GET(request: NextRequest) {
         // If cloud resource is Running, never trap the server in stale "Offline - Server stopped by operator"
         if (
           cloudStatus === 'Running' &&
-          s.status === 'Offline' &&
-          s.lastError?.includes('stopped by operator')
+          (s.status === 'Offline' || s.lastError?.includes('stopped by operator'))
         ) {
           effectiveStatus = 'Online';
           // Persist the correction back to MongoDB Server
@@ -68,6 +75,8 @@ export async function GET(request: NextRequest) {
             { _id: s._id },
             { $set: { status: 'Online', lastError: null } }
           ).catch(() => null);
+        } else if (cloudStatus === 'Stopped') {
+          effectiveStatus = 'Offline';
         }
 
         return {
@@ -83,41 +92,99 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    // Prune and exclude any cloud servers (AWS / Azure) that have been deleted in the cloud console
-    const activeServers: any[] = [];
-    const deadServerIds: any[] = [];
+    // Merge cloud-discovered AWS EC2 and Azure VMs into the servers inventory so all console-created VMs appear
+    const synthesizedServers: any[] = [];
+    for (const cr of cloudResources) {
+      if (cr.resourceId && cr.resourceId.startsWith('srv-')) continue;
+      if (matchedCloudIds.has(cr.resourceId) || matchedCloudIds.has(cr._id.toString())) continue;
+      if (cloudFilter && cloudFilter !== 'all' && cr.provider !== cloudFilter) continue;
 
-    for (const s of reconciledServers) {
-      if (s.cloudProvider === 'azure' || s.cloudProvider === 'aws') {
-        const hasLiveCloudResource = cloudResources.some((c: any) => {
-          if (c.provider !== s.cloudProvider) return false;
-          if (c.status === 'Terminated' || c.isDeleted) return false;
-          const cName = (c.name || '').toLowerCase().trim();
-          const sName = (s.name || '').toLowerCase().trim();
-          const sHost = (s.host || '').trim();
-          return (
-            cName === sName ||
-            c.publicIp === sHost ||
-            c.privateIp === sHost ||
-            c.resourceId === sName
-          );
-        });
-
-        if (hasLiveCloudResource) {
-          activeServers.push(s);
-        } else {
-          deadServerIds.push(s._id);
-        }
-      } else {
-        activeServers.push(s);
-      }
+      const isRunning = (cr.status || '').toLowerCase().includes('run');
+      synthesizedServers.push({
+        _id: cr.resourceId,
+        cloudResourceId: cr.resourceId,
+        name: cr.name || cr.resourceId,
+        host: cr.publicIp || cr.privateIp || '-',
+        port: 22,
+        username: 'ubuntu',
+        authMethod: 'privateKey',
+        cloudProvider: cr.provider,
+        region: cr.region || 'ap-southeast-2',
+        tags: cr.tags ? Object.values(cr.tags) : [],
+        status: isRunning ? 'Online' : 'Offline',
+        lastError: isRunning ? null : (cr.status || 'Stopped in Cloud'),
+        lastConnectedAt: cr.lastSyncAt,
+        lastHeartbeatAt: cr.lastSyncAt,
+        hostFingerprint: null,
+        os: {
+          name: (cr.metadata as any)?.os || 'Linux',
+          version: '',
+          kernel: '',
+          arch: 'x86_64',
+          uptimeSeconds: isRunning ? 3600 : 0,
+          uptimeFormatted: isRunning ? 'Active' : 'Offline',
+        },
+        hardware: {
+          cpuCores: cr.size?.includes('2') ? 2 : 1,
+          cpuModel: cr.size || 't3.micro',
+          totalMemoryBytes: 1024 * 1024 * 1024 * 2,
+          totalDiskBytes: 1024 * 1024 * 1024 * 30,
+        },
+        metrics: {
+          cpu: {
+            usagePercent: cr.metrics?.cpuUtilization ?? 0,
+            loadAvg1m: 0.1,
+            loadAvg5m: 0.1,
+            loadAvg15m: 0.1,
+            cores: 1,
+            timestamp: new Date().toISOString(),
+          },
+          memory: {
+            totalBytes: 1024 * 1024 * 1024 * 2,
+            usedBytes: cr.metrics?.memoryUtilization ? (cr.metrics.memoryUtilization / 100) * 2 * 1024 * 1024 * 1024 : 0,
+            availableBytes: 1024 * 1024 * 1024 * 1.5,
+            usagePercent: cr.metrics?.memoryUtilization ?? 0,
+            swapTotalBytes: 0,
+            swapUsedBytes: 0,
+            timestamp: new Date().toISOString(),
+          },
+          disks: [
+            {
+              filesystem: '/dev/root',
+              mount: '/',
+              totalBytes: 1024 * 1024 * 1024 * 30,
+              usedBytes: cr.metrics?.diskUtilization ? (cr.metrics.diskUtilization / 100) * 30 * 1024 * 1024 * 1024 : 0,
+              availableBytes: 1024 * 1024 * 1024 * 20,
+              usagePercent: cr.metrics?.diskUtilization ?? 0,
+            },
+          ],
+          network: [],
+        },
+        docker: {
+          detected: false,
+          version: '',
+          containersCount: 0,
+          runningCount: 0,
+          imagesCount: 0,
+        },
+        kubernetes: {
+          detected: false,
+          version: '',
+          podsCount: 0,
+        },
+        agent: {
+          installed: false,
+          version: '',
+          token: '',
+          status: 'not-installed',
+        },
+        createdAt: cr.createdAt || new Date().toISOString(),
+        cloudPowerState: cr.status || (isRunning ? 'Running' : 'Stopped'),
+      });
     }
 
-    if (deadServerIds.length > 0) {
-      await Server.deleteMany({ _id: { $in: deadServerIds } }).catch(() => null);
-    }
-
-    return NextResponse.json(activeServers);
+    const allServers = [...reconciledServers, ...synthesizedServers];
+    return NextResponse.json(allServers);
   } catch (err: any) {
     console.error('Error fetching servers:', err);
     return NextResponse.json({ error: 'Failed to fetch servers' }, { status: 500 });

@@ -15,9 +15,142 @@ export async function GET(
     const { instanceId } = await context.params;
     const resources = await getUnifiedServerInventory({ provider: 'aws' });
 
-    const r = resources.find(
+    let r = resources.find(
       (item) => item.resourceId === instanceId || item.id === instanceId
     );
+
+    // If not in unified list, check CloudResource directly or query AWS directly
+    if (!r) {
+      const cr = await CloudResource.findOne({
+        provider: 'aws',
+        $or: [{ resourceId: instanceId }, { name: instanceId }],
+      }).lean();
+
+      if (cr) {
+        const isRun = ((cr as any).status || '').toLowerCase().includes('run');
+        r = {
+          id: (cr as any)._id?.toString() || instanceId,
+          resourceId: (cr as any).resourceId || instanceId,
+          name: (cr as any).name || instanceId,
+          host: (cr as any).publicIp || (cr as any).privateIp || '-',
+          publicIp: (cr as any).publicIp || '-',
+          privateIp: (cr as any).privateIp || '-',
+          cloudProvider: 'aws',
+          region: (cr as any).region || 'ap-southeast-2',
+          status: isRun ? 'Running' : 'Stopped',
+          powerState: isRun ? 'Running' : 'Stopped',
+          vmSize: (cr as any).size || 't3.micro',
+          resourceGroup: 'default-rg',
+          accountId: (cr as any).accountId || 'acc-aws-01',
+          os: ((cr as any).metadata as any)?.os || 'Linux (amazon-linux-2)',
+          isCloudDiscovered: true,
+          isSSHConnected: Boolean((cr as any).metadata?.isSSHConnected),
+          metrics: {
+            cpu: (cr as any).metrics?.cpuUtilization ?? null,
+            memory: (cr as any).metrics?.memoryUtilization ?? null,
+            disk: (cr as any).metrics?.diskUtilization ?? null,
+            networkIn: (cr as any).metrics?.networkIn ?? null,
+            networkOut: (cr as any).metrics?.networkOut ?? null,
+            metricSource: (cr as any).metricSource || 'Amazon CloudWatch',
+          },
+          docker: { detected: false, status: 'not_installed', version: '', containersCount: 0, runningCount: 0, imagesCount: 0 },
+          kubernetes: { detected: false, version: '', podsCount: 0 },
+        };
+      }
+    }
+
+    if (!r) {
+      // Query AWS directly for this instance ID
+      const awsAccount = await CloudAccount.findOne({ provider: 'aws', status: 'Connected' })
+        .select('+accessKeyId +secretAccessKey')
+        .lean();
+
+      if (awsAccount && (awsAccount as any).accessKeyId && (awsAccount as any).secretAccessKey) {
+        const regionsToTry = ['ap-southeast-2', ...(awsAccount.selectedRegions || []), 'us-east-1'];
+        for (const reg of Array.from(new Set(regionsToTry))) {
+          try {
+            const client = new EC2Client({
+              region: reg,
+              credentials: {
+                accessKeyId: (awsAccount as any).accessKeyId,
+                secretAccessKey: (awsAccount as any).secretAccessKey,
+              },
+            });
+            const { DescribeInstancesCommand } = await import('@aws-sdk/client-ec2');
+            const desc = await client.send(
+              new DescribeInstancesCommand({
+                InstanceIds: [instanceId],
+              })
+            );
+            const inst = desc.Reservations?.[0]?.Instances?.[0];
+            if (inst && inst.InstanceId) {
+              const nameTag = inst.Tags?.find((t) => t.Key === 'Name');
+              const name = nameTag?.Value || inst.InstanceId;
+              const isRunning = (inst.State?.Name || '').toLowerCase() === 'running';
+
+              // Upsert to CloudResource
+              await CloudResource.updateOne(
+                { resourceId: inst.InstanceId, provider: 'aws' },
+                {
+                  $set: {
+                    provider: 'aws',
+                    resourceType: 'ec2',
+                    resourceId: inst.InstanceId,
+                    name,
+                    region: reg,
+                    accountId: awsAccount.accountId,
+                    status: isRunning ? 'Running' : 'Stopped',
+                    size: inst.InstanceType || 't3.micro',
+                    privateIp: inst.PrivateIpAddress,
+                    publicIp: inst.PublicIpAddress,
+                    isDeleted: false,
+                    lastSyncAt: new Date(),
+                    metadata: {
+                      availabilityZone: inst.Placement?.AvailabilityZone || `${reg}b`,
+                      vpcId: inst.VpcId,
+                      subnetId: inst.SubnetId,
+                      launchTime: inst.LaunchTime,
+                      rawState: inst.State?.Name,
+                    },
+                  },
+                },
+                { upsert: true }
+              );
+
+              r = {
+                id: inst.InstanceId,
+                resourceId: inst.InstanceId,
+                name,
+                host: inst.PublicIpAddress || inst.PrivateIpAddress || '-',
+                publicIp: inst.PublicIpAddress || '-',
+                privateIp: inst.PrivateIpAddress || '-',
+                cloudProvider: 'aws',
+                region: reg,
+                status: isRunning ? 'Running' : 'Stopped',
+                powerState: isRunning ? 'Running' : 'Stopped',
+                vmSize: inst.InstanceType || 't3.micro',
+                resourceGroup: 'default-rg',
+                accountId: awsAccount.accountId,
+                os: 'Linux (amazon-linux-2)',
+                isCloudDiscovered: true,
+                isSSHConnected: false,
+                metrics: {
+                  cpu: null,
+                  memory: null,
+                  disk: null,
+                  networkIn: null,
+                  networkOut: null,
+                  metricSource: 'Amazon CloudWatch',
+                },
+                docker: { detected: false, status: 'not_installed', version: '', containersCount: 0, runningCount: 0, imagesCount: 0 },
+                kubernetes: { detected: false, version: '', podsCount: 0 },
+              };
+              break;
+            }
+          } catch {}
+        }
+      }
+    }
 
     if (!r) {
       return NextResponse.json({ error: 'Instance not found' }, { status: 404 });

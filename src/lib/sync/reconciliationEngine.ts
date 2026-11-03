@@ -287,14 +287,24 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
             resourceId: { $nin: Array.from(regionLiveIds) },
           });
 
-          // Also clean up any terminated AWS EC2 instances from the Server collection in this region
-          if (regionLiveIds.size > 0) {
-            await Server.deleteMany({
-              cloudProvider: 'aws',
-              region: reg,
-              name: { $nin: Array.from(regionLiveNames) },
-              host: { $nin: Array.from(regionLiveIps) },
-            });
+          // Sync status with any matching registered servers in Server collection
+          for (const inst of discovery.instances) {
+            await Server.updateMany(
+              {
+                $or: [
+                  { name: inst.name },
+                  { host: inst.publicIp },
+                  { host: inst.privateIp },
+                  { tags: inst.resourceId },
+                ],
+              },
+              {
+                $set: {
+                  status: inst.status === 'Running' ? 'Online' : 'Offline',
+                  lastError: inst.status === 'Running' ? null : 'Server stopped in AWS console',
+                },
+              }
+            ).catch(() => null);
           }
 
           prunedCount += pruneAwsRes.deletedCount || 0;

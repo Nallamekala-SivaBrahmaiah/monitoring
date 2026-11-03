@@ -54,9 +54,24 @@ export function EC2InstanceDetailView({ instance }: EC2InstanceDetailViewProps) 
   const [refreshInterval, setRefreshInterval] = useState('10s');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [currentStatus, setCurrentStatus] = useState(instance.status);
+  const [currentStatus, setCurrentStatus] = useState(instance?.status || 'Stopped');
   const [powerActionLoading, setPowerActionLoading] = useState(false);
   const [powerFeedback, setPowerFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  if (!instance) {
+    return (
+      <div className="min-h-screen bg-[#0B1120] text-slate-300 flex flex-col items-center justify-center p-6 space-y-4">
+        <h2 className="text-lg font-bold text-white">EC2 Instance Details Unavailable</h2>
+        <p className="text-xs text-slate-400">Loading instance information or instance not found.</p>
+        <button
+          onClick={() => router.push('/dashboard/ec2')}
+          className="px-4 py-2 bg-[#FF9900] hover:bg-[#FF8800] text-black text-xs font-semibold rounded-lg"
+        >
+          Return to EC2 Fleet
+        </button>
+      </div>
+    );
+  }
 
   const handleManualRefresh = () => {
     setIsRefreshing(true);

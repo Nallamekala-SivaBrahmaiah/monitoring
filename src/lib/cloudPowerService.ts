@@ -366,10 +366,16 @@ export async function executeUnifiedPowerAction(
         ],
       }).lean();
 
-      let ec2InstanceId = cr?.resourceId;
+      let ec2InstanceId = (cr?.resourceId && cr.resourceId.startsWith('i-')) ? cr.resourceId : undefined;
       let targetRegion = cr?.region || server.region || 'ap-southeast-2';
 
-      // If not yet in CloudResource, query AWS directly to discover the instance matching name or IP
+      // Check if instance ID is stored in server tags or metadata
+      if (!ec2InstanceId) {
+        const tagInstanceId = server.tags?.find((t: string) => /^i-[0-9a-f]{8,17}$/i.test(t));
+        if (tagInstanceId) ec2InstanceId = tagInstanceId;
+      }
+
+      // If not yet resolved, query AWS directly to discover the instance matching name or IP
       if (!ec2InstanceId) {
         const creds = await getAWSCredentials();
         if (creds) {

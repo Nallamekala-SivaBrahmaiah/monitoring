@@ -143,7 +143,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     try {
       const fetchWithTimeout = async (url: string) => {
         const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 2800);
+        const tid = setTimeout(() => controller.abort(), 12000);
         try {
           const res = await fetch(url, { signal: controller.signal });
           clearTimeout(tid);

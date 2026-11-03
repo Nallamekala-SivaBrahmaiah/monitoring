@@ -168,7 +168,7 @@ export async function discoverEC2InstancesInRegion(
         NextToken: nextToken,
       });
       const response = await client.send(command, {
-        abortSignal: AbortSignal.timeout(3000),
+        abortSignal: AbortSignal.timeout(8000),
       });
 
       if (response.Reservations) {
@@ -198,24 +198,12 @@ export async function discoverEC2InstancesInRegion(
               }
             }
 
-            // Fetch metrics safely with short timeout
-            let instanceMetrics = {
-              cpuUtilization: null as number | null,
-              networkIn: null as number | null,
-              networkOut: null as number | null,
-            };
-            try {
-              instanceMetrics = await fetchEC2Metrics(inst.InstanceId, region, creds);
-            } catch {
-              // Non-blocking
-            }
-
             instances.push({
               resourceId: inst.InstanceId,
               name,
               region,
               availabilityZone: inst.Placement?.AvailabilityZone || `${region}a`,
-              instanceType: inst.InstanceType || 'unknown',
+              instanceType: inst.InstanceType || 't3.micro',
               status,
               rawState: stateName,
               privateIp: inst.PrivateIpAddress,
@@ -225,11 +213,11 @@ export async function discoverEC2InstancesInRegion(
               launchTime: inst.LaunchTime,
               tags: tagsRecord,
               metrics: {
-                cpuUtilization: instanceMetrics.cpuUtilization,
+                cpuUtilization: null,
                 memoryUtilization: null,
                 diskUtilization: null,
-                networkIn: instanceMetrics.networkIn,
-                networkOut: instanceMetrics.networkOut,
+                networkIn: null,
+                networkOut: null,
                 lastUpdated: new Date(),
               },
             });
@@ -239,6 +227,20 @@ export async function discoverEC2InstancesInRegion(
 
       nextToken = response.NextToken;
     } while (nextToken);
+
+    // Fetch CloudWatch metrics in parallel with rapid timeout so instance inventory is never blocked
+    if (instances.length > 0) {
+      await Promise.allSettled(
+        instances.map(async (item) => {
+          try {
+            const m = await fetchEC2Metrics(item.resourceId, region, creds);
+            if (m.cpuUtilization !== null) item.metrics.cpuUtilization = m.cpuUtilization;
+            if (m.networkIn !== null) item.metrics.networkIn = m.networkIn;
+            if (m.networkOut !== null) item.metrics.networkOut = m.networkOut;
+          } catch {}
+        })
+      );
+    }
 
     return {
       region,

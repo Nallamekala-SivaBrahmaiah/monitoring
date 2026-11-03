@@ -87,7 +87,19 @@ function EC2InstanceContent({ params }: { params: Promise<{ instanceId: string }
     );
   }
 
-  return <EC2InstanceDetailView instance={instance} />;
+  const safeInstance = instance
+    ? {
+        ...instance,
+        historicalMetrics: {
+          cpu: instance.historicalMetrics?.cpu || [],
+          memory: instance.historicalMetrics?.memory || [],
+          diskIo: instance.historicalMetrics?.diskIo || [],
+          network: instance.historicalMetrics?.network || [],
+        },
+      }
+    : null;
+
+  return <EC2InstanceDetailView instance={safeInstance || instance} />;
 }
 
 export default function EC2InstanceDetailsPage({

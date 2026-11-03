@@ -12,7 +12,6 @@ import {
   AlertCircle,
   ShieldAlert,
 } from 'lucide-react';
-import '@xterm/xterm/css/xterm.css';
 
 export interface SSHTerminalTarget {
   id?: string;

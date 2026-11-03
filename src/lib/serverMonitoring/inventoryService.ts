@@ -101,9 +101,19 @@ export async function getUnifiedServerInventory(filter?: {
       continue;
     }
 
-    // Skip if it's our own mirrored Server doc
+    // Skip mirrored server docs only if there is already a real cloud-discovered instance for the same resource
     if (cr.resourceId && cr.resourceId.startsWith('srv-')) {
-      continue;
+      const hasRealCloudInstance = (cloudResources as any[]).some(
+        (other) =>
+          other._id.toString() !== cr._id.toString() &&
+          other.provider === cr.provider &&
+          !other.resourceId.startsWith('srv-') &&
+          ((other.name && cr.name && other.name.toLowerCase().trim() === cr.name.toLowerCase().trim()) ||
+            (other.publicIp && cr.publicIp && other.publicIp.trim() === cr.publicIp.trim()))
+      );
+      if (hasRealCloudInstance) {
+        continue;
+      }
     }
 
     const crPublicIp = normalizeIp(cr.publicIp);
