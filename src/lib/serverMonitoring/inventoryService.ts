@@ -109,16 +109,22 @@ export async function getUnifiedServerInventory(filter?: {
     const crPublicIp = normalizeIp(cr.publicIp);
     const crPrivateIp = normalizeIp(cr.privateIp);
     const crName = (cr.name || '').toLowerCase().trim();
+    const crResourceId = (cr.resourceId || '').toLowerCase().trim();
+    const crSshId = cr.tags?.sshServerId || cr.metadata?.sshServerId;
 
-    // Find matching SSH server by Host/IP or Name
+    // Find matching SSH server by sshServerId, Host/IP, or Name
     const matchingServer = servers.find((s: any) => {
+      const sId = s._id?.toString();
+      if (crSshId && sId && crSshId === sId) {
+        return true;
+      }
       const sHost = normalizeIp(s.host);
       const sName = (s.name || '').toLowerCase().trim();
 
       if (sHost && (sHost === crPublicIp || sHost === crPrivateIp)) {
         return true;
       }
-      if (sName && sName === crName) {
+      if (sName && (sName === crName || sName === crResourceId)) {
         return true;
       }
       return false;
@@ -211,16 +217,19 @@ export async function getUnifiedServerInventory(filter?: {
         os: (cr.metadata as any)?.os || 'Linux',
 
         isCloudDiscovered: true,
-        isSSHConnected: false,
+        isSSHConnected: Boolean(cr.tags?.isSSHConnected === 'true' || cr.metadata?.isSSHConnected),
+        sshServerId: cr.tags?.sshServerId || cr.metadata?.sshServerId,
         lastSyncedAt: cr.lastSyncedAt,
 
         metrics: {
           cpu: cr.metrics?.cpuUtilization ?? null,
-          memory: null, // In-guest memory requires AMA or SSH registration
-          disk: null,   // In-guest disk requires AMA or SSH registration
+          memory: cr.metrics?.memoryUtilization ?? null,
+          disk: cr.metrics?.diskUtilization ?? null,
           networkIn: cr.metrics?.networkIn ?? null,
           networkOut: cr.metrics?.networkOut ?? null,
-          metricSource: cr.provider === 'azure' ? 'Azure Monitor (Microsoft.Insights Platform Only)' : 'AWS CloudWatch Platform Only',
+          metricSource: cr.metrics?.memoryUtilization !== null && cr.metrics?.memoryUtilization !== undefined
+            ? 'In-Guest Telemetry'
+            : (cr.provider === 'azure' ? 'Azure Monitor (Microsoft.Insights Platform Only)' : 'AWS CloudWatch Platform Only'),
         },
 
         docker: {
@@ -247,6 +256,18 @@ export async function getUnifiedServerInventory(filter?: {
   // 3. Add any registered SSH servers that were NOT discovered through Cloud SDK
   for (const s of servers as any[]) {
     if (matchedServerIds.has(s._id.toString())) {
+      continue;
+    }
+
+    // Never inject into Azure or AWS cloud compute views if not discovered in that cloud
+    // If a VM was deleted in Azure console or AWS console, it must NOT appear in Azure VMs or EC2 tables!
+    if (filter?.provider === 'azure' || filter?.provider === 'aws') {
+      continue;
+    }
+
+    // If an instance was tagged as azure or aws, but was not discovered in the cloud,
+    // it means it was terminated or deleted in the cloud console. Exclude it.
+    if (s.cloudProvider === 'azure' || s.cloudProvider === 'aws') {
       continue;
     }
 

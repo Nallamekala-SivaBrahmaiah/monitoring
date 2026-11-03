@@ -39,7 +39,7 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
       username: server.username,
       authMethod: server.authMethod,
       authSecret,
-      timeoutMs: 12000,
+      timeoutMs: 3500,
     });
 
     // Update server state
@@ -135,6 +135,35 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
       { upsert: true }
     );
 
+    // 2b. Mirror into matching CloudResource (EC2 or Azure VM) by IP, name, or sshServerId
+    const hostTrim = server.host.trim();
+    await CloudResource.updateMany(
+      {
+        $or: [
+          { publicIp: hostTrim },
+          { privateIp: hostTrim },
+          { name: server.name.trim() },
+          { 'metadata.sshServerId': server._id.toString() },
+          { 'tags.sshServerId': server._id.toString() },
+        ],
+      },
+      {
+        $set: {
+          'metrics.cpuUtilization': specs.metrics.cpu.usagePercent,
+          'metrics.memoryUtilization': specs.metrics.memory.usagePercent,
+          'metrics.diskUtilization': specs.metrics.disks[0]?.usagePercent || 0,
+          'metrics.networkIn': specs.metrics.network[0]?.bytesReceived || 0,
+          'metrics.networkOut': specs.metrics.network[0]?.bytesSent || 0,
+          'metrics.lastUpdated': new Date(),
+          'metadata.isSSHConnected': true,
+          'metadata.sshServerId': server._id.toString(),
+          'tags.isSSHConnected': 'true',
+          'tags.sshServerId': server._id.toString(),
+          lastSyncAt: new Date(),
+        },
+      }
+    ).catch(() => null);
+
     // 3. Real-time threshold-based alert evaluation (CPU, Memory, Disks)
     await evaluateResourceMetrics({
       resourceId: `srv-${server._id.toString()}`,
@@ -166,19 +195,24 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
 export async function syncAllRegisteredServers(): Promise<{ successful: number; failed: number }> {
   await connectToDatabase();
 
-  const servers = await Server.find().lean();
+  // Only synchronize active servers; stopped (Offline) instances should not trigger SSH timeouts
+  const servers = await Server.find({ status: { $ne: 'Offline' } }).lean();
   let successful = 0;
   let failed = 0;
 
-  for (const s of servers) {
-    try {
-      await syncSingleServer(s._id.toString());
+  // Run in parallel to avoid stacking timeouts
+  const results = await Promise.allSettled(
+    servers.map((s) => syncSingleServer(s._id.toString()))
+  );
+
+  results.forEach((res, idx) => {
+    if (res.status === 'fulfilled') {
       successful++;
-    } catch (e: any) {
-      console.warn(`[ServerSync] Warning: Failed to sync ${s.name} (${s.host}):`, e.message);
+    } else {
+      console.warn(`[ServerSync] Warning: Failed to sync ${servers[idx].name} (${servers[idx].host}):`, res.reason?.message || res.reason);
       failed++;
     }
-  }
+  });
 
   return { successful, failed };
 }

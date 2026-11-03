@@ -21,6 +21,7 @@ export async function fetchEC2Metrics(
   try {
     const client = new CloudWatchClient({
       region,
+      maxAttempts: 1,
       credentials:
         creds?.accessKeyId && creds?.secretAccessKey
           ? { accessKeyId: creds.accessKeyId, secretAccessKey: creds.secretAccessKey }
@@ -49,7 +50,9 @@ export async function fetchEC2Metrics(
       ],
     });
 
-    const response = await client.send(command);
+    const response = await client.send(command, {
+      abortSignal: AbortSignal.timeout(2000),
+    });
     const cpuResults = response.MetricDataResults?.find((r) => r.Id === 'cpu');
     if (cpuResults?.Values && cpuResults.Values.length > 0) {
       result.cpuUtilization = Math.round(cpuResults.Values[0] * 10) / 10;

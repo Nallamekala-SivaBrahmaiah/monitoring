@@ -15,6 +15,8 @@ import {
   Globe,
   X,
   ExternalLink,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -61,14 +63,15 @@ export default function CloudAccountsPage() {
   const [awsDiscoveryError, setAwsDiscoveryError] = useState<string | null>(null);
   const [azureDiscoveryError, setAzureDiscoveryError] = useState<string | null>(null);
 
-  // AWS Form State
+  // AWS Form State (Account ID, Access Key ID, Secret Access Key)
   const [awsForm, setAwsForm] = useState({
     accountName: '',
     accountId: '',
-    roleArn: '',
-    externalId: '',
+    accessKeyId: '',
+    secretAccessKey: '',
     regions: ALL_AWS_REGIONS.map((r) => r.code),
   });
+  const [showAwsSecretKey, setShowAwsSecretKey] = useState(false);
 
   // Azure Form State - All supported regions selected by default
   const [azureForm, setAzureForm] = useState({
@@ -82,35 +85,62 @@ export default function CloudAccountsPage() {
   });
 
   const handleValidateAws = async () => {
+    if (!awsForm.accessKeyId.trim() || !awsForm.secretAccessKey.trim()) {
+      setValidationSuccess(false);
+      setValidationMsg('Please enter both AWS Access Key ID and Secret Access Key.');
+      return;
+    }
+
     setValidating(true);
     setValidationSuccess(null);
-    setValidationMsg('Validating credentials & discovering AWS regions with EC2 DescribeRegions...');
+    setValidationMsg('Validating AWS IAM credentials via STS GetCallerIdentity & EC2 DescribeRegions...');
 
     try {
-      const discovered = await fetchAwsRegions(awsForm.accountId);
-      setDiscoveredAwsRegions(discovered);
+      const res = await fetch('/api/aws/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessKeyId: awsForm.accessKeyId.trim(),
+          secretAccessKey: awsForm.secretAccessKey.trim(),
+        }),
+      });
 
-      if (!awsForm.roleArn.startsWith('arn:aws:iam::')) {
-        setValidating(false);
-        setValidationSuccess(false);
-        setValidationMsg('Validation failed: Invalid IAM Role ARN format.');
-        return;
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'AWS authentication failed.');
       }
+
+      if (data.regions && Array.isArray(data.regions) && data.regions.length > 0) {
+        setDiscoveredAwsRegions(
+          data.regions.map((r: any) => ({
+            name: r.name || r.code,
+            code: r.code,
+            status: 'available',
+            optInStatus: 'opt-in-not-required',
+            geography: 'Global',
+            enabled: true,
+          }))
+        );
+      }
+
+      // If account ID was not entered, auto-fill it from verified STS caller identity
+      if (data.accountId && (!awsForm.accountId || awsForm.accountId === '1234-5678-9012')) {
+        setAwsForm((prev) => ({ ...prev, accountId: data.accountId }));
+      }
+
       setValidating(false);
       setValidationSuccess(true);
       setValidationMsg(
-        `STS AssumeRole succeeded: Discovered ${discovered.length} AWS regions with opt-in status.`
+        `✓ AWS Credentials Verified! Connected Account ID: ${data.accountId || awsForm.accountId}. Discovered ${data.regionsCount || 31} regions.`
       );
     } catch (err: any) {
       setValidating(false);
       setValidationSuccess(false);
-      setValidationMsg(`Discovery warning: ${err.message || 'Could not reach AWS STS.'}`);
+      setValidationMsg(`Validation failed: ${err.message || 'Could not verify AWS Access Keys.'}`);
     }
   };
 
   const handleSaveAws = async () => {
-    if (!awsForm.accountName || !awsForm.roleArn) return;
-
     if (editingAccountId) {
       updateAwsAccountRegions(editingAccountId, awsForm.regions);
       setActiveModal('none');
@@ -118,11 +148,13 @@ export default function CloudAccountsPage() {
       return;
     }
 
+    if (!awsForm.accountName || !awsForm.accessKeyId || !awsForm.secretAccessKey) return;
+
     const ok = await addAwsAccount({
-      accountName: awsForm.accountName,
-      accountId: awsForm.accountId || '1234-5678-9012',
-      roleArn: awsForm.roleArn,
-      externalId: awsForm.externalId,
+      accountName: awsForm.accountName.trim(),
+      accountId: awsForm.accountId.trim() || 'aws-account',
+      accessKeyId: awsForm.accessKeyId.trim(),
+      secretAccessKey: awsForm.secretAccessKey.trim(),
       enabledRegions: awsForm.regions,
     });
 
@@ -131,8 +163,8 @@ export default function CloudAccountsPage() {
       setAwsForm({
         accountName: '',
         accountId: '',
-        roleArn: '',
-        externalId: '',
+        accessKeyId: '',
+        secretAccessKey: '',
         regions: ALL_AWS_REGIONS.map((r) => r.code),
       });
       setValidationSuccess(null);
@@ -269,8 +301,8 @@ export default function CloudAccountsPage() {
                     setAwsForm({
                       accountName: '',
                       accountId: '',
-                      roleArn: '',
-                      externalId: '',
+                      accessKeyId: '',
+                      secretAccessKey: '',
                       regions: ['us-east-1', 'us-west-2'],
                     });
                     setActiveModal('aws');
@@ -360,8 +392,9 @@ export default function CloudAccountsPage() {
                     </div>
 
                     <div className="pt-2 border-t border-[#1E293B] space-y-2 text-xs">
-                      <div className="text-slate-400 font-mono truncate">
-                        Role: <span className="text-slate-200">{acc.roleArn}</span>
+                      <div className="text-slate-400 font-mono truncate flex items-center justify-between">
+                        <span>Account ID: <span className="text-slate-200">{acc.accountId}</span></span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 font-semibold">IAM Access Keys</span>
                       </div>
                       <div className="flex items-center justify-between text-slate-400">
                         <div>
@@ -381,8 +414,8 @@ export default function CloudAccountsPage() {
                           setAwsForm({
                             accountName: acc.accountName,
                             accountId: acc.accountId,
-                            roleArn: acc.roleArn,
-                            externalId: acc.externalId || '',
+                            accessKeyId: acc.accessKeyId || '••••••••',
+                            secretAccessKey: '••••••••',
                             regions: [...acc.enabledRegions],
                           });
                           setValidationSuccess(null);
@@ -417,8 +450,8 @@ export default function CloudAccountsPage() {
                       setAwsForm({
                         accountName: '',
                         accountId: '',
-                        roleArn: '',
-                        externalId: '',
+                        accessKeyId: '',
+                        secretAccessKey: '',
                         regions: ['us-east-1', 'us-west-2'],
                       });
                       setActiveModal('aws');
@@ -572,10 +605,10 @@ export default function CloudAccountsPage() {
                     <AwsLogo className="w-6 h-5" />
                     <div>
                       <h3 className="text-base font-bold text-white">
-                        {editingAccountId ? 'Manage AWS Regions & Configuration' : 'Connect AWS Account (IAM Role Assumption)'}
+                        {editingAccountId ? 'Manage AWS Regions & Configuration' : 'Connect AWS Account (IAM Access Keys)'}
                       </h3>
                       <p className="text-[11px] text-slate-400">
-                        {editingAccountId ? 'Restore or update monitored regions for this AWS account' : 'Cross-account STS role assumption with dynamic region discovery'}
+                        {editingAccountId ? 'Restore or update monitored regions for this AWS account' : 'Authenticate securely using your AWS Account ID, Access Key ID, and Secret Access Key'}
                       </p>
                     </div>
                   </div>
@@ -591,60 +624,69 @@ export default function CloudAccountsPage() {
                 </div>
 
                 <div className="space-y-4 text-xs">
+                  {/* Row 1: Account Display Name & AWS Account ID */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-slate-300 font-semibold block mb-1">
-                        Account Display Name
+                        Account Display Name <span className="text-amber-400">*</span>
                       </label>
                       <input
                         type="text"
                         placeholder="e.g. Production AWS (Primary)"
                         value={awsForm.accountName}
                         onChange={(e) => setAwsForm({ ...awsForm, accountName: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 focus:outline-none focus:border-blue-500"
+                        className="w-full px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 focus:outline-none focus:border-amber-500"
                       />
                     </div>
                     <div>
                       <label className="text-slate-300 font-semibold block mb-1">
-                        AWS Account ID
+                        AWS Account ID <span className="text-amber-400">*</span>
                       </label>
                       <input
                         type="text"
-                        placeholder="1234-5678-9012"
+                        placeholder="e.g. 1234-5678-9012"
                         value={awsForm.accountId}
                         onChange={(e) => setAwsForm({ ...awsForm, accountId: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+                        className="w-full px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono focus:outline-none focus:border-amber-500"
                       />
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-slate-300 font-semibold block mb-1">
-                      AWS IAM Role ARN
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="arn:aws:iam::123456789012:role/MonitoringRole"
-                      value={awsForm.roleArn}
-                      onChange={(e) => setAwsForm({ ...awsForm, roleArn: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono focus:outline-none focus:border-blue-500"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-1 block">
-                      Requires CloudWatchReadOnlyAccess & AmazonEC2ReadOnlyAccess with STS AssumeRole
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="text-slate-300 font-semibold block mb-1">
-                      External ID (Cross-Account Assumption)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. MultiCloud-SecOps-4912"
-                      value={awsForm.externalId}
-                      onChange={(e) => setAwsForm({ ...awsForm, externalId: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono focus:outline-none focus:border-blue-500"
-                    />
+                  {/* Row 2: AWS Access Key ID & AWS Secret Access Key */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">
+                        AWS Access Key ID <span className="text-amber-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="AKIAIOSFODNN7EXAMPLE"
+                        value={awsForm.accessKeyId}
+                        onChange={(e) => setAwsForm({ ...awsForm, accessKeyId: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono focus:outline-none focus:border-amber-500 uppercase"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-300 font-semibold block mb-1">
+                        AWS Secret Access Key <span className="text-amber-400">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showAwsSecretKey ? 'text' : 'password'}
+                          placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                          value={awsForm.secretAccessKey}
+                          onChange={(e) => setAwsForm({ ...awsForm, secretAccessKey: e.target.value })}
+                          className="w-full px-3 py-2 pr-9 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono focus:outline-none focus:border-amber-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAwsSecretKey(!showAwsSecretKey)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                        >
+                          {showAwsSecretKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Dynamic Searchable Region Selector */}
@@ -696,11 +738,11 @@ export default function CloudAccountsPage() {
                 <div className="flex items-center justify-between border-t border-[#1E293B] pt-4 flex-shrink-0">
                   <button
                     onClick={handleValidateAws}
-                    disabled={validating || !awsForm.roleArn}
+                    disabled={validating || !awsForm.accessKeyId || !awsForm.secretAccessKey}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#18233C] hover:bg-[#202E4E] text-slate-200 text-xs font-semibold disabled:opacity-40"
                   >
                     <RotateCw className={`w-3.5 h-3.5 ${validating ? 'animate-spin' : ''}`} />
-                    <span>{validating ? 'Discovering...' : 'Test STS Connection'}</span>
+                    <span>{validating ? 'Verifying...' : 'Verify Access Keys'}</span>
                   </button>
 
                   <div className="flex items-center gap-2">
@@ -715,7 +757,7 @@ export default function CloudAccountsPage() {
                     </button>
                     <button
                       onClick={handleSaveAws}
-                      disabled={!awsForm.accountName || !awsForm.roleArn}
+                      disabled={!awsForm.accountName || (!editingAccountId && (!awsForm.accessKeyId || !awsForm.secretAccessKey))}
                       className="px-4 py-1.5 text-xs font-bold bg-[#FF9900] hover:bg-[#FF8800] text-black rounded-lg transition-colors shadow disabled:opacity-40"
                     >
                       {editingAccountId ? 'Update Regions' : 'Save Account'}

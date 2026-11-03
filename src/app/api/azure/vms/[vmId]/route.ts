@@ -3,7 +3,9 @@ import { fetchResourceById } from '@/lib/storage';
 import connectToDatabase from '@/lib/mongodb';
 import Server from '@/models/Server';
 import CloudResource from '@/models/CloudResource';
-import mongoose from 'mongoose';
+import CloudAccount from '@/models/CloudAccount';
+import Metric from '@/models/Metric';
+import { ClientSecretCredential } from '@azure/identity';
 
 export async function GET(
   request: NextRequest,
@@ -154,23 +156,69 @@ export async function DELETE(
   try {
     const { vmId } = await context.params;
     await connectToDatabase();
+    const { searchParams } = new URL(request.url);
+    const deleteInAzure = searchParams.get('delete') === 'true';
+
+    // Find VM in CloudResource first
+    const cr = await CloudResource.findOne({
+      provider: 'azure',
+      $or: [{ resourceId: vmId }, { name: vmId }],
+    }).lean();
+
+    // Optionally delete from Azure cloud infrastructure
+    if (deleteInAzure && cr) {
+      try {
+        const azAcc = await CloudAccount.findOne({ provider: 'azure', status: 'Connected' })
+          .select('+clientSecret')
+          .lean();
+
+        if (azAcc && (azAcc as any).clientSecret && azAcc.tenantId && azAcc.clientId) {
+          const cred = new ClientSecretCredential(azAcc.tenantId, azAcc.clientId, (azAcc as any).clientSecret);
+          const tokenRes = await cred.getToken('https://management.azure.com/.default');
+          if (tokenRes && tokenRes.token) {
+            const subId = cr.subscriptionId || azAcc.subscriptionId;
+            const rg = cr.resourceGroup || 'default-rg';
+            const url = `https://management.azure.com/subscriptions/${subId}/resourceGroups/${rg}/providers/Microsoft.Compute/virtualMachines/${cr.name}?api-version=2023-09-01`;
+            await fetch(url, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${tokenRes.token}` },
+            });
+          }
+        }
+      } catch (azErr: any) {
+        console.warn(`[Azure VM] Direct ARM deletion note:`, azErr.message);
+      }
+    }
 
     const query: any[] = [
       { resourceId: vmId },
       { name: vmId },
+      ...(cr ? [{ name: cr.name }, { publicIp: cr.publicIp }] : []),
     ];
-    if (mongoose.Types.ObjectId.isValid(vmId)) {
-      query.push({ _id: vmId });
-    }
 
     const res = await CloudResource.deleteMany({
       $or: query,
     });
 
+    // Also remove from Server collection so deleted VMs do not linger as ghost servers
+    const serverRes = await Server.deleteMany({
+      cloudProvider: 'azure',
+      $or: query,
+    });
+
+    // Clean up metrics
+    await Metric.deleteMany({
+      $or: [
+        { resourceId: vmId },
+        ...(cr ? [{ resourceId: cr.name }] : []),
+      ],
+    }).catch(() => null);
+
     return NextResponse.json({
       success: true,
-      message: 'VM removed successfully',
-      deletedCount: res.deletedCount,
+      message: `Azure VM ${vmId} removed successfully`,
+      deletedCloudResources: res.deletedCount,
+      deletedServers: serverRes.deletedCount,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to remove VM' }, { status: 500 });

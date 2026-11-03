@@ -16,6 +16,9 @@ export async function GET(request: NextRequest) {
       search,
     });
 
+    // Only include real Azure VMs discovered from Azure ARM API / CloudResource
+    resources = resources.filter((r) => r.isCloudDiscovered);
+
     if (subscriptionId && subscriptionId !== 'all') {
       resources = resources.filter((r) => r.subscriptionId === subscriptionId);
     }

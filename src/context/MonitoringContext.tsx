@@ -367,6 +367,8 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
           provider: 'aws',
           accountName: data.accountName,
           accountId: data.accountId,
+          accessKeyId: data.accessKeyId,
+          secretAccessKey: data.secretAccessKey,
           roleArn: data.roleArn,
           regions: data.enabledRegions,
         }),

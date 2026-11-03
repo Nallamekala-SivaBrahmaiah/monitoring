@@ -14,7 +14,9 @@ export interface AWSAccount {
   id: string;
   accountName: string;
   accountId: string;
-  roleArn: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  roleArn?: string;
   externalId?: string;
   status: AccountConnectionStatus;
   enabledRegions: string[];
@@ -191,6 +193,9 @@ export interface EC2Instance {
   publicIp: string;
   launchTime: string;
   os: string;
+  isSSHConnected?: boolean;
+  sshServerId?: string;
+  sshStatus?: string;
 }
 
 export interface EC2InstanceDetail extends EC2Instance {

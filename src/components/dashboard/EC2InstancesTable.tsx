@@ -11,22 +11,38 @@ import {
   ArrowUpDown,
   ExternalLink,
   KeyRound,
+  Terminal,
+  Play,
+  Power,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { EC2InstanceDetail } from '@/types/monitoring';
 import { Ec2Icon } from '@/components/icons/CloudIcons';
 import { ConnectSSHModal, ConnectSSHTarget } from '@/components/dashboard/ConnectSSHModal';
+import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
 import { useMonitoring } from '@/context/MonitoringContext';
 
 interface EC2InstancesTableProps {
   instances: EC2InstanceDetail[];
   showViewAllButton?: boolean;
   limit?: number;
+  isLoading?: boolean;
+  syncError?: string | null;
+  lastSyncAt?: string | null;
+  onRefresh?: () => void;
 }
 
 export function EC2InstancesTable({
   instances,
   showViewAllButton = true,
   limit,
+  isLoading,
+  syncError,
+  lastSyncAt,
+  onRefresh,
 }: EC2InstancesTableProps) {
   const router = useRouter();
   const { triggerRefresh } = useMonitoring();
@@ -38,7 +54,76 @@ export function EC2InstancesTable({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [sshTarget, setSshTarget] = useState<ConnectSSHTarget | null>(null);
   const [showSSHModal, setShowSSHModal] = useState<boolean>(false);
+  const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
+  const [showTerminalModal, setShowTerminalModal] = useState<boolean>(false);
+  const [powerActionLoadingId, setPowerActionLoadingId] = useState<string | null>(null);
+  const [powerFeedback, setPowerFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const pageSize = limit || 5;
+
+  const handleDeleteEC2 = async (instanceId: string, name: string) => {
+    if (!confirm(`Are you sure you want to remove EC2 instance "${name}" (${instanceId})?`)) return;
+    try {
+      setDeletingId(instanceId);
+      const res = await fetch(`/api/aws/ec2/instances/${encodeURIComponent(instanceId)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRemovedIds((prev) => new Set(prev).add(instanceId));
+        setPowerFeedback({
+          type: 'success',
+          message: data.message || `EC2 instance "${name}" removed successfully.`,
+        });
+        triggerRefresh?.();
+      } else {
+        setPowerFeedback({
+          type: 'error',
+          message: data.error || 'Failed to remove EC2 instance',
+        });
+      }
+    } catch (err: any) {
+      setPowerFeedback({
+        type: 'error',
+        message: err.message || 'Failed to remove EC2 instance',
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handlePowerAction = async (instanceId: string, action: 'start' | 'stop') => {
+    try {
+      setPowerActionLoadingId(instanceId);
+      const res = await fetch(`/api/aws/ec2/instances/${encodeURIComponent(instanceId)}/power`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPowerFeedback({
+          type: 'success',
+          message: data.message || `EC2 instance "${instanceId}" ${action === 'start' ? 'started' : 'stopped'} successfully.`,
+        });
+        triggerRefresh?.();
+      } else {
+        setPowerFeedback({
+          type: 'error',
+          message: data.error || `Failed to ${action} instance`,
+        });
+      }
+    } catch (err: any) {
+      setPowerFeedback({
+        type: 'error',
+        message: err.message || `Power action execution failed`,
+      });
+    } finally {
+      setPowerActionLoadingId(null);
+      setTimeout(() => setPowerFeedback(null), 6000);
+    }
+  };
 
   const handleOpenSSHModal = (inst: EC2InstanceDetail) => {
     setSshTarget({
@@ -52,14 +137,38 @@ export function EC2InstancesTable({
     setShowSSHModal(true);
   };
 
+  const handleOpenTerminal = (inst: EC2InstanceDetail) => {
+    setTerminalTarget({
+      id: inst.id || inst.instanceId,
+      name: inst.name || inst.instanceId,
+      host: inst.publicIp && inst.publicIp !== '-' ? inst.publicIp : inst.privateIp,
+      cloudProvider: 'aws',
+      region: inst.region,
+      sshServerId: (inst as any).sshServerId,
+    });
+    setShowTerminalModal(true);
+  };
+
   const handleSSHSuccess = () => {
     triggerRefresh();
     router.refresh();
   };
 
+  // Dynamically discovered regions from instances
+  const availableRegions = useMemo(() => {
+    const set = new Set<string>();
+    instances.forEach((inst) => {
+      if (inst.region) set.add(inst.region);
+    });
+    if (set.size === 0) set.add('ap-southeast-2');
+    return Array.from(set).sort();
+  }, [instances]);
+
   // Filter and sort instances
   const filteredInstances = useMemo(() => {
-    return instances.filter((inst) => {
+    return instances
+      .filter((inst) => !removedIds.has(inst.instanceId) && !removedIds.has(inst.id))
+      .filter((inst) => {
       const matchSearch =
         inst.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         inst.instanceId.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -68,9 +177,11 @@ export function EC2InstancesTable({
       const matchRegion =
         regionFilter === 'all' || inst.region === regionFilter;
 
+      const isRunning = (inst.status || '').toLowerCase().includes('run');
+      const normalizedStatus = isRunning ? 'running' : 'stopped';
       const matchStatus =
         statusFilter === 'all' ||
-        inst.status.toLowerCase() === statusFilter.toLowerCase();
+        normalizedStatus === statusFilter.toLowerCase();
 
       return matchSearch && matchRegion && matchStatus;
     });
@@ -116,6 +227,32 @@ export function EC2InstancesTable({
 
   return (
     <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl shadow-sm overflow-hidden">
+      {/* Power Action Feedback Toast Banner */}
+      {powerFeedback && (
+        <div
+          className={`p-3 text-xs flex items-center justify-between border-b ${
+            powerFeedback.type === 'success'
+              ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
+              : 'bg-rose-950/60 border-rose-500/30 text-rose-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {powerFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span className="font-medium">{powerFeedback.message}</span>
+          </div>
+          <button
+            onClick={() => setPowerFeedback(null)}
+            className="text-slate-400 hover:text-white text-xs px-2 py-0.5"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Table Header / Action Bar */}
       <div className="p-4 sm:p-5 border-b border-[#1E293B] flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         {/* Title */}
@@ -127,9 +264,15 @@ export function EC2InstancesTable({
             <h3 className="text-base font-semibold text-white tracking-tight">
               EC2 Instances
             </h3>
-            <span className="text-xs text-slate-400">
-              Showing {sortedInstances.length} compute instances
-            </span>
+            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              <span>Showing {sortedInstances.length} compute instances</span>
+              {lastSyncAt && (
+                <>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-slate-400">Synced {lastSyncAt}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -162,10 +305,11 @@ export function EC2InstancesTable({
               className="px-2.5 py-1.5 text-xs bg-[#0D1526] border border-[#1E293B] rounded-lg text-slate-300 focus:outline-none focus:border-blue-500"
             >
               <option value="all">All Regions</option>
-              <option value="us-east-1">us-east-1</option>
-              <option value="us-west-2">us-west-2</option>
-              <option value="ap-south-1">ap-south-1</option>
-              <option value="eu-west-1">eu-west-1</option>
+              {availableRegions.map((reg) => (
+                <option key={reg} value={reg}>
+                  {reg}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -199,6 +343,14 @@ export function EC2InstancesTable({
         </div>
       </div>
 
+      {/* Sync Error Notice */}
+      {syncError && (
+        <div className="mx-4 sm:mx-5 mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2.5 text-xs text-amber-300">
+          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="flex-1 font-medium">AWS Sync Notice: {syncError}</span>
+        </div>
+      )}
+
       {/* Table Content */}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs text-slate-300 border-collapse">
@@ -224,7 +376,15 @@ export function EC2InstancesTable({
               </th>
               <th className="py-3 px-4">Region</th>
               <th className="py-3 px-4">AZ</th>
-              <th className="py-3 px-4">Status</th>
+              <th
+                onClick={() => handleSort('status')}
+                className="py-3 px-4 cursor-pointer hover:text-white"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>Status</span>
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </th>
               <th
                 onClick={() => handleSort('cpuUsage')}
                 className="py-3 px-4 cursor-pointer hover:text-white"
@@ -252,22 +412,42 @@ export function EC2InstancesTable({
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
-              <th className="py-3 px-4">Network In/Out</th>
-              <th
-                onClick={() => handleSort('uptime')}
-                className="py-3 px-4 cursor-pointer hover:text-white"
-              >
-                <div className="flex items-center gap-1.5">
-                  <span>Uptime</span>
-                  <ArrowUpDown className="w-3 h-3" />
-                </div>
-              </th>
               <th className="py-3 px-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#1E293B]/60 font-medium">
             {paginatedInstances.map((inst) => {
-              const isRunning = inst.status === 'Running';
+              const isRunning = (inst.status || '').toLowerCase().includes('run');
+
+              const memVal = inst.memoryUsage !== null && inst.memoryUsage !== undefined
+                ? inst.memoryUsage
+                : (inst as any).memoryUtilization !== null && (inst as any).memoryUtilization !== undefined
+                ? (inst as any).memoryUtilization
+                : (inst as any).metrics?.memoryUtilization !== null && (inst as any).metrics?.memoryUtilization !== undefined
+                ? (inst as any).metrics?.memoryUtilization
+                : null;
+
+              const cpuVal = inst.cpuUsage !== null && inst.cpuUsage !== undefined
+                ? inst.cpuUsage
+                : (inst as any).cpuUtilization !== null && (inst as any).cpuUtilization !== undefined
+                ? (inst as any).cpuUtilization
+                : (inst as any).metrics?.cpuUtilization !== null && (inst as any).metrics?.cpuUtilization !== undefined
+                ? (inst as any).metrics?.cpuUtilization
+                : null;
+
+              const diskVal = inst.diskUsage !== null && inst.diskUsage !== undefined
+                ? inst.diskUsage
+                : (inst as any).diskUtilization !== null && (inst as any).diskUtilization !== undefined
+                ? (inst as any).diskUtilization
+                : (inst as any).metrics?.diskUtilization !== null && (inst as any).metrics?.diskUtilization !== undefined
+                ? (inst as any).metrics?.diskUtilization
+                : null;
+
+              const isSSH = Boolean(
+                (inst as any).isSSHConnected ||
+                (inst as any).tags?.isSSHConnected === 'true' ||
+                memVal !== null
+              );
 
               return (
                 <tr
@@ -293,7 +473,7 @@ export function EC2InstancesTable({
                       <span className="font-semibold text-white">
                         {inst.name}
                       </span>
-                      {(inst as any).isSSHConnected ? (
+                      {isSSH ? (
                         <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
                           SSH Verified
                         </span>
@@ -329,30 +509,30 @@ export function EC2InstancesTable({
                         className={`w-2 h-2 rounded-full ${
                           isRunning
                             ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
-                            : 'bg-slate-500'
+                            : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]'
                         }`}
                       />
                       <span
-                        className={isRunning ? 'text-emerald-400' : 'text-slate-400'}
+                        className={isRunning ? 'text-emerald-400 font-semibold' : 'text-slate-400 font-semibold'}
                       >
-                        {inst.status}
+                        {isRunning ? 'Running' : 'Stopped'}
                       </span>
                     </div>
                   </td>
 
                   {/* CPU Usage */}
                   <td className="py-3 px-4">
-                    {inst.cpuUsage !== null && inst.cpuUsage !== undefined ? (
+                    {cpuVal !== null ? (
                       <div className="flex items-center gap-2">
                         <span className="w-9 font-semibold text-slate-200">
-                          {inst.cpuUsage}%
+                          {cpuVal}%
                         </span>
                         <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full ${getUsageColor(
-                              inst.cpuUsage
+                              cpuVal
                             )}`}
-                            style={{ width: `${Math.min(100, Math.max(0, inst.cpuUsage))}%` }}
+                            style={{ width: `${Math.min(100, Math.max(0, cpuVal))}%` }}
                           />
                         </div>
                       </div>
@@ -363,22 +543,22 @@ export function EC2InstancesTable({
 
                   {/* Memory */}
                   <td className="py-3 px-4">
-                    {inst.memoryUsage !== null && inst.memoryUsage !== undefined ? (
+                    {memVal !== null ? (
                       <div className="flex items-center gap-2">
                         <span className="w-9 font-semibold text-slate-200">
-                          {inst.memoryUsage}%
+                          {memVal}%
                         </span>
                         <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
                           <div
                             className="h-full rounded-full bg-blue-500"
-                            style={{ width: `${Math.min(100, Math.max(0, inst.memoryUsage))}%` }}
+                            style={{ width: `${Math.min(100, Math.max(0, memVal))}%` }}
                           />
                         </div>
                       </div>
                     ) : (
                       <span
                         className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60"
-                        title="Guest OS memory requires Amazon CloudWatch Agent installed on the EC2 instance"
+                        title="Guest OS memory requires Amazon CloudWatch Agent or direct SSH connection"
                       >
                         Unavailable
                       </span>
@@ -387,15 +567,15 @@ export function EC2InstancesTable({
 
                   {/* Disk */}
                   <td className="py-3 px-4">
-                    {inst.diskUsage !== null && inst.diskUsage !== undefined ? (
+                    {diskVal !== null ? (
                       <div className="flex items-center gap-2">
                         <span className="w-9 font-semibold text-slate-200">
-                          {inst.diskUsage}%
+                          {diskVal}%
                         </span>
                         <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
                           <div
                             className="h-full rounded-full bg-amber-500"
-                            style={{ width: `${Math.min(100, Math.max(0, inst.diskUsage))}%` }}
+                            style={{ width: `${Math.min(100, Math.max(0, diskVal))}%` }}
                           />
                         </div>
                       </div>
@@ -404,18 +584,73 @@ export function EC2InstancesTable({
                     )}
                   </td>
 
-                  {/* Network In/Out */}
-                  <td className="py-3 px-4 text-slate-300">
-                    {inst.networkInMB} MB / {inst.networkOutMB} MB
-                  </td>
-
-                  {/* Uptime */}
-                  <td className="py-3 px-4 text-slate-400">{inst.uptime}</td>
-
                   {/* Actions */}
                   <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
-                      {!(inst as any).isSSHConnected ? (
+                      {/* 1. Real Cloud Power Actions (Start & Stop) */}
+                      <div className="inline-flex rounded-lg border border-[#1E293B] bg-[#0D1526] p-0.5 shadow-sm shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handlePowerAction(inst.instanceId, 'start')}
+                          disabled={isRunning || powerActionLoadingId === inst.instanceId}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
+                            isRunning
+                              ? 'text-slate-500 cursor-not-allowed opacity-40'
+                              : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
+                          }`}
+                          title={isRunning ? 'EC2 instance is already running' : 'Start EC2 Instance in AWS'}
+                        >
+                          <Play
+                            className={`w-3 h-3 fill-current ${
+                              powerActionLoadingId === inst.instanceId ? 'animate-spin' : ''
+                            }`}
+                          />
+                          <span>Start</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePowerAction(inst.instanceId, 'stop')}
+                          disabled={!isRunning || powerActionLoadingId === inst.instanceId}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
+                            !isRunning
+                              ? 'text-slate-500 cursor-not-allowed opacity-40'
+                              : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
+                          }`}
+                          title={!isRunning ? 'EC2 instance is currently stopped' : 'Stop EC2 Instance in AWS'}
+                        >
+                          <Power
+                            className={`w-3 h-3 ${
+                              powerActionLoadingId === inst.instanceId ? 'animate-spin' : ''
+                            }`}
+                          />
+                          <span>Stop</span>
+                        </button>
+                      </div>
+
+                      {isSSH ? (
+                        <>
+                          {/* Login: Real Interactive SSH Terminal */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTerminal(inst)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-md transition-all shadow-sm shrink-0 cursor-pointer whitespace-nowrap"
+                            title="Login into EC2 Instance (Interactive SSH Terminal)"
+                          >
+                            <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Login</span>
+                          </button>
+
+                          {/* Reconfigure SSH credentials */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSSHModal(inst)}
+                            className="p-1 text-slate-400 hover:text-amber-400 rounded hover:bg-[#18233C] transition-colors shrink-0 cursor-pointer"
+                            title="Reconfigure SSH Credentials"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
                         <button
                           type="button"
                           onClick={() => handleOpenSSHModal(inst)}
@@ -424,15 +659,6 @@ export function EC2InstancesTable({
                         >
                           <KeyRound className="w-3 h-3 text-black" />
                           <span>Connect SSH</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenSSHModal(inst)}
-                          className="p-1 text-slate-400 hover:text-emerald-400 rounded hover:bg-[#18233C] transition-colors"
-                          title="Reconfigure SSH Credentials"
-                        >
-                          <KeyRound className="w-3.5 h-3.5" />
                         </button>
                       )}
                       <Link
@@ -448,21 +674,40 @@ export function EC2InstancesTable({
                       >
                         <TrendingUp className="w-3.5 h-3.5" />
                       </button>
+                      <button
+                        onClick={() => handleDeleteEC2(inst.instanceId, inst.name)}
+                        disabled={deletingId === inst.instanceId}
+                        className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+                        title="Remove EC2 Instance"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </td>
                 </tr>
               );
             })}
 
-            {paginatedInstances.length === 0 && (
+            {isLoading && instances.length === 0 ? (
               <tr>
-                <td
-                  colSpan={11}
-                  className="py-8 text-center text-slate-400 font-medium"
-                >
-                  No EC2 instances found matching current filters.
+                <td colSpan={9} className="py-12 text-center text-slate-400 font-medium">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
+                    <span>Synchronizing EC2 instances with AWS...</span>
+                  </div>
                 </td>
               </tr>
+            ) : (
+              paginatedInstances.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={9}
+                    className="py-8 text-center text-slate-400 font-medium"
+                  >
+                    No EC2 instances found matching current filters.
+                  </td>
+                </tr>
+              )
             )}
           </tbody>
         </table>
@@ -499,6 +744,13 @@ export function EC2InstancesTable({
         onClose={() => setShowSSHModal(false)}
         target={sshTarget}
         onSuccess={handleSSHSuccess}
+      />
+
+      {/* Interactive SSH Terminal Modal */}
+      <SSHTerminalModal
+        isOpen={showTerminalModal}
+        onClose={() => setShowTerminalModal(false)}
+        target={terminalTarget}
       />
     </div>
   );

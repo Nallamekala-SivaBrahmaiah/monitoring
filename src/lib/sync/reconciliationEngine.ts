@@ -1,8 +1,9 @@
 import connectToDatabase from '@/lib/mongodb';
 import CloudAccount from '@/models/CloudAccount';
 import CloudResource from '@/models/CloudResource';
+import Server from '@/models/Server';
 import { discoverAllAzureResources } from '@/lib/azure/resources';
-import { discoverEC2InstancesInRegion } from '@/lib/aws/ec2';
+import { discoverEC2InstancesInRegion, getEnabledAWSRegions, isInaccessibleRegion } from '@/lib/aws/ec2';
 import { syncDockerResources } from '@/lib/docker/sync';
 import { syncKubernetesResources } from '@/lib/kubernetes/sync';
 import { syncAllRegisteredServers } from '@/lib/serverMonitoring/serverSync';
@@ -101,24 +102,29 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
         }
 
         // PRUNE DELETED AZURE RESOURCES:
-        // Any resource previously stored for this subscription that is not in live inventory is marked deleted
-        const pruneAzureRes = await CloudResource.updateMany(
-          {
-            provider: 'azure',
-            subscriptionId: acc.subscriptionId,
-            resourceType: { $nin: ['container', 'k8s_pod'] }, // handled by docker/k8s modules
-            resourceId: { $nin: Array.from(liveAzureIds) },
-          },
-          {
-            $set: {
-              isDeleted: true,
-              deletedAt: new Date(),
-              status: 'Terminated',
-            },
-          }
+        // Any resource previously stored for this subscription that is not in live inventory is purged
+        const pruneAzureRes = await CloudResource.deleteMany({
+          provider: 'azure',
+          subscriptionId: acc.subscriptionId,
+          resourceType: 'vm',
+          resourceId: { $nin: Array.from(liveAzureIds) },
+        });
+
+        // Also clean up any deleted Azure VMs from the Server collection
+        const liveAzureNames = liveAzureResources.map((r) => (r.name || '').toLowerCase().trim());
+        const liveAzureIps = liveAzureResources.flatMap((r) =>
+          [r.publicIp, r.privateIp].filter((ip): ip is string => Boolean(ip)).map((ip) => ip.trim())
         );
 
-        prunedCount += pruneAzureRes.modifiedCount || 0;
+        if (liveAzureResources.length > 0) {
+          await Server.deleteMany({
+            cloudProvider: 'azure',
+            name: { $nin: liveAzureNames },
+            host: { $nin: liveAzureIps },
+          });
+        }
+
+        prunedCount += pruneAzureRes.deletedCount || 0;
         azureCount += liveAzureResources.length;
 
         await CloudAccount.updateOne(
@@ -139,25 +145,82 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
       .select('+accessKeyId +secretAccessKey')
       .lean();
 
+    const allRegisteredServers = await Server.find().lean();
+
     for (const acc of awsAccounts) {
-      const regions = acc.selectedRegions && acc.selectedRegions.length > 0 ? acc.selectedRegions : ['us-east-1'];
-      const liveAwsIds = new Set<string>();
+      if (!acc.accessKeyId || !acc.secretAccessKey) continue;
+
+      const creds = {
+        accessKeyId: acc.accessKeyId,
+        secretAccessKey: acc.secretAccessKey,
+        region: acc.selectedRegions?.[0] || 'ap-southeast-2',
+      };
+
+      // Dynamically discover all enabled AWS regions for this account
+      const enabledRegions = await getEnabledAWSRegions(
+        creds,
+        Array.from(new Set([...(acc.selectedRegions || []), 'ap-southeast-2']))
+      );
+
       let totalAwsForAccount = 0;
 
-      for (const reg of regions) {
-        try {
-          const instances = await discoverEC2InstancesInRegion(reg, {
-            accessKeyId: acc.accessKeyId,
-            secretAccessKey: acc.secretAccessKey,
-            region: reg,
-          });
+      // Query candidate regions in parallel to prevent background cycle stalls
+      const activeRegions = enabledRegions.filter((r) => !isInaccessibleRegion(r));
+      const discoveryResults = await Promise.all(
+        activeRegions.map((reg) => discoverEC2InstancesInRegion(reg, creds))
+      );
 
-          for (const inst of instances) {
-            // Terminated EC2 instances must disappear from active inventory
-            const isTerminated = (inst.status || '').toLowerCase().includes('terminat');
-            if (!isTerminated) {
-              liveAwsIds.add(inst.resourceId);
-            }
+      for (const discovery of discoveryResults) {
+        const reg = discovery.region;
+        try {
+          if (!discovery.success) {
+            const msg = `AWS sync note in ${reg} for ${acc.accountId}: ${discovery.error}`;
+            console.warn(msg);
+            errors.push(msg);
+            // PRESERVE INVENTORY: Never prune resources in a region where the query failed!
+            continue;
+          }
+
+          const regionLiveIds = new Set<string>();
+          const regionLiveNames = new Set<string>();
+          const regionLiveIps = new Set<string>();
+
+          for (const inst of discovery.instances) {
+            regionLiveIds.add(inst.resourceId);
+            if (inst.name) regionLiveNames.add(inst.name.toLowerCase().trim());
+            regionLiveNames.add(inst.resourceId.toLowerCase().trim());
+            if (inst.publicIp) regionLiveIps.add(inst.publicIp.trim());
+            if (inst.privateIp) regionLiveIps.add(inst.privateIp.trim());
+
+            const existingRes = await CloudResource.findOne({ resourceId: inst.resourceId, provider: 'aws' }).lean();
+
+            const instPublic = (inst.publicIp || '').trim();
+            const instPrivate = (inst.privateIp || '').trim();
+            const instName = (inst.name || '').toLowerCase().trim();
+            const existingSshId = (existingRes as any)?.metadata?.sshServerId || (existingRes as any)?.tags?.sshServerId;
+
+            const matchingServer = allRegisteredServers.find((s: any) => {
+              const sId = s._id?.toString();
+              if (existingSshId && sId && existingSshId === sId) return true;
+              const sHost = (s.host || '').trim();
+              const sName = (s.name || '').toLowerCase().trim();
+              if (sHost && (sHost === instPublic || sHost === instPrivate)) return true;
+              if (sName && (sName === instName || sName === inst.resourceId.toLowerCase())) return true;
+              return false;
+            });
+
+            // Preserve in-guest memory and disk if CloudWatch doesn't provide them
+            const finalMemory = matchingServer?.metrics?.memory?.usagePercent
+              ?? ((existingRes as any)?.metrics?.memoryUtilization ?? inst.metrics.memoryUtilization);
+
+            const finalDisk = (matchingServer?.metrics?.disks?.find((d: any) => d.mount === '/') || matchingServer?.metrics?.disks?.[0])?.usagePercent
+              ?? ((existingRes as any)?.metrics?.diskUtilization ?? inst.metrics.diskUtilization);
+
+            const finalCpu = matchingServer?.metrics?.cpu?.usagePercent
+              ?? inst.metrics.cpuUtilization;
+
+            const isSSH = Boolean(matchingServer || (existingRes as any)?.metadata?.isSSHConnected || (existingRes as any)?.tags?.isSSHConnected === 'true');
+            const sshId = matchingServer?._id?.toString() || existingSshId;
 
             await CloudResource.updateOne(
               { resourceId: inst.resourceId, provider: 'aws' },
@@ -173,18 +236,68 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
                   size: inst.instanceType,
                   privateIp: inst.privateIp,
                   publicIp: inst.publicIp,
-                  metrics: inst.metrics,
-                  isDeleted: isTerminated,
-                  deletedAt: isTerminated ? new Date() : null,
+                  metrics: {
+                    cpuUtilization: finalCpu,
+                    memoryUtilization: finalMemory,
+                    diskUtilization: finalDisk,
+                    networkIn: inst.metrics.networkIn,
+                    networkOut: inst.metrics.networkOut,
+                    lastUpdated: new Date(),
+                  },
+                  metadata: {
+                    ...((existingRes as any)?.metadata || {}),
+                    availabilityZone: inst.availabilityZone,
+                    vpcId: inst.vpcId,
+                    subnetId: inst.subnetId,
+                    launchTime: inst.launchTime,
+                    rawState: inst.rawState,
+                    isSSHConnected: isSSH,
+                    sshServerId: sshId,
+                  },
+                  tags: {
+                    ...((existingRes as any)?.tags || {}),
+                    availabilityZone: inst.availabilityZone,
+                    vpcId: inst.vpcId,
+                    subnetId: inst.subnetId,
+                    ...inst.tags,
+                    isSSHConnected: isSSH ? 'true' : 'false',
+                    sshServerId: sshId || '',
+                  },
+                  isDeleted: false,
+                  deletedAt: null,
                   lastSyncAt: new Date(),
-                  metricSource: 'Amazon CloudWatch',
+                  metricSource: isSSH ? 'SSH In-Guest Telemetry (Verified)' : 'Amazon CloudWatch',
+                },
+                $setOnInsert: {
+                  createdAt: new Date(),
                 },
               },
               { upsert: true }
             );
 
-            if (!isTerminated) totalAwsForAccount++;
+            totalAwsForAccount++;
           }
+
+          // PRUNE TERMINATED EC2 INSTANCES ONLY IN THIS REGION WHERE QUERY SUCCEEDED:
+          const pruneAwsRes = await CloudResource.deleteMany({
+            provider: 'aws',
+            accountId: acc.accountId,
+            region: reg,
+            resourceType: 'ec2',
+            resourceId: { $nin: Array.from(regionLiveIds) },
+          });
+
+          // Also clean up any terminated AWS EC2 instances from the Server collection in this region
+          if (regionLiveIds.size > 0) {
+            await Server.deleteMany({
+              cloudProvider: 'aws',
+              region: reg,
+              name: { $nin: Array.from(regionLiveNames) },
+              host: { $nin: Array.from(regionLiveIps) },
+            });
+          }
+
+          prunedCount += pruneAwsRes.deletedCount || 0;
         } catch (regErr: any) {
           const msg = `AWS sync error in ${reg} for ${acc.accountId}: ${regErr.message || regErr}`;
           console.warn(msg);
@@ -192,29 +305,17 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
         }
       }
 
-      // PRUNE DELETED AWS EC2:
-      const pruneAwsRes = await CloudResource.updateMany(
-        {
-          provider: 'aws',
-          accountId: acc.accountId,
-          resourceType: 'ec2',
-          resourceId: { $nin: Array.from(liveAwsIds) },
-        },
-        {
-          $set: {
-            isDeleted: true,
-            deletedAt: new Date(),
-            status: 'Terminated',
-          },
-        }
-      );
-
-      prunedCount += pruneAwsRes.modifiedCount || 0;
       awsCount += totalAwsForAccount;
 
       await CloudAccount.updateOne(
         { _id: acc._id },
-        { $set: { resourcesCount: totalAwsForAccount, lastSyncAt: new Date() } }
+        {
+          $set: {
+            resourcesCount: totalAwsForAccount,
+            availableRegions: enabledRegions,
+            lastSyncAt: new Date(),
+          },
+        }
       );
     }
 

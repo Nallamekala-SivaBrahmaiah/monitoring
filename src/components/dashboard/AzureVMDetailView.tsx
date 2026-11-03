@@ -6,6 +6,9 @@ import {
   ArrowLeft,
   RotateCw,
   Power,
+  Play,
+  CheckCircle2,
+  AlertCircle,
   AppWindow,
   Cpu,
   Activity,
@@ -44,8 +47,45 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showSSHModal, setShowSSHModal] = useState(false);
+  const [currentPowerState, setCurrentPowerState] = useState(vm.powerState);
+  const [powerActionLoading, setPowerActionLoading] = useState(false);
+  const [powerFeedback, setPowerFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  const isRunning = (vm.powerState || '').toLowerCase().includes('run');
+  const isRunning = (currentPowerState || '').toLowerCase().includes('run');
+
+  const handlePowerAction = async (action: 'start' | 'stop' | 'restart') => {
+    try {
+      setPowerActionLoading(true);
+      const res = await fetch(`/api/azure/vms/${encodeURIComponent(vm.vmId)}/power`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (action === 'stop') setCurrentPowerState('Stopped');
+        if (action === 'start') setCurrentPowerState('Running');
+        setPowerFeedback({
+          type: 'success',
+          message: data.message || `Azure VM ${action === 'stop' ? 'stopped' : action === 'start' ? 'started' : 'restarted'} successfully in Azure.`,
+        });
+        triggerRefresh?.();
+      } else {
+        setPowerFeedback({
+          type: 'error',
+          message: data.error || `Failed to execute ${action} on Azure VM.`,
+        });
+      }
+    } catch (err: any) {
+      setPowerFeedback({
+        type: 'error',
+        message: err.message || 'Power action failed.',
+      });
+    } finally {
+      setPowerActionLoading(false);
+      setTimeout(() => setPowerFeedback(null), 6000);
+    }
+  };
   const cpuVal = vm.cpuUsage ?? (vm as any).cpuUtilization ?? null;
   const memVal = vm.memoryUsage ?? (vm as any).memoryUtilization ?? null;
   const diskVal = vm.diskUsage ?? (vm as any).diskUtilization ?? null;
@@ -117,7 +157,7 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                       }`}
                     >
                       <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
-                      {vm.powerState}
+                      {currentPowerState}
                     </span>
                     {(vm as any).isSSHConnected && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
@@ -133,6 +173,40 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Start / Stop Button */}
+                {isRunning ? (
+                  <button
+                    onClick={() => handlePowerAction('stop')}
+                    disabled={powerActionLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/40 rounded-lg transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                    title="Stop / Deallocate VM in Azure"
+                  >
+                    <Power className={`w-3.5 h-3.5 ${powerActionLoading ? 'animate-spin' : ''}`} />
+                    <span>{powerActionLoading ? 'Stopping...' : 'Stop VM'}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handlePowerAction('start')}
+                    disabled={powerActionLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/40 rounded-lg transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                    title="Start VM in Azure"
+                  >
+                    <Play className={`w-3.5 h-3.5 fill-current ${powerActionLoading ? 'animate-spin' : ''}`} />
+                    <span>{powerActionLoading ? 'Starting...' : 'Start VM'}</span>
+                  </button>
+                )}
+
+                {/* Restart Button */}
+                <button
+                  onClick={() => handlePowerAction('restart')}
+                  disabled={powerActionLoading || !isRunning}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#18233C] hover:bg-[#202E4E] text-slate-200 border border-[#1E293B] rounded-lg transition-colors disabled:opacity-40"
+                  title="Restart VM in Azure"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 text-[#0089D6] ${powerActionLoading ? 'animate-spin' : ''}`} />
+                  <span>Restart</span>
+                </button>
+
                 {(vm as any).isSSHConnected && (vm as any).sshServerId ? (
                   <Link
                     href={`/dashboard/servers/${(vm as any).sshServerId}`}
@@ -150,20 +224,34 @@ export function AzureVMDetailView({ vm }: AzureVMDetailViewProps) {
                     <span>Connect SSH (PPK / PEM / Password)</span>
                   </button>
                 )}
-                <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#18233C] hover:bg-[#202E4E] text-slate-200 border border-[#1E293B] rounded-lg">
-                  <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Bastion SSH</span>
-                </button>
-                <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#18233C] hover:bg-[#202E4E] text-slate-200 border border-[#1E293B] rounded-lg">
-                  <RotateCw className="w-3.5 h-3.5 text-[#0089D6]" />
-                  <span>Restart</span>
-                </button>
-                <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg">
-                  <Power className="w-3.5 h-3.5" />
-                  <span>Stop VM</span>
-                </button>
               </div>
             </div>
+
+            {/* Power Action Feedback Toast Banner */}
+            {powerFeedback && (
+              <div
+                className={`mt-4 p-3 text-xs flex items-center justify-between rounded-lg border ${
+                  powerFeedback.type === 'success'
+                    ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
+                    : 'bg-rose-950/60 border-rose-500/30 text-rose-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {powerFeedback.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span className="font-medium">{powerFeedback.message}</span>
+                </div>
+                <button
+                  onClick={() => setPowerFeedback(null)}
+                  className="text-slate-400 hover:text-white text-xs px-2 py-0.5"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 pt-5 text-xs">
               <div>

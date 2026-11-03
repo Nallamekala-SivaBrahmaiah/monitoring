@@ -57,8 +57,25 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     await Server.findByIdAndDelete(id);
 
-    // Remove from CloudResource
-    await CloudResource.deleteOne({ resourceId: `srv-${id}` });
+    // Cascade remove from CloudResource (srv-id and any matching cloud provider instance records)
+    await CloudResource.deleteMany({
+      $or: [
+        { resourceId: `srv-${id}` },
+        { 'metadata.sshServerId': id },
+        { 'tags.sshServerId': id },
+        { name: server.name },
+        { publicIp: server.host },
+        { privateIp: server.host },
+      ],
+    });
+
+    // Cascade delete metrics
+    await Metric.deleteMany({
+      $or: [
+        { resourceId: `srv-${id}` },
+        { resourceId: server.name },
+      ],
+    }).catch(() => null);
 
     return NextResponse.json({ success: true, message: `Server ${server.name} removed from monitoring` });
   } catch (err: any) {

@@ -624,36 +624,43 @@ export default function ServersPage() {
           <td className="py-3.5 px-4 text-right">
             <div className="flex items-center justify-end gap-1.5">
               {/* 1. Start & Stop Server Button Group */}
-              <div className="inline-flex rounded-lg border border-[#1E293B] bg-[#0D1526] p-0.5 shadow-sm shrink-0">
-                <button
-                  type="button"
-                  onClick={() => handlePowerAction(server, 'start')}
-                  disabled={server.status === 'Online' || powerActionLoadingId === server._id}
-                  className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
-                    server.status === 'Online'
-                      ? 'text-slate-500 cursor-not-allowed opacity-40'
-                      : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
-                  }`}
-                  title={server.status === 'Online' ? 'Server is already Online' : 'Start Server'}
-                >
-                  <Play className={`w-3 h-3 fill-current ${powerActionLoadingId === server._id ? 'animate-spin' : ''}`} />
-                  <span>Start</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePowerAction(server, 'stop')}
-                  disabled={server.status !== 'Online' || powerActionLoadingId === server._id}
-                  className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
-                    server.status !== 'Online'
-                      ? 'text-slate-500 cursor-not-allowed opacity-40'
-                      : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
-                  }`}
-                  title={server.status !== 'Online' ? 'Server is currently Stopped' : 'Stop Server'}
-                >
-                  <Power className={`w-3 h-3 ${powerActionLoadingId === server._id ? 'animate-spin' : ''}`} />
-                  <span>Stop</span>
-                </button>
-              </div>
+              {(() => {
+                const isOnline =
+                  server.status === 'Online' ||
+                  ((server as any).cloudPowerState && (server as any).cloudPowerState === 'Running');
+                return (
+                  <div className="inline-flex rounded-lg border border-[#1E293B] bg-[#0D1526] p-0.5 shadow-sm shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handlePowerAction(server, 'start')}
+                      disabled={isOnline || powerActionLoadingId === server._id}
+                      className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                        isOnline
+                          ? 'text-slate-500 cursor-not-allowed opacity-40'
+                          : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
+                      }`}
+                      title={isOnline ? 'Server is already running in cloud' : 'Start Server in Cloud'}
+                    >
+                      <Play className={`w-3 h-3 fill-current ${powerActionLoadingId === server._id ? 'animate-spin' : ''}`} />
+                      <span>Start</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePowerAction(server, 'stop')}
+                      disabled={!isOnline || powerActionLoadingId === server._id}
+                      className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                        !isOnline
+                          ? 'text-slate-500 cursor-not-allowed opacity-40'
+                          : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
+                      }`}
+                      title={!isOnline ? 'Server is currently stopped' : 'Stop Server in Cloud (AWS / Azure)'}
+                    >
+                      <Power className={`w-3 h-3 ${powerActionLoadingId === server._id ? 'animate-spin' : ''}`} />
+                      <span>Stop</span>
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* 2. Direct interactive SSH Terminal Login button (from Second Image) */}
               <button

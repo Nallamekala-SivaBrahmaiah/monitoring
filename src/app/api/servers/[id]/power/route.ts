@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
-import Server from '@/models/Server';
-import CloudResource from '@/models/CloudResource';
-import { syncSingleServer } from '@/lib/serverMonitoring/serverSync';
+import { executeUnifiedPowerAction, PowerAction } from '@/lib/cloudPowerService';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -10,14 +8,14 @@ interface RouteContext {
 
 /**
  * POST /api/servers/[id]/power
- * Toggle server operational state: start, stop, restart.
+ * Dispatches real cloud power operations across AWS EC2, Azure VMs, and fleet servers.
  */
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     await connectToDatabase();
     const { id } = await context.params;
     const body = await request.json();
-    const action = body?.action;
+    const action = body?.action as PowerAction;
 
     if (!['start', 'stop', 'restart'].includes(action)) {
       return NextResponse.json(
@@ -26,91 +24,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const server = await Server.findById(id);
-    if (!server) {
-      return NextResponse.json({ error: 'Server not found' }, { status: 404 });
-    }
+    const result = await executeUnifiedPowerAction(id, action);
 
-    if (action === 'stop') {
-      server.status = 'Offline';
-      server.lastError = 'Server stopped by operator';
-      await server.save();
-
-      // Mirror state to CloudResource
-      await CloudResource.updateMany(
-        {
-          $or: [
-            { resourceId: server.name },
-            { name: server.name },
-            { publicIp: server.host },
-          ],
-        },
-        {
-          $set: {
-            status: 'Stopped',
-            'metadata.powerState': 'VM stopped',
-          },
-        }
-      );
-
-      return NextResponse.json({
-        success: true,
-        action: 'stop',
-        status: 'Offline',
-        message: `Server "${server.name}" stopped successfully.`,
-      });
-    }
-
-    if (action === 'start') {
-      server.status = 'Online';
-      server.lastError = null;
-      await server.save();
-
-      // Mirror state to CloudResource
-      await CloudResource.updateMany(
-        {
-          $or: [
-            { resourceId: server.name },
-            { name: server.name },
-            { publicIp: server.host },
-          ],
-        },
-        {
-          $set: {
-            status: 'Running',
-            'metadata.powerState': 'VM running',
-          },
-        }
-      );
-
-      // Trigger telemetry sync in background
-      syncSingleServer(id).catch((err) => console.warn('Sync on start warning:', err));
-
-      return NextResponse.json({
-        success: true,
-        action: 'start',
-        status: 'Online',
-        message: `Server "${server.name}" started successfully.`,
-      });
-    }
-
-    if (action === 'restart') {
-      server.status = 'Online';
-      await server.save();
-      syncSingleServer(id).catch((err) => console.warn('Sync on restart warning:', err));
-
-      return NextResponse.json({
-        success: true,
-        action: 'restart',
-        status: 'Online',
-        message: `Server "${server.name}" restarted successfully.`,
-      });
-    }
-
-    return NextResponse.json({ error: 'Unhandled power action' }, { status: 400 });
+    return NextResponse.json({
+      success: true,
+      action: result.action,
+      status: result.status,
+      message: result.message,
+      provider: result.provider,
+      resourceId: result.resourceId,
+    });
   } catch (err: any) {
     console.error('Server power action error:', err);
-    return NextResponse.json({ error: err.message || 'Power action failed' }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || 'Power action failed to execute on cloud infrastructure' },
+      { status: 500 }
+    );
   }
 }
-

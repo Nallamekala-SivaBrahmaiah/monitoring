@@ -9,10 +9,25 @@ import { EC2InstancesTable } from '@/components/dashboard/EC2InstancesTable';
 import { useMonitoring } from '@/context/MonitoringContext';
 
 export default function EC2InstancesPage() {
-  const { cloudProvider, setCloudProvider, filteredEC2Instances, triggerRefresh, isRefreshing } = useMonitoring();
+  const {
+    cloudProvider,
+    setCloudProvider,
+    filteredEC2Instances,
+    triggerRefresh,
+    isRefreshing,
+    syncStatus,
+    refreshError,
+    lastRefreshedAt,
+  } = useMonitoring();
 
   const runningCount = filteredEC2Instances.filter((i) => i.status === 'Running').length;
   const stoppedCount = filteredEC2Instances.filter((i) => i.status === 'Stopped').length;
+
+  const syncTimestampStr = syncStatus?.lastSyncAt
+    ? syncStatus.freshness || 'Just now'
+    : lastRefreshedAt
+    ? 'Just now'
+    : null;
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col">
@@ -90,6 +105,10 @@ export default function EC2InstancesPage() {
               instances={filteredEC2Instances}
               showViewAllButton={false}
               limit={10}
+              isLoading={isRefreshing}
+              syncError={refreshError || (syncStatus?.status === 'stale' ? syncStatus.error : null)}
+              lastSyncAt={syncTimestampStr}
+              onRefresh={triggerRefresh}
             />
           )}
         </main>

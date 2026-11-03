@@ -29,7 +29,95 @@ export async function GET(request: NextRequest) {
       .sort({ createdAt: -1 })
       .lean();
 
-    return NextResponse.json(servers);
+    // Cross-reconcile server status with live cloud compute resource status
+    const cloudResources = (await CloudResource.find({
+      provider: { $in: ['aws', 'azure'] },
+      resourceType: { $in: ['ec2', 'vm'] },
+    }).lean()) as any[];
+
+    const reconciledServers = await Promise.all(
+      servers.map(async (s: any) => {
+        const sName = (s.name || '').toLowerCase().trim();
+        const sHost = (s.host || '').trim();
+
+        const cr = cloudResources.find((c: any) => {
+          const cName = (c.name || '').toLowerCase().trim();
+          const cResId = (c.resourceId || '').toLowerCase().trim();
+          const cPub = (c.publicIp || '').trim();
+          const cPriv = (c.privateIp || '').trim();
+          const sshId = c.metadata?.sshServerId || c.tags?.sshServerId || '';
+          if (sshId && sshId === s._id?.toString()) return true;
+          if (cResId && (cResId === sName || cResId === sHost)) return true;
+          if (cName && cName === sName) return true;
+          if (sHost && (sHost === cPub || sHost === cPriv)) return true;
+          return false;
+        });
+
+        const cloudStatus = cr ? (cr.status as string) : null;
+        let effectiveStatus = s.status;
+
+        // If cloud resource is Running, never trap the server in stale "Offline - Server stopped by operator"
+        if (
+          cloudStatus === 'Running' &&
+          s.status === 'Offline' &&
+          s.lastError?.includes('stopped by operator')
+        ) {
+          effectiveStatus = 'Online';
+          // Persist the correction back to MongoDB Server
+          await Server.updateOne(
+            { _id: s._id },
+            { $set: { status: 'Online', lastError: null } }
+          ).catch(() => null);
+        }
+
+        return {
+          ...s,
+          status: effectiveStatus,
+          lastError:
+            effectiveStatus === 'Online' && s.lastError?.includes('stopped by operator')
+              ? null
+              : s.lastError,
+          cloudPowerState: cloudStatus || (effectiveStatus === 'Online' ? 'Running' : 'Stopped'),
+          cloudResourceId: cr?.resourceId as string | undefined,
+        };
+      })
+    );
+
+    // Prune and exclude any cloud servers (AWS / Azure) that have been deleted in the cloud console
+    const activeServers: any[] = [];
+    const deadServerIds: any[] = [];
+
+    for (const s of reconciledServers) {
+      if (s.cloudProvider === 'azure' || s.cloudProvider === 'aws') {
+        const hasLiveCloudResource = cloudResources.some((c: any) => {
+          if (c.provider !== s.cloudProvider) return false;
+          if (c.status === 'Terminated' || c.isDeleted) return false;
+          const cName = (c.name || '').toLowerCase().trim();
+          const sName = (s.name || '').toLowerCase().trim();
+          const sHost = (s.host || '').trim();
+          return (
+            cName === sName ||
+            c.publicIp === sHost ||
+            c.privateIp === sHost ||
+            c.resourceId === sName
+          );
+        });
+
+        if (hasLiveCloudResource) {
+          activeServers.push(s);
+        } else {
+          deadServerIds.push(s._id);
+        }
+      } else {
+        activeServers.push(s);
+      }
+    }
+
+    if (deadServerIds.length > 0) {
+      await Server.deleteMany({ _id: { $in: deadServerIds } }).catch(() => null);
+    }
+
+    return NextResponse.json(activeServers);
   } catch (err: any) {
     console.error('Error fetching servers:', err);
     return NextResponse.json({ error: 'Failed to fetch servers' }, { status: 500 });
@@ -250,6 +338,7 @@ export async function POST(request: NextRequest) {
           { publicIp: hostTrim },
           { privateIp: hostTrim },
           { name: name.trim() },
+          { resourceId: name.trim() },
         ],
       },
       {
@@ -260,8 +349,11 @@ export async function POST(request: NextRequest) {
             diskUtilization: initialSpecs.metrics.disks[0]?.usagePercent || 0,
             networkIn: initialSpecs.metrics.network[0]?.bytesReceived || 0,
             networkOut: initialSpecs.metrics.network[0]?.bytesSent || 0,
+            lastUpdated: new Date(),
           },
           status: isInitialOnline ? 'Running' : 'Stopped',
+          'metadata.isSSHConnected': true,
+          'metadata.sshServerId': serverDoc._id.toString(),
           'tags.isSSHConnected': 'true',
           'tags.sshServerId': serverDoc._id.toString(),
           lastSyncedAt: new Date(),

@@ -11,6 +11,10 @@ import {
   Trash2,
   KeyRound,
   Terminal,
+  Play,
+  Power,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import { AzureVirtualMachine } from '@/types/monitoring';
 import { AzureVmIcon } from '@/components/icons/CloudIcons';
@@ -43,7 +47,41 @@ export function AzureVMsTable({
   const [showSSHModal, setShowSSHModal] = useState<boolean>(false);
   const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
   const [showTerminalModal, setShowTerminalModal] = useState<boolean>(false);
+  const [powerActionLoadingId, setPowerActionLoadingId] = useState<string | null>(null);
+  const [powerFeedback, setPowerFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const pageSize = limit || 5;
+
+  const handlePowerAction = async (vmId: string, action: 'start' | 'stop') => {
+    try {
+      setPowerActionLoadingId(vmId);
+      const res = await fetch(`/api/azure/vms/${encodeURIComponent(vmId)}/power`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPowerFeedback({
+          type: 'success',
+          message: data.message || `Azure VM "${vmId}" ${action === 'start' ? 'started' : 'stopped'} successfully.`,
+        });
+        triggerRefresh?.();
+      } else {
+        setPowerFeedback({
+          type: 'error',
+          message: data.error || `Failed to ${action} Azure VM`,
+        });
+      }
+    } catch (err: any) {
+      setPowerFeedback({
+        type: 'error',
+        message: err.message || `Power action execution failed`,
+      });
+    } finally {
+      setPowerActionLoadingId(null);
+      setTimeout(() => setPowerFeedback(null), 6000);
+    }
+  };
 
   const handleOpenTerminal = (vm: AzureVirtualMachine) => {
     setTerminalTarget({
@@ -151,6 +189,32 @@ export function AzureVMsTable({
 
   return (
     <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl shadow-sm overflow-hidden">
+      {/* Power Action Feedback Toast Banner */}
+      {powerFeedback && (
+        <div
+          className={`p-3 text-xs flex items-center justify-between border-b ${
+            powerFeedback.type === 'success'
+              ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
+              : 'bg-rose-950/60 border-rose-500/30 text-rose-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {powerFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span className="font-medium">{powerFeedback.message}</span>
+          </div>
+          <button
+            onClick={() => setPowerFeedback(null)}
+            className="text-slate-400 hover:text-white text-xs px-2 py-0.5"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Table Header / Action Bar */}
       <div className="p-4 sm:p-5 border-b border-[#1E293B] flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="flex items-center gap-2.5">
@@ -425,7 +489,47 @@ export function AzureVMsTable({
 
                   <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
-                      {/* 1. Login button (on the LEFT side of the key icon) */}
+                      {/* 1. Real Azure Cloud Power Actions (Start & Stop) */}
+                      <div className="inline-flex rounded-lg border border-[#1E293B] bg-[#0D1526] p-0.5 shadow-sm shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handlePowerAction(vm.vmId, 'start')}
+                          disabled={isRunning || powerActionLoadingId === vm.vmId}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
+                            isRunning
+                              ? 'text-slate-500 cursor-not-allowed opacity-40'
+                              : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
+                          }`}
+                          title={isRunning ? 'Azure VM is already running' : 'Start VM in Azure'}
+                        >
+                          <Play
+                            className={`w-3 h-3 fill-current ${
+                              powerActionLoadingId === vm.vmId ? 'animate-spin' : ''
+                            }`}
+                          />
+                          <span>Start</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePowerAction(vm.vmId, 'stop')}
+                          disabled={!isRunning || powerActionLoadingId === vm.vmId}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
+                            !isRunning
+                              ? 'text-slate-500 cursor-not-allowed opacity-40'
+                              : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
+                          }`}
+                          title={!isRunning ? 'Azure VM is currently stopped' : 'Stop / Deallocate VM in Azure'}
+                        >
+                          <Power
+                            className={`w-3 h-3 ${
+                              powerActionLoadingId === vm.vmId ? 'animate-spin' : ''
+                            }`}
+                          />
+                          <span>Stop</span>
+                        </button>
+                      </div>
+
+                      {/* 2. Login button (on the LEFT side of the key icon) */}
                       <button
                         type="button"
                         onClick={() => handleOpenTerminal(vm)}

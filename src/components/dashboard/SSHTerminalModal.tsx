@@ -23,6 +23,7 @@ export interface SSHTerminalTarget {
   username?: string;
   sshServerId?: string;
   cloudProvider?: string;
+  region?: string;
   isSSHConnected?: boolean;
 }
 
