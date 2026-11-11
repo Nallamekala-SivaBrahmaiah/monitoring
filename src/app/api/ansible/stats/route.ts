@@ -1,23 +1,47 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import AnsibleHost from '@/models/AnsibleHost';
 import AnsiblePlaybook from '@/models/AnsiblePlaybook';
 import AnsibleExecution from '@/models/AnsibleExecution';
+import AnsibleController from '@/models/AnsibleController';
 import { ensurePlaybookTemplates } from '@/lib/ansible/ansibleEngine';
+import { ensureWorkerControllerAffinity } from '@/lib/ansible/ansibleController';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
     await ensurePlaybookTemplates();
+    await ensureWorkerControllerAffinity();
 
-    const [totalServers, totalPlaybooks, successfulRuns, failedRuns, runningJobs, lastExecution] =
+    const { searchParams } = new URL(req.url);
+    const controllerId = searchParams.get('controllerId');
+
+    const hostQuery: any = {};
+    const execQuery: any = {};
+
+    if (controllerId && controllerId !== 'all') {
+      const orCid: any[] = [{ controllerId }];
+      if (mongoose.Types.ObjectId.isValid(controllerId)) {
+        orCid.push({ controllerId: new mongoose.Types.ObjectId(controllerId) });
+      }
+
+      hostQuery.$or = orCid;
+      execQuery.$or = [{ controllerId }];
+      if (mongoose.Types.ObjectId.isValid(controllerId)) {
+        execQuery.$or.push({ controllerId: new mongoose.Types.ObjectId(controllerId) });
+      }
+    }
+
+    const [totalControllers, totalServers, totalPlaybooks, successfulRuns, failedRuns, runningJobs, lastExecution] =
       await Promise.all([
-        AnsibleHost.countDocuments(),
+        AnsibleController.countDocuments(),
+        AnsibleHost.countDocuments(hostQuery),
         AnsiblePlaybook.countDocuments(),
-        AnsibleExecution.countDocuments({ status: 'SUCCESS' }),
-        AnsibleExecution.countDocuments({ status: 'FAILED' }),
-        AnsibleExecution.countDocuments({ status: 'RUNNING' }),
-        AnsibleExecution.findOne().sort({ createdAt: -1 }).select('createdAt status playbookName durationSeconds').lean(),
+        AnsibleExecution.countDocuments({ ...execQuery, status: 'SUCCESS' }),
+        AnsibleExecution.countDocuments({ ...execQuery, status: 'FAILED' }),
+        AnsibleExecution.countDocuments({ ...execQuery, status: 'RUNNING' }),
+        AnsibleExecution.findOne(execQuery).sort({ createdAt: -1 }).select('createdAt status playbookName durationSeconds').lean(),
       ]);
 
     const totalCompleted = successfulRuns + failedRuns;
@@ -36,6 +60,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       stats: {
+        totalControllers,
         totalServers,
         totalPlaybooks,
         successfulRuns,
@@ -51,4 +76,3 @@ export async function GET() {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
-

@@ -22,11 +22,13 @@ import {
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { IAnsibleHostData } from '@/models/AnsibleHost';
+import { IAnsibleControllerData } from '@/models/AnsibleController';
 import { AnsibleControllerNodeCard } from './AnsibleControllerNodeCard';
 import { SetupManagedNodeModal } from './SetupManagedNodeModal';
 
 interface AnsibleInventoryTabProps {
   hosts: IAnsibleHostData[];
+  activeController?: IAnsibleControllerData | null;
   onAddHostClick: () => void;
   onImportCloudClick: () => void;
   onEditHostClick: (host: IAnsibleHostData) => void;
@@ -38,6 +40,7 @@ interface AnsibleInventoryTabProps {
 
 export function AnsibleInventoryTab({
   hosts,
+  activeController,
   onAddHostClick,
   onImportCloudClick,
   onEditHostClick,
@@ -70,7 +73,10 @@ export function AnsibleInventoryTab({
     setSettingUpAll(true);
     setSetupAllMessage(null);
     try {
-      const res = await fetch('/api/ansible/hosts/setup-all', { method: 'POST' });
+      const url = activeController?._id
+        ? `/api/ansible/hosts/setup-all?controllerId=${encodeURIComponent(activeController._id)}`
+        : '/api/ansible/hosts/setup-all';
+      const res = await fetch(url, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setSetupAllMessage({
@@ -127,12 +133,15 @@ export function AnsibleInventoryTab({
 
   return (
     <div className="space-y-6">
-      {/* 1. Main Ansible Controller Node Section (Exactly ONE at the top) */}
+      {/* 1. Main Ansible Controller Node Section */}
       <section aria-label="Ansible Controller Node">
-        <AnsibleControllerNodeCard onControllerChanged={onRefresh} />
+        <AnsibleControllerNodeCard
+          controllerId={activeController?._id}
+          onControllerChanged={onRefresh}
+        />
       </section>
 
-      {/* 2. Managed Nodes Section (Multiple Servers directly below controller) */}
+      {/* 2. Managed Nodes Section */}
       <section aria-label="Ansible Managed Nodes" className="space-y-4">
         {/* Section Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#111A2E]/90 border border-[#1E293B]/90 rounded-2xl p-4 sm:p-5 shadow-lg shadow-black/20">
@@ -148,7 +157,8 @@ export function AnsibleInventoryTab({
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Target AWS EC2 instances & Azure VMs controlled by the Ansible Controller
+                Target AWS EC2 instances & Azure VMs controlled by{' '}
+                <span className="text-blue-300 font-semibold">{activeController?.name || 'Active Controller'}</span>
               </p>
             </div>
           </div>

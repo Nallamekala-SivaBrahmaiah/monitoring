@@ -272,8 +272,9 @@ export async function getUnifiedServerInventory(filter?: {
     }
 
     // If an instance was tagged as azure or aws, but was not discovered in the cloud,
-    // it means it was terminated or deleted in the cloud console. Exclude it.
+    // it means it was terminated or deleted in the cloud console. Exclude it and purge from Server.
     if (s.cloudProvider === 'azure' || s.cloudProvider === 'aws') {
+      await Server.deleteOne({ _id: s._id }).catch(() => null);
       continue;
     }
 

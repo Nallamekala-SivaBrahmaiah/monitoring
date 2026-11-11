@@ -3,6 +3,7 @@ import connectToDatabase from '@/lib/mongodb';
 import AnsibleExecution from '@/models/AnsibleExecution';
 import AnsiblePlaybook from '@/models/AnsiblePlaybook';
 import AnsibleHost from '@/models/AnsibleHost';
+import AnsibleController from '@/models/AnsibleController';
 import { executeAnsiblePlaybook } from '@/lib/ansible/ansibleEngine';
 
 export async function GET(req: NextRequest) {
@@ -10,6 +11,7 @@ export async function GET(req: NextRequest) {
     await connectToDatabase();
     const { searchParams } = new URL(req.url);
 
+    const controllerId = searchParams.get('controllerId');
     const status = searchParams.get('status');
     const hostId = searchParams.get('hostId');
     const playbookId = searchParams.get('playbookId');
@@ -17,6 +19,9 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
 
     const query: any = {};
+    if (controllerId && controllerId !== 'all') {
+      query.$or = [{ controllerId }, { controllerId: { $exists: false } }];
+    }
     if (status && status !== 'all') query.status = status.toUpperCase();
     if (hostId && hostId !== 'all') query.hostId = hostId;
     if (playbookId && playbookId !== 'all') query.playbookId = playbookId;
@@ -41,39 +46,84 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST: Quick-run playbook from dashboard
+ * POST: Execute playbook through a controller across specified workers or groups
  */
 export async function POST(req: NextRequest) {
   try {
     await connectToDatabase();
     const body = await req.json();
 
-    let { hostId, hostName, playbookId, playbookName, extraVars = '' } = body;
+    let {
+      controllerId,
+      hostId,
+      hostName,
+      targetWorkerIds,
+      groupId,
+      playbookId,
+      playbookName,
+      extraVars = '',
+    } = body;
 
-    // Resolve host
-    let host: any = null;
-    const isAllHosts = hostId === 'all';
-    if (isAllHosts) {
-      host = await AnsibleHost.findOne();
-    } else if (hostId) {
-      host = await AnsibleHost.findById(hostId);
-    } else if (hostName) {
-      host = await AnsibleHost.findOne({ name: hostName });
+    // 1. Resolve Controller
+    let targetController: any = null;
+    if (controllerId) {
+      targetController = await AnsibleController.findById(controllerId);
+    }
+    if (!targetController) {
+      targetController =
+        (await AnsibleController.findOne({ isActive: true })) ||
+        (await AnsibleController.findOne({}));
     }
 
-    if (!host) {
-      // Pick first host as default if none specified
-      host = await AnsibleHost.findOne();
-    }
-
-    if (!host) {
+    if (!targetController) {
       return NextResponse.json(
-        { success: false, error: 'No target server selected or found in inventory.' },
+        { success: false, error: 'No active Ansible Controller found. Please create a controller first.' },
         { status: 400 }
       );
     }
 
-    // Resolve playbook
+    // 2. Resolve Target Workers
+    let resolvedWorkerIds: string[] = [];
+    let resolvedWorkerNames: string[] = [];
+    let primaryHost: any = null;
+    let effectiveHostName = 'Target Nodes';
+    let effectiveHostIp = 'all';
+
+    if (Array.isArray(targetWorkerIds) && targetWorkerIds.length > 0) {
+      const workers = await AnsibleHost.find({ _id: { $in: targetWorkerIds } });
+      resolvedWorkerIds = workers.map((w) => w._id.toString());
+      resolvedWorkerNames = workers.map((w) => w.name);
+      primaryHost = workers[0];
+      effectiveHostName = workers.length === 1 ? workers[0].name : `${workers.length} Managed Nodes`;
+      effectiveHostIp = workers.length === 1 ? workers[0].ip : 'multiple';
+    } else if (hostId && hostId !== 'all') {
+      primaryHost = await AnsibleHost.findById(hostId);
+      if (primaryHost) {
+        resolvedWorkerIds = [primaryHost._id.toString()];
+        resolvedWorkerNames = [primaryHost.name];
+        effectiveHostName = primaryHost.name;
+        effectiveHostIp = primaryHost.ip;
+      }
+    } else {
+      // All managed nodes under THIS controller
+      const allWorkers = await AnsibleHost.find({ controllerId: targetController._id });
+      if (allWorkers.length > 0) {
+        resolvedWorkerIds = allWorkers.map((w) => w._id.toString());
+        resolvedWorkerNames = allWorkers.map((w) => w.name);
+        primaryHost = allWorkers[0];
+        effectiveHostName = `All Managed Nodes (${allWorkers.length})`;
+        effectiveHostIp = 'all';
+      }
+    }
+
+    if (!primaryHost && resolvedWorkerIds.length === 0) {
+      return NextResponse.json(
+        { success: false, error: `No target managed workers found under controller "${targetController.name}".` },
+        { status: 400 }
+      );
+    }
+
+    // 3. Resolve Playbook
     let playbook: any = null;
     if (playbookId) {
       playbook = await AnsiblePlaybook.findById(playbookId);
@@ -82,13 +132,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (!playbook) {
-      // Pick first playbook as default
       playbook = await AnsiblePlaybook.findOne();
     }
 
     if (!playbook) {
       return NextResponse.json(
-        { success: false, error: 'No playbook selected or found.' },
+        { success: false, error: 'No playbook selected or found in database.' },
         { status: 400 }
       );
     }
@@ -99,21 +148,23 @@ export async function POST(req: NextRequest) {
 
     const execution = await AnsibleExecution.create({
       jobId,
+      controllerId: targetController._id,
+      controllerName: targetController.name,
       playbookId: playbook._id,
       playbookName: playbook.name,
-      hostId: host._id,
-      hostName: isAllHosts ? 'All Managed Nodes' : host.name,
-      hostIp: isAllHosts ? 'all' : host.ip,
+      hostId: primaryHost?._id,
+      hostName: effectiveHostName,
+      hostIp: effectiveHostIp,
+      targetWorkerIds: resolvedWorkerIds,
+      targetWorkerNames: resolvedWorkerNames,
       extraVars: typeof extraVars === 'object' ? JSON.stringify(extraVars) : String(extraVars),
       status: 'RUNNING',
       startTime: new Date(),
       durationSeconds: 0,
-      logs: `[Ansible Engine] Starting job "${jobId}" for "${playbook.name}" on ${
-        isAllHosts ? 'All Managed Nodes' : `"${host.name}" (${host.ip})`
-      }...\n`,
+      logs: `[Ansible Engine] Starting job "${jobId}" for "${playbook.name}" via Controller "${targetController.name}" (${targetController.ipAddress}) on ${effectiveHostName}...\n`,
     });
 
-    // Execute in background
+    // Execute asynchronously
     setImmediate(() => {
       executeAnsiblePlaybook(execution._id.toString()).catch((err) => {
         console.error(`[AnsibleAPI] Error running job ${jobId}:`, err);
@@ -125,10 +176,10 @@ export async function POST(req: NextRequest) {
       jobId,
       executionId: execution._id,
       execution,
-      message: `Job ${jobId} triggered successfully.`,
+      controllerName: targetController.name,
+      message: `Job ${jobId} triggered successfully through controller "${targetController.name}".`,
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
-

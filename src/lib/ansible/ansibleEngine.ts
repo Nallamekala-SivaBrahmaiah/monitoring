@@ -30,34 +30,13 @@ export async function purgeFakeAnsibleData(): Promise<void> {
   try {
     await connectToDatabase();
 
-    // 1. Delete known dummy hostnames / IPs
+    // Delete known static mock hostnames / IPs from initial mock template
     await AnsibleHost.deleteMany({
       $or: [
         { ip: { $in: ['192.168.1.100', '13.233.45.67', '20.40.12.78'] } },
         { name: { $in: ['Local-Server', 'AWS-Server-1', 'Azure-Server-1'] } },
       ],
     });
-
-    // 2. Remove any duplicate hosts sharing the exact same IP or instanceId
-    const allHosts = await AnsibleHost.find({}).sort({ createdAt: -1 });
-    const seenIps = new Set<string>();
-    const seenIds = new Set<string>();
-
-    for (const h of allHosts) {
-      const ip = (h.ip || '').trim().toLowerCase();
-      const instId = (h.instanceId || '').trim().toLowerCase();
-
-      let isDup = false;
-      if (ip && seenIps.has(ip)) isDup = true;
-      if (instId && seenIds.has(instId)) isDup = true;
-
-      if (isDup) {
-        await AnsibleHost.findByIdAndDelete(h._id);
-      } else {
-        if (ip) seenIps.add(ip);
-        if (instId) seenIds.add(instId);
-      }
-    }
   } catch (err) {
     console.warn('[AnsibleEngine] Error purging fake data:', err);
   }
@@ -256,12 +235,13 @@ export async function executeAnsiblePlaybook(executionId: string): Promise<void>
     throw new Error(`Execution ${executionId} not found`);
   }
 
-  // Resolve target hosts: single host or all managed nodes fleet
-  const isAllHosts = execution.hostIp === 'all' || execution.hostName === 'All Managed Nodes';
+  // Resolve target hosts: check targetWorkerIds, groups, all under controller, or single host
   let targetHosts: any[] = [];
-
-  if (isAllHosts) {
-    targetHosts = await AnsibleHost.find({}).sort({ name: 1 });
+  if (Array.isArray(execution.targetWorkerIds) && execution.targetWorkerIds.length > 0) {
+    targetHosts = await AnsibleHost.find({ _id: { $in: execution.targetWorkerIds } }).sort({ name: 1 });
+  } else if (execution.hostIp === 'all' || execution.hostName?.includes('All Managed Nodes')) {
+    const ctrlFilter = execution.controllerId ? { controllerId: execution.controllerId } : {};
+    targetHosts = await AnsibleHost.find(ctrlFilter).sort({ name: 1 });
   } else if (execution.hostId) {
     const single = await AnsibleHost.findById(execution.hostId);
     if (single) targetHosts.push(single);
@@ -276,7 +256,15 @@ export async function executeAnsiblePlaybook(executionId: string): Promise<void>
   }
 
   // Controller fallback credentials
-  const primaryController = await AnsibleController.findOne({ isPrimary: true }).lean();
+  let executingController: any = null;
+  if (execution.controllerId) {
+    executingController = await AnsibleController.findById(execution.controllerId).lean();
+  }
+  if (!executingController) {
+    executingController =
+      (await AnsibleController.findOne({ isActive: true }).lean()) ||
+      (await AnsibleController.findOne({}).lean());
+  }
 
   const playbook = await AnsiblePlaybook.findById(execution.playbookId);
   const playbookYaml = playbook?.content || '';
@@ -346,12 +334,12 @@ export async function executeAnsiblePlaybook(executionId: string): Promise<void>
       hostRecaps.set(host.name, { ok: 0, changed: 0, unreachable: 0, failed: 0, skipped: 0 });
       const recap = hostRecaps.get(host.name)!;
 
-      // Ensure host has credentials
-      if (!host.encryptedAuthSecret && primaryController?.encryptedAuthSecret) {
-        host.encryptedAuthSecret = primaryController.encryptedAuthSecret;
-        host.authSecretIv = primaryController.authSecretIv || '';
-        host.authSecretTag = primaryController.authSecretTag || '';
-        host.authMethod = primaryController.authMethod || 'privateKey';
+      // Ensure host has credentials (inherit from executing controller if missing)
+      if (!host.encryptedAuthSecret && executingController?.encryptedAuthSecret) {
+        host.encryptedAuthSecret = executingController.encryptedAuthSecret;
+        host.authSecretIv = executingController.authSecretIv || '';
+        host.authSecretTag = executingController.authSecretTag || '';
+        host.authMethod = executingController.authMethod || 'privateKey';
         await host.save();
       }
 

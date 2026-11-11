@@ -19,12 +19,19 @@ export async function POST(
 
     // Inherit credentials from controller if missing on node
     if (!host.encryptedAuthSecret) {
-      const primaryController = await AnsibleController.findOne({ isPrimary: true }).lean();
-      if (primaryController && primaryController.encryptedAuthSecret) {
-        host.encryptedAuthSecret = primaryController.encryptedAuthSecret;
-        host.authSecretIv = primaryController.authSecretIv || '';
-        host.authSecretTag = primaryController.authSecretTag || '';
-        host.authMethod = primaryController.authMethod || 'privateKey';
+      let ctrl: any = null;
+      if (host.controllerId) {
+        ctrl = await AnsibleController.findById(host.controllerId).lean();
+      }
+      if (!ctrl) {
+        ctrl = await AnsibleController.findOne({ isActive: true }).lean() || await AnsibleController.findOne({}).lean();
+      }
+
+      if (ctrl && ctrl.encryptedAuthSecret) {
+        host.encryptedAuthSecret = ctrl.encryptedAuthSecret;
+        host.authSecretIv = ctrl.authSecretIv || '';
+        host.authSecretTag = ctrl.authSecretTag || '';
+        host.authMethod = ctrl.authMethod || 'privateKey';
         await host.save();
       }
     }

@@ -18,11 +18,15 @@ export interface IAnsibleExecutionTask {
 export interface IAnsibleExecutionData {
   _id?: string;
   jobId: string;
+  controllerId?: string;
+  controllerName?: string;
   playbookId?: string;
   playbookName: string;
   hostId?: string;
   hostName: string;
   hostIp: string;
+  targetWorkerIds?: string[];
+  targetWorkerNames?: string[];
   extraVars?: string;
   status: 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
   startTime: Date;
@@ -39,11 +43,15 @@ export interface IAnsibleExecutionData {
 
 export interface IAnsibleExecution extends Document {
   jobId: string;
+  controllerId?: any;
+  controllerName?: string;
   playbookId?: any;
   playbookName: string;
   hostId?: any;
   hostName: string;
   hostIp: string;
+  targetWorkerIds: any[];
+  targetWorkerNames: string[];
   extraVars: string;
   status: 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
   startTime: Date;
@@ -61,11 +69,15 @@ export interface IAnsibleExecution extends Document {
 const AnsibleExecutionSchema = new Schema<IAnsibleExecution>(
   {
     jobId: { type: String, required: true, unique: true, index: true },
+    controllerId: { type: Schema.Types.ObjectId, ref: 'AnsibleController', index: true },
+    controllerName: { type: String, trim: true },
     playbookId: { type: Schema.Types.ObjectId, ref: 'AnsiblePlaybook', index: true },
     playbookName: { type: String, required: true, index: true },
     hostId: { type: Schema.Types.ObjectId, ref: 'AnsibleHost', index: true },
     hostName: { type: String, required: true, index: true },
     hostIp: { type: String, required: true },
+    targetWorkerIds: [{ type: Schema.Types.ObjectId, ref: 'AnsibleHost' }],
+    targetWorkerNames: { type: [String], default: [] },
     extraVars: { type: String, default: '' },
     status: {
       type: String,
@@ -103,8 +115,6 @@ const AnsibleExecutionSchema = new Schema<IAnsibleExecution>(
     timestamps: true,
   }
 );
-
-AnsibleExecutionSchema.index({ createdAt: -1 });
 
 const AnsibleExecution: Model<IAnsibleExecution> =
   mongoose.models.AnsibleExecution ||

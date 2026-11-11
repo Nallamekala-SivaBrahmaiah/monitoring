@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import AnsibleHost from '@/models/AnsibleHost';
+import AnsibleController from '@/models/AnsibleController';
 import { encryptSecret } from '@/lib/serverMonitoring/crypto';
 
 export async function GET(
@@ -89,9 +90,16 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Host not found' }, { status: 404 });
     }
 
+    if (host.controllerId) {
+      const count = await AnsibleHost.countDocuments({
+        $or: [{ controllerId: host.controllerId }, { controllerId: String(host.controllerId) }],
+      });
+      await AnsibleController.updateOne({ _id: host.controllerId }, { $set: { workerCount: count } });
+    }
+
     return NextResponse.json({
       success: true,
-      message: `Host "${host.name}" deleted from Ansible inventory.`,
+      message: `Host "${host.name}" deleted from Ansible inventory. Cloud VM remains intact.`,
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

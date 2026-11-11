@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import AnsibleController from '@/models/AnsibleController';
 import { buildSSHConfig, executeRemoteSSHCommand } from '@/lib/ansible/ansibleSSH';
@@ -9,10 +10,21 @@ export async function POST(req: NextRequest) {
   try {
     await connectToDatabase();
 
-    const controller = await AnsibleController.findOne({ isPrimary: true });
+    const body = await req.json().catch(() => ({}));
+    const { controllerId } = body;
+    let controller = null;
+    if (controllerId && mongoose.Types.ObjectId.isValid(controllerId)) {
+      controller = await AnsibleController.findById(controllerId);
+    }
+    if (!controller) {
+      controller = await AnsibleController.findOne({ isActive: true });
+    }
+    if (!controller) {
+      controller = await AnsibleController.findOne({});
+    }
     if (!controller) {
       return NextResponse.json(
-        { success: false, error: 'No primary controller node configured.' },
+        { success: false, error: 'No controller node configured.' },
         { status: 400 }
       );
     }
@@ -21,7 +33,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         error:
-          'Controller is currently set to Local Machine (Windows). To install Ansible on Windows, run "pip install ansible" in PowerShell, or designate an AWS EC2 / Azure Linux instance as your primary controller.',
+          'Controller is currently set to Local Machine (Windows). To install Ansible on Windows, run "pip install ansible" in PowerShell, or designate an AWS EC2 / Azure Linux instance as your active controller.',
       });
     }
 

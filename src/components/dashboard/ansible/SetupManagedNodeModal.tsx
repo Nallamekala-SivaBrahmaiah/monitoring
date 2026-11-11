@@ -215,7 +215,7 @@ ssh -i your-key.pem ${host.username}@${host.ip} "python3 --version"`;
 
                 {!showKeyInput ? (
                   <p className="text-[11px] text-slate-400">
-                    Will use existing node key or automatically inherit the SSH key uploaded for the Primary Controller.
+                    Will use existing node key or automatically inherit the SSH key uploaded for the Active Controller.
                   </p>
                 ) : (
                   <div className="space-y-2 pt-1">

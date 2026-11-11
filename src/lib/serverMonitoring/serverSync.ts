@@ -1,6 +1,7 @@
 import connectToDatabase from '@/lib/mongodb';
 import Server, { IServer } from '@/models/Server';
 import CloudResource from '@/models/CloudResource';
+import AnsibleHost from '@/models/AnsibleHost';
 import Metric from '@/models/Metric';
 import { decryptSecret } from './crypto';
 import { collectServerViaSSH } from './sshCollector';
@@ -14,7 +15,41 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
 
   const server = await Server.findById(serverId);
   if (!server) {
-    throw new Error(`Server ${serverId} not found`);
+    return null;
+  }
+
+  const sHost = (server.host || '').trim();
+  const sName = (server.name || '').trim();
+
+  // If server is cloud-managed (AWS or Azure), verify it still exists in the active Cloud compute fleet
+  if (server.cloudProvider === 'aws' || server.cloudProvider === 'azure') {
+    const activeCr = await CloudResource.findOne({
+      provider: server.cloudProvider,
+      status: { $nin: ['Terminated', 'terminated', 'shutting-down', 'deleted', 'Deleted'] },
+      isDeleted: { $ne: true },
+      $or: [
+        { publicIp: sHost },
+        { privateIp: sHost },
+        { name: sName },
+        { resourceId: sName },
+        { 'metadata.sshServerId': server._id.toString() },
+        { 'tags.sshServerId': server._id.toString() },
+      ],
+    }).lean();
+
+    if (!activeCr) {
+      // Instance was terminated in AWS / Azure cloud console.
+      // Purge dead record from Server and AnsibleHost and skip SSH probe!
+      await Server.deleteOne({ _id: server._id }).catch(() => null);
+      await AnsibleHost.deleteMany({
+        $or: [
+          { ip: sHost },
+          { name: sName },
+          ...(server.tags && server.tags.length > 0 ? [{ instanceId: { $in: server.tags } }] : []),
+        ],
+      }).catch(() => null);
+      return null;
+    }
   }
 
   // Decrypt secret

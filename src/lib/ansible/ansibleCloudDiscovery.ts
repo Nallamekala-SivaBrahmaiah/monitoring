@@ -1,5 +1,6 @@
 import connectToDatabase from '@/lib/mongodb';
 import AnsibleHost from '@/models/AnsibleHost';
+import AnsibleController from '@/models/AnsibleController';
 import Server from '@/models/Server';
 import { getUnifiedServerInventory, UnifiedServerResource } from '@/lib/serverMonitoring/inventoryService';
 
@@ -18,24 +19,36 @@ export interface DiscoveredCloudServer {
   hasStoredCredentials: boolean;
   isAlreadyInAnsible: boolean;
   ansibleHostId?: string;
+  sshServerId?: string;
 }
 
 /**
  * Discover real AWS EC2 instances and Azure Virtual Machines from existing cloud integrations.
- * Strictly excludes fake/sample records, terminated EC2 instances, and deleted Azure VMs.
+ * Strictly excludes controllers from being listed as workers unless forController is true.
+ * Checks whether an instance is already registered under the given target controller.
  */
-export async function discoverCloudServers(): Promise<DiscoveredCloudServer[]> {
+export async function discoverCloudServers(
+  targetControllerId?: string,
+  forController = false
+): Promise<DiscoveredCloudServer[]> {
   await connectToDatabase();
 
-  // 1. Fetch currently approved managed nodes & primary controller & servers with stored secrets
-  const [existingAnsibleHosts, primaryController, serversWithSecrets] = await Promise.all([
-    AnsibleHost.find({}).lean(),
-    (await import('@/models/AnsibleController')).default.findOne({ isPrimary: true }).lean(),
+  // 1. Fetch all controllers to ensure NO controller is shown as a worker
+  const [allControllers, existingAnsibleHosts, serversWithSecrets] = await Promise.all([
+    AnsibleController.find({}).lean(),
+    AnsibleHost.find(targetControllerId ? { controllerId: targetControllerId } : {}).lean(),
     Server.find({ encryptedAuthSecret: { $exists: true, $ne: '' } }).lean(),
   ]);
 
-  const controllerIp = primaryController?.ipAddress ? primaryController.ipAddress.toLowerCase().trim() : '';
-  const controllerInstId = primaryController?.instanceId ? primaryController.instanceId.toLowerCase().trim() : '';
+  const controllerIps = new Set<string>();
+  const controllerInstIds = new Set<string>();
+
+  allControllers.forEach((c: any) => {
+    if (c.ipAddress) controllerIps.add(c.ipAddress.toLowerCase().trim());
+    if (c.hostname) controllerIps.add(c.hostname.toLowerCase().trim());
+    if (c.instanceId) controllerInstIds.add(c.instanceId.toLowerCase().trim());
+    if (c.sourceResourceId) controllerInstIds.add(c.sourceResourceId.toLowerCase().trim());
+  });
 
   const ansibleHostIpMap = new Map<string, string>();
   const ansibleResourceIdMap = new Map<string, string>();
@@ -62,7 +75,6 @@ export async function discoverCloudServers(): Promise<DiscoveredCloudServer[]> {
   const seenKeys = new Set<string>();
 
   for (const s of unifiedServers) {
-    // Only real AWS, Azure, or verified servers
     const effectiveIp = s.publicIp !== '-' ? s.publicIp : s.privateIp !== '-' ? s.privateIp : '';
     const normIp = (effectiveIp || '').toLowerCase().trim();
     const normResourceId = (s.resourceId || s.id).toLowerCase().trim();
@@ -74,12 +86,15 @@ export async function discoverCloudServers(): Promise<DiscoveredCloudServer[]> {
     if (seenKeys.has(uniqueKey)) continue;
     seenKeys.add(uniqueKey);
 
-    // Skip controller node so it is never shown as a managed node
-    if (
-      (controllerIp && normIp === controllerIp) ||
-      (controllerInstId && normResourceId === controllerInstId)
-    ) {
-      continue;
+    // Skip all controllers only when discovering workers (not when picking a controller)
+    if (!forController) {
+      if (
+        (normIp && controllerIps.has(normIp)) ||
+        (normResourceId && controllerInstIds.has(normResourceId)) ||
+        (s.id && controllerInstIds.has(s.id.toLowerCase().trim()))
+      ) {
+        continue;
+      }
     }
 
     const isImported =
@@ -102,7 +117,8 @@ export async function discoverCloudServers(): Promise<DiscoveredCloudServer[]> {
       serverSecretMap.has(s.id) ||
       (normIp && serverSecretMap.has(normIp)) ||
       (normResourceId && serverSecretMap.has(normResourceId)) ||
-      (s.sshServerId && serverSecretMap.has(s.sshServerId));
+      (s.sshServerId && serverSecretMap.has(s.sshServerId)) ||
+      (provider === 'aws' && serverSecretMap.size > 0);
 
     discovered.push({
       id: s.id,
@@ -115,10 +131,11 @@ export async function discoverCloudServers(): Promise<DiscoveredCloudServer[]> {
       region: s.region,
       os: s.os || 'Linux',
       status: s.status,
-      username: provider === 'aws' ? 'ec2-user' : provider === 'azure' ? 'azureuser' : 'ubuntu',
+      username: provider === 'aws' ? 'ubuntu' : provider === 'azure' ? 'azureuser' : 'ubuntu',
       hasStoredCredentials: Boolean(hasRealSecret),
       isAlreadyInAnsible: Boolean(isImported),
       ansibleHostId: matchedHostId,
+      sshServerId: s.sshServerId,
     });
   }
 

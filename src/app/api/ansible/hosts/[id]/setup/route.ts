@@ -31,13 +31,16 @@ export async function POST(
       if (body.username) host.username = body.username.trim();
       await host.save();
     } else if (!host.encryptedAuthSecret) {
-      // Inherit credentials from primary Ansible Controller if available
-      const primaryController = await AnsibleController.findOne({ isPrimary: true }).lean();
-      if (primaryController && primaryController.encryptedAuthSecret) {
-        host.encryptedAuthSecret = primaryController.encryptedAuthSecret;
-        host.authSecretIv = primaryController.authSecretIv || '';
-        host.authSecretTag = primaryController.authSecretTag || '';
-        host.authMethod = primaryController.authMethod || 'privateKey';
+      // Inherit credentials from assigned Ansible Controller if available
+      const assignedController =
+        (host.controllerId ? await AnsibleController.findById(host.controllerId).lean() : null) ||
+        (await AnsibleController.findOne({ isActive: true }).lean()) ||
+        (await AnsibleController.findOne({}).lean());
+      if (assignedController && assignedController.encryptedAuthSecret) {
+        host.encryptedAuthSecret = assignedController.encryptedAuthSecret;
+        host.authSecretIv = assignedController.authSecretIv || '';
+        host.authSecretTag = assignedController.authSecretTag || '';
+        host.authMethod = assignedController.authMethod || 'privateKey';
         await host.save();
       }
     }

@@ -4,6 +4,8 @@ import connectToDatabase from '@/lib/mongodb';
 import CloudAccount from '@/models/CloudAccount';
 import CloudResource from '@/models/CloudResource';
 import Server from '@/models/Server';
+import AnsibleHost from '@/models/AnsibleHost';
+import AnsibleController from '@/models/AnsibleController';
 import { discoverEC2InstancesInRegion, getEnabledAWSRegions, isInaccessibleRegion } from '@/lib/aws/ec2';
 
 export async function GET(request: NextRequest) {
@@ -70,6 +72,10 @@ export async function GET(request: NextRequest) {
           targetRegions.map((reg) => discoverEC2InstancesInRegion(reg, creds))
         );
 
+        const allAccountLiveIds = new Set<string>();
+        const allAccountLiveNames = new Set<string>();
+        const allAccountLiveIps = new Set<string>();
+
         for (const discovery of discoveryResults) {
           const reg = discovery.region;
           try {
@@ -80,6 +86,14 @@ export async function GET(request: NextRequest) {
                 discovery.instances.flatMap((i) => [i.publicIp, i.privateIp].filter(Boolean) as string[])
               );
 
+              discovery.instances.forEach((inst) => {
+                allAccountLiveIds.add(inst.resourceId);
+                if (inst.name) allAccountLiveNames.add(inst.name.toLowerCase().trim());
+                allAccountLiveNames.add(inst.resourceId.toLowerCase().trim());
+                if (inst.publicIp) allAccountLiveIps.add(inst.publicIp.trim());
+                if (inst.privateIp) allAccountLiveIps.add(inst.privateIp.trim());
+              });
+
               // Remove terminated EC2 instances ONLY in this region where the query succeeded
               await CloudResource.deleteMany({
                 provider: 'aws',
@@ -87,6 +101,37 @@ export async function GET(request: NextRequest) {
                 resourceType: 'ec2',
                 resourceId: { $nin: Array.from(liveIds) },
               });
+
+              // Clean up any terminated AWS EC2 instances from Server and AnsibleHost for this region
+              await Server.deleteMany({
+                cloudProvider: 'aws',
+                region: reg,
+                $and: [
+                  { name: { $nin: Array.from(liveNames) } },
+                  { host: { $nin: Array.from(liveIps) } },
+                  { tags: { $nin: Array.from(liveIds) } },
+                ],
+              }).catch(() => null);
+
+              await AnsibleHost.deleteMany({
+                provider: 'aws',
+                region: reg,
+                $and: [
+                  { name: { $nin: Array.from(liveNames) } },
+                  { ip: { $nin: Array.from(liveIps) } },
+                  ...(liveIds.size > 0 ? [{ instanceId: { $nin: Array.from(liveIds) } }] : []),
+                ],
+              }).catch(() => null);
+
+              await AnsibleController.deleteMany({
+                provider: 'aws',
+                region: reg,
+                $and: [
+                  { name: { $nin: Array.from(liveNames) } },
+                  { ipAddress: { $nin: Array.from(liveIps) } },
+                  ...(liveIds.size > 0 ? [{ instanceId: { $nin: Array.from(liveIds) } }] : []),
+                ],
+              }).catch(() => null);
 
               // Clean up any legacy mirrored srv- records if a real EC2 instance exists for that name
               for (const liveName of liveNames) {
@@ -169,6 +214,46 @@ export async function GET(request: NextRequest) {
             }
           } catch (regErr: any) {
             syncErrors.push(`${reg}: ${regErr.message || regErr}`);
+          }
+        }
+
+        // Account-level cleanup: If at least one region query succeeded, purge terminated instances
+        if (discoveryResults.some((d) => d.success)) {
+          await Server.deleteMany({
+            cloudProvider: 'aws',
+            $and: [
+              { name: { $nin: Array.from(allAccountLiveNames) } },
+              { host: { $nin: Array.from(allAccountLiveIps) } },
+              { tags: { $nin: Array.from(allAccountLiveIds) } },
+            ],
+          }).catch(() => null);
+
+          await AnsibleHost.deleteMany({
+            provider: 'aws',
+            $and: [
+              { name: { $nin: Array.from(allAccountLiveNames) } },
+              { ip: { $nin: Array.from(allAccountLiveIps) } },
+              ...(allAccountLiveIds.size > 0 ? [{ instanceId: { $nin: Array.from(allAccountLiveIds) } }] : []),
+            ],
+          }).catch(() => null);
+
+          await AnsibleController.deleteMany({
+            provider: 'aws',
+            $and: [
+              { name: { $nin: Array.from(allAccountLiveNames) } },
+              { ipAddress: { $nin: Array.from(allAccountLiveIps) } },
+              ...(allAccountLiveIds.size > 0 ? [{ instanceId: { $nin: Array.from(allAccountLiveIds) } }] : []),
+            ],
+          }).catch(() => null);
+
+          // If active controller was deleted, switch active to another controller
+          const activeCtrl = await AnsibleController.findOne({ isActive: true });
+          if (!activeCtrl) {
+            const nextCtrl = await AnsibleController.findOne().sort({ createdAt: 1 });
+            if (nextCtrl) {
+              nextCtrl.isActive = true;
+              await nextCtrl.save();
+            }
           }
         }
 

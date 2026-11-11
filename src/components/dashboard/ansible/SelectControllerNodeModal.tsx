@@ -61,7 +61,7 @@ export function SelectControllerNodeModal({
     setLoadingClouds(true);
     setError(null);
     try {
-      const res = await fetch('/api/ansible/hosts/import');
+      const res = await fetch('/api/ansible/hosts/import?forController=true');
       const data = await res.json();
       if (res.ok) {
         setCloudServers(data.servers || []);
@@ -94,9 +94,9 @@ export function SelectControllerNodeModal({
     setIpAddress(s.ip);
     const defaultUser =
       s.username ||
-      (s.provider === 'aws' ? 'ec2-user' : s.provider === 'azure' ? 'azureuser' : 'ubuntu');
+      (s.provider === 'aws' ? 'ubuntu' : s.provider === 'azure' ? 'azureuser' : 'ubuntu');
     setUsername(defaultUser);
-    setUseExistingCredentials(false);
+    setUseExistingCredentials(Boolean(s.hasStoredCredentials));
     setAuthSecret('');
   };
 
@@ -137,7 +137,7 @@ export function SelectControllerNodeModal({
         payload = {
           type: 'cloud',
           name: controllerName.trim() || `${selectedCloudServer.name}`,
-          sourceResourceId: selectedCloudServer.id,
+          sourceResourceId: selectedCloudServer.sshServerId || selectedCloudServer.id,
           instanceId: selectedCloudServer.resourceId,
           ipAddress: selectedCloudServer.ip,
           privateIp: selectedCloudServer.privateIp,
@@ -212,7 +212,7 @@ export function SelectControllerNodeModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-white tracking-wide">
-                Select Primary Ansible Controller Node
+                Configure Ansible Controller Node
               </h3>
               <p className="text-xs text-slate-400">
                 Choose the central Linux machine (AWS EC2 / Azure VM) that executes playbooks
@@ -602,7 +602,7 @@ export function SelectControllerNodeModal({
                   <span>Local Development Environment</span>
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Use the current machine hosting this Next.js server as the control runner. In production/cloud deployments, it is recommended to designate a dedicated Linux VM (EC2/Azure) as the primary controller.
+                  Use the current machine hosting this Next.js server as the control runner. In production/cloud deployments, it is recommended to designate a dedicated Linux VM (EC2/Azure) as a controller node.
                 </p>
               </div>
             )}
@@ -633,7 +633,7 @@ export function SelectControllerNodeModal({
                     <span>
                       {activeTab === 'local'
                         ? 'Set Local Host as Controller'
-                        : 'Test & Set as Primary Controller Node'}
+                        : 'Save & Connect Controller Node'}
                     </span>
                   </>
                 )}

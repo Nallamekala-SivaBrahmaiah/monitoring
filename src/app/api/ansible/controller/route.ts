@@ -4,7 +4,7 @@ import AnsibleController from '@/models/AnsibleController';
 import AnsibleHost from '@/models/AnsibleHost';
 import Server from '@/models/Server';
 import CloudResource from '@/models/CloudResource';
-import { getAnsibleControllerInfo, inspectRemoteSSHController } from '@/lib/ansible/ansibleController';
+import { getAnsibleControllerInfo, inspectRemoteSSHController, ensureWorkerControllerAffinity } from '@/lib/ansible/ansibleController';
 import { encryptSecret } from '@/lib/serverMonitoring/crypto';
 
 /**
@@ -49,23 +49,31 @@ export async function POST(req: NextRequest) {
 
     // 1. Reset to Local Host Controller
     if (type === 'local') {
-      await AnsibleController.deleteMany({});
-      await AnsibleController.create({
-        name: 'Ansible-Controller-01',
-        type: 'local',
-        provider: 'local',
-        hostname: 'localhost',
-        ipAddress: '127.0.0.1',
-        os: 'Windows/Linux (Local Host)',
-        status: 'Online',
-        sshStatus: 'Ready / Active',
-        isPrimary: true,
-      });
+      await AnsibleController.updateMany({}, { isActive: false, isPrimary: false });
+      let localCtrl = await AnsibleController.findOne({ type: 'local' });
+      if (localCtrl) {
+        localCtrl.isActive = true;
+        localCtrl.isPrimary = true;
+        await localCtrl.save();
+      } else {
+        localCtrl = await AnsibleController.create({
+          name: 'Ansible-Controller-01',
+          type: 'local',
+          provider: 'local',
+          hostname: 'localhost',
+          ipAddress: '127.0.0.1',
+          os: 'Windows/Linux (Local Host)',
+          status: 'Online',
+          sshStatus: 'Ready / Active',
+          isPrimary: true,
+          isActive: true,
+        });
+      }
 
       const info = await getAnsibleControllerInfo(false);
       return NextResponse.json({
         success: true,
-        message: 'Primary Controller reset to Local Host Environment.',
+        message: 'Primary Controller set to Local Host Environment.',
         controller: info,
       });
     }
@@ -93,12 +101,36 @@ export async function POST(req: NextRequest) {
       let existingServer: any = null;
       if (sourceResourceId) {
         existingServer = await Server.findById(sourceResourceId).lean();
+        if (!existingServer) {
+          const cr = await CloudResource.findById(sourceResourceId).lean();
+          const sshId = (cr as any)?.tags?.sshServerId || (cr as any)?.metadata?.sshServerId;
+          if (sshId) {
+            existingServer = await Server.findById(sshId).lean();
+          }
+        }
       }
       if (!existingServer && ipAddress) {
-        existingServer = await Server.findOne({ $or: [{ host: ipAddress }, { ip: ipAddress }] }).lean();
+        existingServer = await Server.findOne({
+          $or: [{ host: ipAddress.trim() }, { host: ipAddress }],
+          encryptedAuthSecret: { $exists: true, $ne: '' },
+        }).lean();
       }
       if (!existingServer && instanceId) {
-        existingServer = await Server.findOne({ resourceId: instanceId }).lean();
+        existingServer = await Server.findOne({
+          resourceId: instanceId.trim(),
+          encryptedAuthSecret: { $exists: true, $ne: '' },
+        }).lean();
+      }
+      if (!existingServer && name) {
+        existingServer = await Server.findOne({
+          name: name.trim(),
+          encryptedAuthSecret: { $exists: true, $ne: '' },
+        }).lean();
+      }
+      if (!existingServer && (provider?.toLowerCase() === 'aws' || name?.toLowerCase().includes('ansible-controller'))) {
+        existingServer = await Server.findOne({
+          encryptedAuthSecret: { $exists: true, $ne: '' },
+        }).lean();
       }
 
       if (existingServer && existingServer.encryptedAuthSecret) {
@@ -168,53 +200,89 @@ export async function POST(req: NextRequest) {
       inspectResult.error = err.message || 'SSH connection attempt failed';
     }
 
-    // Ensure strictly ONE primary controller exists in DB
-    await AnsibleController.deleteMany({});
-
+    const totalControllers = await AnsibleController.countDocuments();
     const effectiveName = name?.trim() || `Ansible-Master-${provider.toUpperCase()}`;
+    await AnsibleController.updateMany({}, { isActive: false });
 
-    const newController = await AnsibleController.create({
-      name: effectiveName,
-      type,
-      sourceResourceId,
-      instanceId: instanceId?.trim() || undefined,
-      hostname: ipAddress.trim(),
-      ipAddress: ipAddress.trim(),
-      privateIp: privateIp?.trim() || undefined,
-      provider: provider.toLowerCase(),
-      region: region?.trim() || undefined,
-      os: inspectResult.os || os,
-      username: username.trim(),
-      port: Number(port) || 22,
-      authMethod,
-      encryptedAuthSecret: encSecret,
-      authSecretIv: encIv,
-      authSecretTag: encTag,
-      ansibleVersion: inspectResult.ansibleVersion,
-      pythonVersion: inspectResult.pythonVersion,
-      status: inspectResult.success ? 'Online' : 'Offline',
-      sshStatus: inspectResult.success ? 'Connected' : 'Disconnected',
-      uptimeFormatted: inspectResult.uptimeFormatted,
-      cpuCores: inspectResult.cpuCores,
-      memoryFormatted: inspectResult.memoryFormatted,
-      lastCheckedAt: new Date(),
-      lastLatencyMs: inspectResult.latencyMs || null,
-      lastError: inspectResult.error || null,
-      isPrimary: true,
-    });
+    // If controller with this IP already exists, update it; otherwise create it
+    let newController = await AnsibleController.findOne({ ipAddress: ipAddress.trim() });
+    if (newController) {
+      newController.name = effectiveName;
+      newController.type = type;
+      newController.sourceResourceId = sourceResourceId;
+      newController.instanceId = instanceId?.trim() || undefined;
+      newController.hostname = ipAddress.trim();
+      newController.privateIp = privateIp?.trim() || undefined;
+      newController.provider = provider.toLowerCase() as any;
+      newController.region = region?.trim() || undefined;
+      newController.os = inspectResult.os || os;
+      newController.username = username.trim();
+      newController.port = Number(port) || 22;
+      newController.authMethod = authMethod;
+      newController.encryptedAuthSecret = encSecret;
+      newController.authSecretIv = encIv;
+      newController.authSecretTag = encTag;
+      newController.ansibleVersion = inspectResult.ansibleVersion;
+      newController.pythonVersion = inspectResult.pythonVersion;
+      newController.status = inspectResult.success ? 'Online' : 'Offline';
+      newController.sshStatus = inspectResult.success ? 'Connected' : 'Disconnected';
+      newController.uptimeFormatted = inspectResult.uptimeFormatted;
+      newController.cpuCores = inspectResult.cpuCores;
+      newController.memoryFormatted = inspectResult.memoryFormatted;
+      newController.lastCheckedAt = new Date();
+      newController.lastLatencyMs = inspectResult.latencyMs || null;
+      newController.lastError = inspectResult.error || null;
+      newController.isPrimary = false;
+      newController.isActive = true;
+      await newController.save();
+    } else {
+      newController = await AnsibleController.create({
+        name: effectiveName,
+        type,
+        sourceResourceId,
+        instanceId: instanceId?.trim() || undefined,
+        hostname: ipAddress.trim(),
+        ipAddress: ipAddress.trim(),
+        privateIp: privateIp?.trim() || undefined,
+        provider: provider.toLowerCase(),
+        region: region?.trim() || undefined,
+        os: inspectResult.os || os,
+        username: username.trim(),
+        port: Number(port) || 22,
+        authMethod,
+        encryptedAuthSecret: encSecret,
+        authSecretIv: encIv,
+        authSecretTag: encTag,
+        ansibleVersion: inspectResult.ansibleVersion,
+        pythonVersion: inspectResult.pythonVersion,
+        status: inspectResult.success ? 'Online' : 'Offline',
+        sshStatus: inspectResult.success ? 'Connected' : 'Disconnected',
+        uptimeFormatted: inspectResult.uptimeFormatted,
+        cpuCores: inspectResult.cpuCores,
+        memoryFormatted: inspectResult.memoryFormatted,
+        lastCheckedAt: new Date(),
+        lastLatencyMs: inspectResult.latencyMs || null,
+        lastError: inspectResult.error || null,
+        isPrimary: false,
+        isActive: true,
+      });
+    }
+
+    // Bind worker nodes strictly to their respective controllers
+    await ensureWorkerControllerAffinity();
 
     const info = await getAnsibleControllerInfo(false);
 
     if (inspectResult.success) {
       return NextResponse.json({
         success: true,
-        message: `"${effectiveName}" (${ipAddress}) successfully connected and set as Primary Ansible Controller.`,
+        message: `"${effectiveName}" (${ipAddress}) successfully connected and set as Active Ansible Controller.`,
         controller: info,
       });
     } else {
       return NextResponse.json({
         success: true,
-        warning: `"${effectiveName}" set as Primary Controller, but SSH check failed: ${inspectResult.error}. Please verify security group port 22 access.`,
+        warning: `"${effectiveName}" configured, but SSH check failed: ${inspectResult.error}. Please verify security group port 22 access.`,
         controller: info,
       });
     }

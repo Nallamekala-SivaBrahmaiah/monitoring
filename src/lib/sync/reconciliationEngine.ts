@@ -2,6 +2,8 @@ import connectToDatabase from '@/lib/mongodb';
 import CloudAccount from '@/models/CloudAccount';
 import CloudResource from '@/models/CloudResource';
 import Server from '@/models/Server';
+import AnsibleHost from '@/models/AnsibleHost';
+import AnsibleController from '@/models/AnsibleController';
 import { discoverAllAzureResources } from '@/lib/azure/resources';
 import { discoverEC2InstancesInRegion, getEnabledAWSRegions, isInaccessibleRegion } from '@/lib/aws/ec2';
 import { syncDockerResources } from '@/lib/docker/sync';
@@ -125,6 +127,18 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
           host: { $nin: liveAzureIps },
         });
 
+        await AnsibleHost.deleteMany({
+          provider: 'azure',
+          name: { $nin: liveAzureNames },
+          ip: { $nin: liveAzureIps },
+        }).catch(() => null);
+
+        await AnsibleController.deleteMany({
+          provider: 'azure',
+          name: { $nin: liveAzureNames },
+          ipAddress: { $nin: liveAzureIps },
+        }).catch(() => null);
+
         prunedCount += pruneAzureRes.deletedCount || 0;
         azureCount += liveAzureResources.length;
 
@@ -164,6 +178,9 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
       );
 
       let totalAwsForAccount = 0;
+      const allAccountLiveAwsIds = new Set<string>();
+      const allAccountLiveAwsNames = new Set<string>();
+      const allAccountLiveAwsIps = new Set<string>();
 
       // Query candidate regions in parallel to prevent background cycle stalls
       const activeRegions = enabledRegions.filter((r) => !isInaccessibleRegion(r));
@@ -192,6 +209,12 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
             regionLiveNames.add(inst.resourceId.toLowerCase().trim());
             if (inst.publicIp) regionLiveIps.add(inst.publicIp.trim());
             if (inst.privateIp) regionLiveIps.add(inst.privateIp.trim());
+
+            allAccountLiveAwsIds.add(inst.resourceId);
+            if (inst.name) allAccountLiveAwsNames.add(inst.name.toLowerCase().trim());
+            allAccountLiveAwsNames.add(inst.resourceId.toLowerCase().trim());
+            if (inst.publicIp) allAccountLiveAwsIps.add(inst.publicIp.trim());
+            if (inst.privateIp) allAccountLiveAwsIps.add(inst.privateIp.trim());
 
             const existingRes = await CloudResource.findOne({ resourceId: inst.resourceId, provider: 'aws' }).lean();
 
@@ -288,6 +311,37 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
             resourceId: { $nin: Array.from(regionLiveIds) },
           });
 
+          // Also clean up terminated AWS EC2 instances from Server and AnsibleHost for this region
+          await Server.deleteMany({
+            cloudProvider: 'aws',
+            region: reg,
+            $and: [
+              { name: { $nin: Array.from(regionLiveNames) } },
+              { host: { $nin: Array.from(regionLiveIps) } },
+              { tags: { $nin: Array.from(regionLiveIds) } },
+            ],
+          }).catch(() => null);
+
+          await AnsibleHost.deleteMany({
+            provider: 'aws',
+            region: reg,
+            $and: [
+              { name: { $nin: Array.from(regionLiveNames) } },
+              { ip: { $nin: Array.from(regionLiveIps) } },
+              ...(regionLiveIds.size > 0 ? [{ instanceId: { $nin: Array.from(regionLiveIds) } }] : []),
+            ],
+          }).catch(() => null);
+
+          await AnsibleController.deleteMany({
+            provider: 'aws',
+            region: reg,
+            $and: [
+              { name: { $nin: Array.from(regionLiveNames) } },
+              { ipAddress: { $nin: Array.from(regionLiveIps) } },
+              ...(regionLiveIds.size > 0 ? [{ instanceId: { $nin: Array.from(regionLiveIds) } }] : []),
+            ],
+          }).catch(() => null);
+
           // Sync status with any matching registered servers in Server collection
           for (const inst of discovery.instances) {
             await Server.updateMany(
@@ -313,6 +367,46 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
           const msg = `AWS sync error in ${reg} for ${acc.accountId}: ${regErr.message || regErr}`;
           console.warn(msg);
           errors.push(msg);
+        }
+      }
+
+      // Account-level cleanup: If at least one region query succeeded, purge any AWS server not present in any live region
+      if (discoveryResults.some((d) => d.success)) {
+        await Server.deleteMany({
+          cloudProvider: 'aws',
+          $and: [
+            { name: { $nin: Array.from(allAccountLiveAwsNames) } },
+            { host: { $nin: Array.from(allAccountLiveAwsIps) } },
+            { tags: { $nin: Array.from(allAccountLiveAwsIds) } },
+          ],
+        }).catch(() => null);
+
+        await AnsibleHost.deleteMany({
+          provider: 'aws',
+          $and: [
+            { name: { $nin: Array.from(allAccountLiveAwsNames) } },
+            { ip: { $nin: Array.from(allAccountLiveAwsIps) } },
+            ...(allAccountLiveAwsIds.size > 0 ? [{ instanceId: { $nin: Array.from(allAccountLiveAwsIds) } }] : []),
+          ],
+        }).catch(() => null);
+
+        await AnsibleController.deleteMany({
+          provider: 'aws',
+          $and: [
+            { name: { $nin: Array.from(allAccountLiveAwsNames) } },
+            { ipAddress: { $nin: Array.from(allAccountLiveAwsIps) } },
+            ...(allAccountLiveAwsIds.size > 0 ? [{ instanceId: { $nin: Array.from(allAccountLiveAwsIds) } }] : []),
+          ],
+        }).catch(() => null);
+
+        // If active controller was deleted, ensure another controller is active
+        const activeCtrl = await AnsibleController.findOne({ isActive: true });
+        if (!activeCtrl) {
+          const nextCtrl = await AnsibleController.findOne().sort({ createdAt: 1 });
+          if (nextCtrl) {
+            nextCtrl.isActive = true;
+            await nextCtrl.save();
+          }
         }
       }
 

@@ -49,10 +49,14 @@ export interface AnsibleControllerInfo {
 }
 
 interface AnsibleControllerNodeCardProps {
+  controllerId?: string;
   onControllerChanged?: () => void;
 }
 
-export function AnsibleControllerNodeCard({ onControllerChanged }: AnsibleControllerNodeCardProps) {
+export function AnsibleControllerNodeCard({
+  controllerId,
+  onControllerChanged,
+}: AnsibleControllerNodeCardProps) {
   const [controller, setController] = useState<AnsibleControllerInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -66,7 +70,13 @@ export function AnsibleControllerNodeCard({ onControllerChanged }: AnsibleContro
     setError(null);
 
     try {
-      const url = isManual ? '/api/ansible/controller?refresh=true' : '/api/ansible/controller';
+      let url = isManual ? '/api/ansible/controller?refresh=true' : '/api/ansible/controller';
+      if (controllerId) {
+        url = isManual
+          ? `/api/ansible/controllers/${controllerId}?refresh=true`
+          : `/api/ansible/controllers/${controllerId}`;
+      }
+
       const res = await fetch(url);
       const data = await res.json();
       if (res.ok && data.controller) {
@@ -84,7 +94,7 @@ export function AnsibleControllerNodeCard({ onControllerChanged }: AnsibleContro
 
   useEffect(() => {
     fetchController();
-  }, []);
+  }, [controllerId]);
 
   const handleModalUpdated = () => {
     fetchController(true);
@@ -115,8 +125,8 @@ export function AnsibleControllerNodeCard({ onControllerChanged }: AnsibleContro
                 <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
                   {controller?.name || 'Ansible-Controller-01'}
                 </h2>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">
-                  Primary Controller Node
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/15 border border-blue-500/30 text-blue-300">
+                  Active Controller Node
                 </span>
 
                 {isCloud && controller?.provider === 'aws' ? (

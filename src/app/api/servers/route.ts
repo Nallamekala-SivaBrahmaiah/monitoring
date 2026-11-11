@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Server from '@/models/Server';
 import CloudResource from '@/models/CloudResource';
+import AnsibleHost from '@/models/AnsibleHost';
 import { encryptSecret, generateAgentToken } from '@/lib/serverMonitoring/crypto';
 import { collectServerViaSSH } from '@/lib/serverMonitoring/sshCollector';
 import { formatConnectionDiagnostic } from '@/lib/serverMonitoring/errorDiagnostic';
@@ -57,6 +58,52 @@ export async function GET(request: NextRequest) {
           return false;
         });
 
+        // If this server was registered as an AWS EC2 or Azure VM:
+        // If it was terminated/deleted in the cloud console, it will NOT be in active cloudResources.
+        if (s.cloudProvider === 'aws' || s.cloudProvider === 'azure') {
+          if (matchingCrs.length === 0) {
+            // Instance was terminated or deleted in AWS/Azure console.
+            // Purge dead record from Server, AnsibleHost, and CloudResource immediately.
+            await Server.deleteOne({ _id: s._id }).catch(() => null);
+            await AnsibleHost.deleteMany({
+              $or: [
+                { ip: sHost },
+                { name: s.name },
+                ...(s.tags && s.tags.length > 0 ? [{ instanceId: { $in: s.tags } }] : []),
+              ],
+            }).catch(() => null);
+            await CloudResource.deleteMany({
+              $or: [
+                { resourceId: `srv-${s._id.toString()}` },
+                { 'metadata.sshServerId': s._id.toString() },
+                { 'tags.sshServerId': s._id.toString() },
+              ],
+            }).catch(() => null);
+            return null;
+          }
+
+          // Check if any matching resource is marked terminated/deleted
+          const isTerminatedInCloud = matchingCrs.some((c: any) => {
+            const st = (c.status || '').toLowerCase();
+            return st === 'terminated' || st === 'shutting-down' || st === 'deleted' || c.isDeleted === true;
+          });
+
+          if (isTerminatedInCloud) {
+            await Server.deleteOne({ _id: s._id }).catch(() => null);
+            await CloudResource.deleteMany({
+              _id: { $in: matchingCrs.map((m: any) => m._id) },
+            }).catch(() => null);
+            await AnsibleHost.deleteMany({
+              $or: [
+                { ip: sHost },
+                { name: s.name },
+                ...(s.tags && s.tags.length > 0 ? [{ instanceId: { $in: s.tags } }] : []),
+              ],
+            }).catch(() => null);
+            return null;
+          }
+        }
+
         for (const mc of matchingCrs) {
           if (mc.resourceId) matchedCloudIds.add(mc.resourceId);
           if (mc._id) matchedCloudIds.add(mc._id.toString());
@@ -97,6 +144,9 @@ export async function GET(request: NextRequest) {
       })
     );
 
+    // Filter out nulls (terminated cloud instances that were purged)
+    const activeReconciledServers = reconciledServers.filter(Boolean) as any[];
+
     // Merge cloud-discovered AWS EC2 and Azure VMs into the servers inventory so all console-created VMs appear
     const synthesizedServers: any[] = [];
     for (const cr of cloudResources) {
@@ -118,7 +168,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Extra check: prevent duplicate synthesis if already present in reconciledServers
-      const alreadyInReconciled = reconciledServers.some((rs: any) => {
+      const alreadyInReconciled = activeReconciledServers.some((rs: any) => {
         const rsName = (rs.name || '').toLowerCase().trim();
         const rsHost = (rs.host || '').trim();
         const rsCloudId = (rs.cloudResourceId || '').toLowerCase().trim();
@@ -217,7 +267,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Final guarantee: Deduplicate across reconciled & synthesized servers by provider + name & host
-    const allServers = [...reconciledServers, ...synthesizedServers];
+    const allServers = [...activeReconciledServers, ...synthesizedServers];
     const uniqueServers: any[] = [];
     const seenNames = new Set<string>();
     const seenHosts = new Set<string>();

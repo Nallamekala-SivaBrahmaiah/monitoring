@@ -1,20 +1,38 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import AnsibleHost from '@/models/AnsibleHost';
 import AnsibleController from '@/models/AnsibleController';
 import { buildSSHConfig, executeRemoteSSHCommand } from '@/lib/ansible/ansibleSSH';
 import { Client } from 'ssh2';
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
     await connectToDatabase();
+    const { searchParams } = new URL(req.url);
+    const controllerIdParam = searchParams.get('controllerId');
 
-    const hosts = await AnsibleHost.find();
-    if (hosts.length === 0) {
-      return NextResponse.json({ success: false, error: 'No managed nodes registered in inventory.' }, { status: 400 });
+    let targetController: any = null;
+    if (controllerIdParam && controllerIdParam !== 'all') {
+      targetController = await AnsibleController.findById(controllerIdParam).lean();
+    }
+    if (!targetController) {
+      targetController =
+        (await AnsibleController.findOne({ isActive: true }).lean()) ||
+        (await AnsibleController.findOne({}).lean());
     }
 
-    const primaryController = await AnsibleController.findOne({ isPrimary: true }).lean();
+    const filter: any = {};
+    if (targetController) {
+      filter.controllerId = targetController._id;
+    }
+
+    const hosts = await AnsibleHost.find(filter);
+    if (hosts.length === 0) {
+      return NextResponse.json(
+        { success: false, error: `No managed workers registered under controller "${targetController?.name || 'selected'}".` },
+        { status: 400 }
+      );
+    }
 
     const results: Array<{ id: string; name: string; ip: string; success: boolean; error?: string }> = [];
 
@@ -31,11 +49,11 @@ python3 --version
     for (const host of hosts) {
       // Inherit credentials from controller if missing on node
       if (!host.encryptedAuthSecret) {
-        if (primaryController && primaryController.encryptedAuthSecret) {
-          host.encryptedAuthSecret = primaryController.encryptedAuthSecret;
-          host.authSecretIv = primaryController.authSecretIv || '';
-          host.authSecretTag = primaryController.authSecretTag || '';
-          host.authMethod = primaryController.authMethod || 'privateKey';
+        if (targetController && targetController.encryptedAuthSecret) {
+          host.encryptedAuthSecret = targetController.encryptedAuthSecret;
+          host.authSecretIv = targetController.authSecretIv || '';
+          host.authSecretTag = targetController.authSecretTag || '';
+          host.authMethod = targetController.authMethod || 'privateKey';
           await host.save();
         } else {
           results.push({ id: host._id.toString(), name: host.name, ip: host.ip, success: false, error: 'No SSH credentials' });
@@ -96,10 +114,11 @@ python3 --version
 
     return NextResponse.json({
       success: true,
-      message: `Setup completed: ${successCount} of ${hosts.length} managed nodes configured & connected.`,
+      message: `Setup completed: ${successCount} of ${hosts.length} workers connected for controller "${targetController?.name}".`,
       results,
       connectedCount: successCount,
       total: hosts.length,
+      controllerName: targetController?.name,
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

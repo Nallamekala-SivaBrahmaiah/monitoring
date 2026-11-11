@@ -1,8 +1,9 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IAnsibleControllerData {
-  _id?: string;
+  _id?: string | any;
   name: string;
+  description?: string;
   type: 'cloud' | 'custom' | 'local';
   sourceResourceId?: string;
   instanceId?: string;
@@ -23,16 +24,22 @@ export interface IAnsibleControllerData {
   uptimeFormatted?: string;
   cpuCores?: number;
   memoryFormatted?: string;
+  cpuUsage?: number;
+  memoryUsage?: number;
+  diskUsage?: number;
+  workerCount?: number;
   lastCheckedAt?: Date | null;
   lastLatencyMs?: number | null;
   lastError?: string | null;
   isPrimary: boolean;
+  isActive: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export interface IAnsibleController extends Document {
   name: string;
+  description?: string;
   type: 'cloud' | 'custom' | 'local';
   sourceResourceId?: string;
   instanceId?: string;
@@ -55,10 +62,15 @@ export interface IAnsibleController extends Document {
   uptimeFormatted?: string;
   cpuCores?: number;
   memoryFormatted?: string;
+  cpuUsage?: number;
+  memoryUsage?: number;
+  diskUsage?: number;
+  workerCount?: number;
   lastCheckedAt?: Date | null;
   lastLatencyMs?: number | null;
   lastError?: string | null;
   isPrimary: boolean;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -66,6 +78,7 @@ export interface IAnsibleController extends Document {
 const AnsibleControllerSchema = new Schema<IAnsibleController>(
   {
     name: { type: String, required: true, trim: true, default: 'Ansible-Controller-01' },
+    description: { type: String, trim: true, default: '' },
     type: { type: String, enum: ['cloud', 'custom', 'local'], default: 'local' },
     sourceResourceId: { type: String, trim: true },
     instanceId: { type: String, trim: true },
@@ -104,10 +117,15 @@ const AnsibleControllerSchema = new Schema<IAnsibleController>(
     uptimeFormatted: { type: String, default: '0m' },
     cpuCores: { type: Number, default: 2 },
     memoryFormatted: { type: String, default: 'Standard' },
+    cpuUsage: { type: Number, default: 0 },
+    memoryUsage: { type: Number, default: 0 },
+    diskUsage: { type: Number, default: 0 },
+    workerCount: { type: Number, default: 0 },
     lastCheckedAt: { type: Date, default: null },
     lastLatencyMs: { type: Number, default: null },
     lastError: { type: String, default: null },
-    isPrimary: { type: Boolean, default: true },
+    isPrimary: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: false },
   },
   {
     timestamps: true,
@@ -119,4 +137,3 @@ const AnsibleController: Model<IAnsibleController> =
   mongoose.model<IAnsibleController>('AnsibleController', AnsibleControllerSchema);
 
 export default AnsibleController;
-

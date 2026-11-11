@@ -3,6 +3,8 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IAnsibleHostData {
   _id?: string;
   name: string;
+  controllerId?: string;
+  controllerName?: string;
   instanceId?: string;
   ip: string;
   privateIp?: string;
@@ -20,6 +22,7 @@ export interface IAnsibleHostData {
   sourceResourceId?: string;
   sourceResourceType?: 'ec2' | 'azure-vm' | 'server' | 'custom';
   groups?: string[];
+  installedServices?: string[];
   variables?: Record<string, any>;
   createdAt?: Date;
   updatedAt?: Date;
@@ -27,6 +30,8 @@ export interface IAnsibleHostData {
 
 export interface IAnsibleHost extends Document {
   name: string;
+  controllerId?: any;
+  controllerName?: string;
   instanceId?: string;
   ip: string;
   privateIp?: string;
@@ -46,6 +51,7 @@ export interface IAnsibleHost extends Document {
   sourceResourceId?: string;
   sourceResourceType?: 'ec2' | 'azure-vm' | 'server' | 'custom';
   groups: string[];
+  installedServices: string[];
   variables: Record<string, any>;
   createdAt: Date;
   updatedAt: Date;
@@ -54,6 +60,8 @@ export interface IAnsibleHost extends Document {
 const AnsibleHostSchema = new Schema<IAnsibleHost>(
   {
     name: { type: String, required: true, trim: true, index: true },
+    controllerId: { type: Schema.Types.ObjectId, ref: 'AnsibleController', index: true },
+    controllerName: { type: String, trim: true },
     instanceId: { type: String, trim: true },
     ip: { type: String, required: true, trim: true },
     privateIp: { type: String, trim: true },
@@ -72,9 +80,9 @@ const AnsibleHostSchema = new Schema<IAnsibleHost>(
       enum: ['privateKey', 'password'],
       default: 'privateKey',
     },
-    encryptedAuthSecret: { type: String, required: true },
-    authSecretIv: { type: String, required: true },
-    authSecretTag: { type: String, required: true },
+    encryptedAuthSecret: { type: String, default: '' },
+    authSecretIv: { type: String, default: '' },
+    authSecretTag: { type: String, default: '' },
     status: {
       type: String,
       enum: ['Connected', 'Disconnected', 'Connecting', 'Authentication Failed', 'Error'],
@@ -91,6 +99,7 @@ const AnsibleHostSchema = new Schema<IAnsibleHost>(
       default: 'custom',
     },
     groups: { type: [String], default: ['all'] },
+    installedServices: { type: [String], default: [] },
     variables: { type: Schema.Types.Mixed, default: {} },
   },
   {
@@ -98,11 +107,10 @@ const AnsibleHostSchema = new Schema<IAnsibleHost>(
   }
 );
 
-// Prevent duplicate names in inventory
-AnsibleHostSchema.index({ name: 1 }, { unique: true });
+// Index by name and controllerId for fast lookups
+AnsibleHostSchema.index({ name: 1, controllerId: 1 });
 
 const AnsibleHost: Model<IAnsibleHost> =
   mongoose.models.AnsibleHost || mongoose.model<IAnsibleHost>('AnsibleHost', AnsibleHostSchema);
 
 export default AnsibleHost;
-
