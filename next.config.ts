@@ -13,7 +13,9 @@ const nextConfig: NextConfig = {
   ],
   cacheComponents: true,
   partialPrefetching: true,
-  devIndicators: false,
+  devIndicators: {
+    position: 'bottom-right',
+  },
   turbopack: {
     rules: {
       "*.css": {

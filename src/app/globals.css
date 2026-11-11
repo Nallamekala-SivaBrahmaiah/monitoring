@@ -17,16 +17,6 @@ body {
   min-height: 100vh;
 }
 
-/* Hide Next.js Turbopack development overlay badge */
-nextjs-portal,
-[data-nextjs-dev-tools-button],
-[data-nextjs-toast-wrapper] {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-
 /* Custom dark scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
