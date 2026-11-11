@@ -44,6 +44,7 @@ export default function SettingsPage() {
     enabled: true,
   });
 
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -144,11 +145,14 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col">
-      <Sidebar />
+      <Sidebar
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
       <div className="lg:pl-64 flex flex-col flex-1 min-w-0">
-        <Header />
+        <Header onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
 
-        <main className="p-4 lg:p-8 space-y-6 max-w-4xl">
+        <main className="p-4 lg:p-7 space-y-6 w-full">
           <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
             <Link href="/" className="hover:text-blue-400 flex items-center gap-1">
               <ArrowLeft className="w-3.5 h-3.5" />
@@ -462,33 +466,33 @@ export default function SettingsPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="space-y-1">
                 <span className="text-slate-400 font-medium">SMTP Server Host &amp; Port:</span>
-                <div className="p-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono">
+                <div className="p-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono truncate">
                   smtp.gmail.com:587 (STARTTLS)
                 </div>
               </div>
 
               <div className="space-y-1">
                 <span className="text-slate-400 font-medium">Authenticated Gmail User:</span>
-                <div className="p-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono">
+                <div className="p-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono truncate" title="nallasiva552@gmail.com">
                   nallasiva552@gmail.com
                 </div>
               </div>
 
               <div className="space-y-1">
                 <span className="text-slate-400 font-medium">Primary Alert Recipient:</span>
-                <div className="p-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono">
+                <div className="p-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono truncate" title="nallasiva552@gmail.com">
                   nallasiva552@gmail.com
                 </div>
               </div>
 
               <div className="space-y-1">
                 <span className="text-slate-400 font-medium">App Password Security:</span>
-                <div className="p-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-emerald-400 flex items-center gap-1.5 font-medium">
-                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Configured securely in environment (GMAIL_APP_PASSWORD)</span>
+                <div className="p-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-emerald-400 flex items-center gap-1.5 font-medium truncate" title="Configured securely in environment (GMAIL_APP_PASSWORD)">
+                  <Lock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="truncate">Active (GMAIL_APP_PASSWORD)</span>
                 </div>
               </div>
             </div>
@@ -506,35 +510,37 @@ export default function SettingsPage() {
 
           {/* General Platform Settings */}
           <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-6 space-y-5 text-xs">
-            <div>
-              <h3 className="text-sm font-semibold text-white mb-1">
-                Data Collection Interval
-              </h3>
-              <p className="text-slate-400 mb-3">
-                Frequency at which telemetry metrics are sampled from AWS CloudWatch, Azure Monitor, and SSH Servers.
-              </p>
-              <select
-                aria-label="Metrics sampling interval"
-                className="px-3 py-1.5 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200"
-              >
-                <option>Every 30 seconds (High Resolution Real-Time)</option>
-                <option>Every 60 seconds</option>
-                <option>Every 5 minutes</option>
-              </select>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-1">
+                  Data Collection Interval
+                </h3>
+                <p className="text-slate-400 mb-3">
+                  Frequency at which telemetry metrics are sampled from AWS CloudWatch, Azure Monitor, and SSH Servers.
+                </p>
+                <select
+                  aria-label="Metrics sampling interval"
+                  className="w-full px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200"
+                >
+                  <option>Every 30 seconds (High Resolution Real-Time)</option>
+                  <option>Every 60 seconds</option>
+                  <option>Every 5 minutes</option>
+                </select>
+              </div>
 
-            <div className="pt-4 border-t border-[#1E293B]">
-              <h3 className="text-sm font-semibold text-white mb-1">
-                API Base URL
-              </h3>
-              <p className="text-slate-400 mb-3">
-                Local Next.js API Base URL for live telemetry ingestion and reconciliation.
-              </p>
-              <input
-                type="text"
-                defaultValue="http://localhost:3000"
-                className="w-full px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono"
-              />
+              <div>
+                <h3 className="text-sm font-semibold text-white mb-1">
+                  API Base URL
+                </h3>
+                <p className="text-slate-400 mb-3">
+                  Local Next.js API Base URL for live telemetry ingestion and reconciliation.
+                </p>
+                <input
+                  type="text"
+                  defaultValue="http://localhost:3000"
+                  className="w-full px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-200 font-mono"
+                />
+              </div>
             </div>
           </div>
         </main>

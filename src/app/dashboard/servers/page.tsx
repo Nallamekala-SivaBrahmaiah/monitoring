@@ -458,12 +458,51 @@ export default function ServersPage() {
   }, [servers, fleetFilter, cloudProvider, searchQuery]);
 
   // Cloud provider groups
-  const azureServers = useMemo(() => filteredServers.filter((s) => s.cloudProvider === 'azure'), [filteredServers]);
-  const awsServers = useMemo(() => filteredServers.filter((s) => s.cloudProvider === 'aws'), [filteredServers]);
+  const azureServers = useMemo(() => {
+    const list = filteredServers.filter((s) => s.cloudProvider === 'azure');
+    const seen = new Set<string>();
+    return list.filter((s) => {
+      const key = (s.name || s._id).toLowerCase().trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [filteredServers]);
+
+  const awsServers = useMemo(() => {
+    const list = filteredServers.filter((s) => s.cloudProvider === 'aws');
+    const seen = new Set<string>();
+    return list.filter((s) => {
+      const key = (s.name || s._id).toLowerCase().trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [filteredServers]);
+
   const otherServers = useMemo(() => filteredServers.filter((s) => s.cloudProvider !== 'azure' && s.cloudProvider !== 'aws'), [filteredServers]);
 
-  const totalAzureCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'azure').length, [servers]);
-  const totalAwsCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'aws').length, [servers]);
+  const totalAzureCount = useMemo(() => {
+    const list = servers.filter((s) => s.cloudProvider === 'azure');
+    const seen = new Set<string>();
+    return list.filter((s) => {
+      const key = (s.name || s._id).toLowerCase().trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).length;
+  }, [servers]);
+
+  const totalAwsCount = useMemo(() => {
+    const list = servers.filter((s) => s.cloudProvider === 'aws');
+    const seen = new Set<string>();
+    return list.filter((s) => {
+      const key = (s.name || s._id).toLowerCase().trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).length;
+  }, [servers]);
 
     // Aggregate stats
   const totalCustomServers = servers.length;

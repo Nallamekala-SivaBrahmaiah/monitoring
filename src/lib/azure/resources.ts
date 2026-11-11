@@ -87,9 +87,8 @@ export async function discoverAllAzureResources(
           normalizedType = 'storage_account';
         }
 
-        const idParts = (item.id || '').split('/');
-        const rgIndex = idParts.indexOf('resourceGroups');
-        const resourceGroup = rgIndex !== -1 && rgIndex + 1 < idParts.length ? idParts[rgIndex + 1] : '';
+        const rgMatch = (item.id || '').match(/\/resourcegroups\/([^\/]+)/i);
+        const resourceGroup = rgMatch ? rgMatch[1] : '';
 
         let size: string | undefined;
         let privateIp: string | undefined;
@@ -119,7 +118,14 @@ export async function discoverAllAzureResources(
               const statuses = vmDetail.properties?.instanceView?.statuses || [];
               const powerStatus = statuses.find((s: any) => s.code?.startsWith('PowerState/'));
               if (powerStatus) {
-                status = powerStatus.displayStatus || powerStatus.code.replace('PowerState/', '');
+                const rawPower = (powerStatus.displayStatus || powerStatus.code.replace('PowerState/', '') || '').toLowerCase();
+                if (rawPower.includes('run')) {
+                  status = 'Running';
+                } else if (rawPower.includes('dealloc') || rawPower.includes('stop')) {
+                  status = 'Stopped';
+                } else {
+                  status = powerStatus.displayStatus || powerStatus.code.replace('PowerState/', '');
+                }
               }
 
               const nics = vmDetail.properties?.networkProfile?.networkInterfaces || [];

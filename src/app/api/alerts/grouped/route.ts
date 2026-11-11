@@ -266,129 +266,13 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Process any alerts not matched to an inventory server (grouped by resource name)
-    const unmatchedAlerts = (allAlerts as any[]).filter(
-      (a) => !matchedAlertIds.has(a._id.toString())
-    );
+    // Purge any orphan alerts that do not belong to any server in active inventory
+    const unmatchedAlertIds = (allAlerts as any[])
+      .filter((a) => !matchedAlertIds.has(a._id.toString()))
+      .map((a) => a._id);
 
-    if (unmatchedAlerts.length > 0) {
-      const groupedByResource = new Map<string, any[]>();
-      for (const a of unmatchedAlerts) {
-        const key = (a.resourceName || a.resourceId || 'Unknown Server').toLowerCase();
-        if (!groupedByResource.has(key)) {
-          groupedByResource.set(key, []);
-        }
-        groupedByResource.get(key)!.push(a);
-      }
-
-      for (const [, alertsList] of groupedByResource.entries()) {
-        const first = alertsList[0];
-        const serverName = first.resourceName || 'Unknown Server';
-        const rawProvider = (first.provider || 'other').toLowerCase();
-        const provider = normalizeProviderName(rawProvider);
-        const region = first.region || 'global';
-        const ipAddress = first.resourceId || '-';
-
-        if (providerFilter !== 'all') {
-          if (providerFilter === 'azure' && rawProvider !== 'azure') continue;
-          if (providerFilter === 'aws' && rawProvider !== 'aws') continue;
-          if (providerFilter === 'other' && (rawProvider === 'azure' || rawProvider === 'aws')) continue;
-        }
-
-        if (search) {
-          const matchName = serverName.toLowerCase().includes(search);
-          const matchIp = ipAddress.toLowerCase().includes(search);
-          if (!matchName && !matchIp) continue;
-        }
-
-        const activeAlerts = alertsList.filter((a) => a.status === 'active');
-        const hasActive = activeAlerts.length > 0;
-        const hasResolved = !hasActive && alertsList.some((a) => a.status === 'resolved');
-
-        let overallStatus: 'active' | 'resolved' | 'healthy' = 'healthy';
-        if (hasActive) overallStatus = 'active';
-        else if (hasResolved) overallStatus = 'resolved';
-
-        if (statusFilter === 'active' && overallStatus !== 'active') continue;
-        if (statusFilter === 'resolved' && overallStatus !== 'resolved') continue;
-
-        let highestSeverity: 'Critical' | 'High' | 'Warning' | undefined = undefined;
-        if (hasActive) {
-          if (activeAlerts.some((a) => (a.severity || '').toLowerCase() === 'critical')) {
-            highestSeverity = 'Critical';
-          } else if (activeAlerts.some((a) => (a.severity || '').toLowerCase() === 'high')) {
-            highestSeverity = 'High';
-          } else {
-            highestSeverity = 'Warning';
-          }
-        }
-
-        const cpuAlerts = alertsList.filter((a) => (a.metricName || '').toLowerCase() === 'cpu');
-        const memAlerts = alertsList.filter((a) => (a.metricName || '').toLowerCase() === 'memory');
-        const diskAlerts = alertsList.filter((a) => (a.metricName || '').toLowerCase() === 'disk');
-
-        const getPeak = (list: any[]): number | null => {
-          const peaks = list
-            .map((a) => (typeof a.peakValue === 'number' ? a.peakValue : null))
-            .filter((v): v is number => v !== null);
-          return peaks.length > 0 ? Math.max(...peaks) : null;
-        };
-
-        const cpuPeak = getPeak(cpuAlerts);
-        const memPeak = getPeak(memAlerts);
-        const diskPeak = getPeak(diskAlerts);
-
-        // When live telemetry is unavailable for this uncataloged server, show null (N/A)
-        const currentCpu: number | null = null;
-        const currentMem: number | null = null;
-        const currentDisk: number | null = null;
-
-        groupedCards.push({
-          id: `unmatched-${first.resourceId || serverName}`,
-          serverName,
-          provider,
-          rawProvider,
-          region,
-          resourceType: first.resourceType || 'Server',
-          resourceId: first.resourceId || serverName,
-          ipAddress,
-          host: ipAddress,
-          status: overallStatus,
-          activeSeverity: highestSeverity,
-          activeAlertsCount: activeAlerts.length,
-          cpu: {
-            current: currentCpu,
-            threshold: thresholds.cpuThreshold,
-            peak: cpuPeak,
-            status: calculateMetricStatus(currentCpu, thresholds.cpuThreshold),
-          },
-          memory: {
-            current: currentMem,
-            threshold: thresholds.memoryThreshold,
-            peak: memPeak,
-            status: calculateMetricStatus(currentMem, thresholds.memoryThreshold),
-          },
-          disk: {
-            current: currentDisk,
-            mount: diskAlerts[0]?.filesystem || '/',
-            threshold: thresholds.diskThreshold,
-            peak: diskPeak,
-            status: calculateMetricStatus(currentDisk, thresholds.diskThreshold),
-          },
-          alerts: alertsList.map((a) => ({
-            id: a._id.toString(),
-            title: a.title,
-            metricName: a.metricName,
-            status: a.status,
-            severity: a.severity,
-            message: a.message,
-            value: a.value,
-            peakValue: a.peakValue,
-            timestamp: new Date(a.timestamp || a.triggeredAt || a.createdAt).toISOString(),
-          })),
-          lastUpdated: new Date(first.updatedAt || first.timestamp || new Date()).toISOString(),
-        });
-      }
+    if (unmatchedAlertIds.length > 0) {
+      await Alert.deleteMany({ _id: { $in: unmatchedAlertIds } }).catch(() => {});
     }
 
     return NextResponse.json(groupedCards);

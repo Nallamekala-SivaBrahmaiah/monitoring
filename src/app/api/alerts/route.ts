@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import Alert from '@/models/Alert';
+import { getUnifiedServerInventory } from '@/lib/serverMonitoring/inventoryService';
 import { evaluateAllMonitoredResources } from '@/lib/monitoring/alertEvaluationEngine';
 
 export async function GET(request: NextRequest) {
@@ -20,6 +21,36 @@ export async function GET(request: NextRequest) {
       await evaluateAllMonitoredResources().catch((e) =>
         console.warn('[Alerts API] Evaluation note:', e.message)
       );
+    }
+
+    // 1. Fetch active server inventory to strictly validate real resources
+    const inventory = await getUnifiedServerInventory();
+    const activeNames = new Set(
+      inventory.map((s) => (s.name || '').toLowerCase().trim()).filter(Boolean)
+    );
+    const activeIds = new Set(
+      inventory
+        .flatMap((s) => [s.resourceId, s.id, s.sshServerId, s.publicIp, s.host])
+        .filter(Boolean)
+        .map((x) => x!.toLowerCase().trim())
+    );
+
+    // 2. Automatically purge any orphaned alerts for deleted/decommissioned resources (e.g. old vm01, vm02, vm03)
+    if (inventory.length > 0) {
+      await Alert.deleteMany({
+        $and: [
+          {
+            resourceName: {
+              $nin: Array.from(activeNames).map((n) => new RegExp(`^${n}$`, 'i')),
+            },
+          },
+          {
+            resourceId: {
+              $nin: Array.from(activeIds),
+            },
+          },
+        ],
+      });
     }
 
     const query: any = {};
@@ -150,23 +181,13 @@ export async function PATCH(request: NextRequest) {
             resolvedAt: now,
             lastEvaluatedAt: now,
           },
-          $push: {
-            history: {
-              timestamp: now,
-              status: 'resolved',
-              message: 'Alert resolved by user (Clear All).',
-            },
-          },
         }
       );
-      return NextResponse.json({ success: true, message: 'All active alerts marked as resolved' });
+      return NextResponse.json({ success: true });
     }
 
-    if (!id || !['acknowledged', 'resolved'].includes(status)) {
-      return NextResponse.json(
-        { error: 'Valid id and status ("acknowledged" or "resolved") are required' },
-        { status: 400 }
-      );
+    if (!id) {
+      return NextResponse.json({ error: 'Alert ID is required' }, { status: 400 });
     }
 
     const alert = await Alert.findById(id);
@@ -175,38 +196,29 @@ export async function PATCH(request: NextRequest) {
     }
 
     const now = new Date();
-    alert.status = status;
-    alert.lastEvaluatedAt = now;
-
-    if (status === 'resolved') {
-      alert.resolvedAt = now;
-      alert.history.push({
-        timestamp: now,
-        status: 'resolved',
-        value: alert.value,
-        message: `Alert manually marked as resolved by user.`,
-      });
-    } else if (status === 'acknowledged') {
+    if (status === 'acknowledged') {
+      alert.status = 'acknowledged';
       alert.acknowledgedAt = now;
       alert.history.push({
         timestamp: now,
         status: 'acknowledged',
         value: alert.value,
-        message: `Alert acknowledged by user.`,
+        message: 'Alert acknowledged by DevOps engineer.',
+      });
+    } else if (status === 'resolved') {
+      alert.status = 'resolved';
+      alert.resolvedAt = now;
+      alert.lastEvaluatedAt = now;
+      alert.history.push({
+        timestamp: now,
+        status: 'resolved',
+        value: alert.value,
+        message: 'Alert manually marked as resolved by DevOps engineer.',
       });
     }
 
     await alert.save();
-
-    return NextResponse.json({
-      success: true,
-      alert: {
-        id: alert._id.toString(),
-        status: alert.status,
-        resolvedAt: alert.resolvedAt ? alert.resolvedAt.toISOString() : null,
-        acknowledgedAt: alert.acknowledgedAt ? alert.acknowledgedAt.toISOString() : null,
-      },
-    });
+    return NextResponse.json({ success: true, alert });
   } catch (err: any) {
     console.error('Error updating alert status:', err);
     return NextResponse.json({ error: err.message || 'Failed to update alert' }, { status: 500 });

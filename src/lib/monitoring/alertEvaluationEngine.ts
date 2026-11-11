@@ -7,6 +7,7 @@ import Notification from '@/models/Notification';
 import NotificationPreferences from '@/models/NotificationPreferences';
 import DevOpsRecipient from '@/models/DevOpsRecipient';
 import AlertDelivery from '@/models/AlertDelivery';
+import { getUnifiedServerInventory } from '@/lib/serverMonitoring/inventoryService';
 import { dispatchAlertNotification } from './notificationService';
 import { sendAlertEmail, sendResolvedEmail } from '@/lib/notifications/emailService';
 
@@ -898,22 +899,22 @@ export async function evaluateAllMonitoredResources(): Promise<{
   let resolved = 0;
   let totalEvaluated = 0;
 
-  // 1. Evaluate all Registered SSH Servers
-  const servers = await Server.find().lean();
-  for (const s of (servers as any[])) {
+  // Evaluate all real active servers from unified inventory
+  const inventory = await getUnifiedServerInventory();
+  for (const s of inventory) {
     if (s.metrics) {
       totalEvaluated++;
       const results = await evaluateResourceMetrics({
-        resourceId: `srv-${s._id.toString()}`,
+        resourceId: s.resourceId || s.id,
         resourceName: s.name,
-        resourceType: 'Server',
+        resourceType: s.cloudProvider === 'azure' ? 'AzureVM' : s.cloudProvider === 'aws' ? 'EC2Instance' : 'Server',
         provider: s.cloudProvider || 'other',
         region: s.region || 'global',
         metrics: {
-          cpuUtilization: s.metrics?.cpu?.usagePercent,
-          memoryUtilization: s.metrics?.memory?.usagePercent,
-          disks: s.metrics?.disks || [],
-          timestamp: s.lastConnectedAt || new Date(),
+          cpuUtilization: s.metrics.cpu,
+          memoryUtilization: s.metrics.memory,
+          diskUtilization: s.metrics.disk,
+          timestamp: s.lastSyncedAt || s.lastConnectedAt || new Date(),
         },
       });
 
@@ -925,36 +926,30 @@ export async function evaluateAllMonitoredResources(): Promise<{
     }
   }
 
-  // 2. Evaluate all CloudResources (Azure VMs & AWS EC2 Instances)
-  const cloudResources = await CloudResource.find({
-    isDeleted: { $ne: true },
-    status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
-    resourceType: { $in: ['vm', 'ec2'] },
-  }).lean();
+  // Purge any orphan alerts not matching active inventory
+  const activeNames = new Set(inventory.map((s) => (s.name || '').toLowerCase().trim()).filter(Boolean));
+  const activeIds = new Set(
+    inventory
+      .flatMap((s) => [s.resourceId, s.id, s.sshServerId, s.publicIp, s.host])
+      .filter(Boolean)
+      .map((x) => x!.toLowerCase().trim())
+  );
 
-  for (const cr of (cloudResources as any[])) {
-    if (cr.metrics) {
-      totalEvaluated++;
-      const results = await evaluateResourceMetrics({
-        resourceId: cr.resourceId,
-        resourceName: cr.name,
-        resourceType: cr.resourceType === 'vm' ? 'AzureVM' : 'EC2Instance',
-        provider: cr.provider,
-        region: cr.region || 'global',
-        metrics: {
-          cpuUtilization: cr.metrics?.cpuUtilization,
-          memoryUtilization: cr.metrics?.memoryUtilization,
-          diskUtilization: cr.metrics?.diskUtilization,
-          timestamp: cr.metrics?.lastUpdated || cr.updatedAt || new Date(),
+  if (inventory.length > 0) {
+    await Alert.deleteMany({
+      $and: [
+        {
+          resourceName: {
+            $nin: Array.from(activeNames).map((n) => new RegExp(`^${n}$`, 'i')),
+          },
         },
-      });
-
-      for (const r of results) {
-        if (r.action === 'created') created++;
-        else if (r.action === 'updated') updated++;
-        else if (r.action === 'resolved') resolved++;
-      }
-    }
+        {
+          resourceId: {
+            $nin: Array.from(activeIds),
+          },
+        },
+      ],
+    }).catch(() => {});
   }
 
   const activeCount = await Alert.countDocuments({ status: 'active' });

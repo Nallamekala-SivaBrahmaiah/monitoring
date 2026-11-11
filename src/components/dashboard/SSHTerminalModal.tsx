@@ -1,17 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import {
-  Terminal as TerminalIcon,
-  X,
-  Maximize2,
-  Minimize2,
-  RefreshCw,
-  PowerOff,
-  Trash2,
-  AlertCircle,
-  ShieldAlert,
-} from 'lucide-react';
+import '@xterm/xterm/css/xterm.css';
 
 export interface SSHTerminalTarget {
   id?: string;
@@ -35,6 +25,35 @@ interface SSHTerminalModalProps {
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
+/**
+ * Authentic PuTTY Monitor Icon SVG
+ */
+function PuttyIcon({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={className}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* Outer CRT monitor bezel */}
+      <rect x="1" y="1" width="14" height="10" rx="0.5" fill="#C0C0C0" stroke="#707070" strokeWidth="0.8" />
+      {/* Inner Screen */}
+      <rect x="2.5" y="2.5" width="11" height="7" fill="#000080" />
+      {/* Green prompt line */}
+      <rect x="3.5" y="4" width="3.5" height="1" fill="#00FF00" />
+      {/* White text line */}
+      <rect x="3.5" y="6" width="5.5" height="1" fill="#FFFFFF" />
+      {/* Blinking cursor */}
+      <rect x="9.5" y="6" width="1.5" height="1" fill="#00FF00" />
+      {/* Stand neck */}
+      <rect x="6.5" y="11" width="3" height="2" fill="#808080" />
+      {/* Stand base */}
+      <rect x="4" y="13" width="8" height="1.5" rx="0.3" fill="#C0C0C0" stroke="#707070" strokeWidth="0.6" />
+    </svg>
+  );
+}
+
 export function SSHTerminalModal({
   isOpen,
   onClose,
@@ -46,10 +65,10 @@ export function SSHTerminalModal({
   const fitAddonRef = useRef<any>(null);
 
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
-  const [statusMessage, setStatusMessage] = useState<string>('Initializing secure SSH terminal...');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isUnconfigured, setIsUnconfigured] = useState<boolean>(false);
-  const [isMaximized, setIsMaximized] = useState<boolean>(false);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(true);
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
 
   const activeSessionIdRef = useRef<string | null>(null);
   const streamAbortControllerRef = useRef<AbortController | null>(null);
@@ -87,7 +106,6 @@ export function SSHTerminalModal({
   // Disconnect active session
   const disconnectSession = useCallback(() => {
     setStatus('disconnected');
-    setStatusMessage('Terminal disconnected by user.');
 
     if (streamAbortControllerRef.current) {
       streamAbortControllerRef.current.abort();
@@ -104,7 +122,7 @@ export function SSHTerminalModal({
     }
 
     if (xtermInstanceRef.current) {
-      xtermInstanceRef.current.write('\r\n\x1b[33m[Session disconnected]\x1b[0m\r\n');
+      xtermInstanceRef.current.write('\r\n\x1b[33m[Connection closed by remote host]\x1b[0m\r\n');
     }
   }, []);
 
@@ -113,7 +131,6 @@ export function SSHTerminalModal({
     async (term: any, targetVm: SSHTerminalTarget, cols: number, rows: number) => {
       try {
         setStatus('connecting');
-        setStatusMessage('Connecting via SSH...');
         setErrorMessage(null);
         setIsUnconfigured(false);
 
@@ -141,10 +158,7 @@ export function SSHTerminalModal({
 
         const sessionId = data.sessionId;
         activeSessionIdRef.current = sessionId;
-
         setStatus('connected');
-        setStatusMessage(`Connected: ${data.username || 'user'}@${data.host || targetVm.host}`);
-        term.write('\x1b[32m✔ Authenticated successfully. Establishing interactive session...\x1b[0m\r\n\r\n');
 
         // Open live streaming reader
         const abortController = new AbortController();
@@ -170,7 +184,6 @@ export function SSHTerminalModal({
               if (done) {
                 if (!isClosingRef.current) {
                   setStatus('disconnected');
-                  setStatusMessage('Session closed by remote server');
                   term.write('\r\n\x1b[33m[Connection closed by remote host]\x1b[0m\r\n');
                 }
                 break;
@@ -185,14 +198,14 @@ export function SSHTerminalModal({
                 if (!packet.trim()) continue;
                 if (packet.includes('event: close')) {
                   setStatus('disconnected');
-                  term.write('\r\n\x1b[33m[Session disconnected]\x1b[0m\r\n');
+                  term.write('\r\n\x1b[33m[Connection closed by remote host]\x1b[0m\r\n');
                   return;
                 }
                 const match = packet.match(/^data:\s*(.*)$/m);
                 if (match) {
                   try {
                     const parsed = JSON.parse(match[1]);
-                    if (parsed.data) {
+                    if (parsed && typeof parsed.data === 'string') {
                       term.write(parsed.data);
                     }
                   } catch {
@@ -210,8 +223,7 @@ export function SSHTerminalModal({
       } catch (err: any) {
         setStatus('error');
         setErrorMessage(err.message || 'SSH connection failed.');
-        setStatusMessage('SSH Connection Failed');
-        term.write(`\r\n\x1b[31;1mError: ${err.message || 'SSH Connection failed'}\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[31mNetwork error: ${err.message || 'Connection failed'}\x1b[0m\r\n`);
       }
     },
     []
@@ -231,35 +243,43 @@ export function SSHTerminalModal({
       xtermInstanceRef.current = null;
     }
 
+    // PuTTY Classic Configuration:
+    // Pure black background (#000000), Consolas font 14px, white text,
+    // classic PuTTY 16-color ANSI palette, block cursor.
     const term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'block',
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace, Consolas',
-      fontSize: 13,
-      lineHeight: 1.25,
+      cursorWidth: 1,
+      fontFamily: 'Consolas, "Cascadia Mono", "Lucida Console", "Courier New", monospace',
+      fontSize: 14,
+      lineHeight: 1.2,
+      letterSpacing: 0,
+      convertEol: true,
+      scrollback: 10000,
       theme: {
-        background: '#080D1A',
-        foreground: '#E2E8F0',
-        cursor: '#00C5FF',
-        selectionBackground: 'rgba(0, 197, 255, 0.35)',
-        black: '#1E293B',
-        red: '#EF4444',
-        green: '#10B981',
-        yellow: '#F59E0B',
-        blue: '#0089D6',
-        magenta: '#8B5CF6',
-        cyan: '#06B6D4',
-        white: '#F8FAFC',
-        brightBlack: '#64748B',
-        brightRed: '#F87171',
-        brightGreen: '#34D399',
-        brightYellow: '#FBBF24',
-        brightBlue: '#38BDF8',
-        brightMagenta: '#A78BFA',
-        brightCyan: '#22D3EE',
+        background: '#000000',
+        foreground: '#BBBBBB',
+        cursor: '#FFFFFF',
+        cursorAccent: '#000000',
+        selectionBackground: 'rgba(255, 255, 255, 0.35)',
+        selectionForeground: '#FFFFFF',
+        black: '#000000',
+        red: '#BB0000',
+        green: '#00BB00',
+        yellow: '#BBBB00',
+        blue: '#0000BB',
+        magenta: '#BB00BB',
+        cyan: '#00BBBB',
+        white: '#BBBBBB',
+        brightBlack: '#555555',
+        brightRed: '#FF5555',
+        brightGreen: '#55FF55',
+        brightYellow: '#FFFF55',
+        brightBlue: '#5555FF',
+        brightMagenta: '#FF55FF',
+        brightCyan: '#55FFFF',
         brightWhite: '#FFFFFF',
       },
-      convertEol: true,
     });
 
     const fitAddon = new FitAddon();
@@ -268,6 +288,7 @@ export function SSHTerminalModal({
     terminalRef.current.innerHTML = '';
     term.open(terminalRef.current);
     fitAddon.fit();
+    term.focus();
 
     xtermInstanceRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -277,10 +298,37 @@ export function SSHTerminalModal({
       sendInput(data);
     });
 
-    // Write welcome banner
-    term.write('\x1b[36mMulti-Cloud Monitoring Platform — Direct SSH Terminal\x1b[0m\r\n');
-    term.write(`\x1b[90mTarget: ${target.name} (${target.host || 'host'}:22)\x1b[0m\r\n`);
-    term.write('\x1b[90mAuthenticating with saved SSH credentials...\x1b[0m\r\n\r\n');
+    // PuTTY select-to-copy behavior: text selection automatically copies to clipboard
+    term.onSelectionChange(() => {
+      const selection = term.getSelection();
+      if (selection && selection.length > 0) {
+        navigator.clipboard.writeText(selection).catch(() => {});
+      }
+    });
+
+    // PuTTY keyboard shortcuts (Shift+Insert paste, Ctrl+Shift+C/V)
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.type === 'keydown') {
+        if (e.shiftKey && e.key === 'Insert') {
+          navigator.clipboard.readText().then((text) => {
+            if (text) sendInput(text);
+          }).catch(() => {});
+          return false;
+        }
+        if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+          const sel = term.getSelection();
+          if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+          return false;
+        }
+        if (e.ctrlKey && e.shiftKey && (e.key === 'V' || e.key === 'v')) {
+          navigator.clipboard.readText().then((text) => {
+            if (text) sendInput(text);
+          }).catch(() => {});
+          return false;
+        }
+      }
+      return true;
+    });
 
     const cols = term.cols || 80;
     const rows = term.rows || 24;
@@ -293,6 +341,7 @@ export function SSHTerminalModal({
   useEffect(() => {
     isClosingRef.current = false;
     if (isOpen && target) {
+      setIsMinimized(false);
       initTerminal();
     }
 
@@ -317,12 +366,14 @@ export function SSHTerminalModal({
     };
   }, [isOpen, target, initTerminal]);
 
-  // Handle container resize
+  // Handle container resize & session persistence
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || isMinimized) return;
 
-    const handleResize = () => {
-      if (fitAddonRef.current && xtermInstanceRef.current) {
+    let resizeTimer: any = null;
+
+    const doFit = () => {
+      if (fitAddonRef.current && xtermInstanceRef.current && terminalRef.current) {
         try {
           fitAddonRef.current.fit();
           const { cols, rows } = xtermInstanceRef.current;
@@ -331,20 +382,52 @@ export function SSHTerminalModal({
       }
     };
 
+    const handleResize = () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(doFit, 50);
+    };
+
     window.addEventListener('resize', handleResize);
-    const timer = setTimeout(handleResize, 150);
+
+    const observer = new ResizeObserver(() => {
+      handleResize();
+    });
+
+    if (terminalRef.current) {
+      observer.observe(terminalRef.current);
+    }
+
+    const timer = setTimeout(doFit, 80);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      observer.disconnect();
+      if (resizeTimer) clearTimeout(resizeTimer);
       clearTimeout(timer);
     };
-  }, [isOpen, isMaximized, sendResize]);
+  }, [isOpen, isFullscreen, isMinimized, sendResize]);
 
   if (!isOpen || !target) return null;
 
-  const handleClearTerminal = () => {
+  // PuTTY Right-click paste
+  const handleContextMenu = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          sendInput(text);
+        }
+      }
+    } catch {
+      // Ignore if user denied clipboard permissions
+    }
+  };
+
+  // Focus terminal when user clicks anywhere in the window
+  const handleWindowClick = () => {
     if (xtermInstanceRef.current) {
-      xtermInstanceRef.current.clear();
+      xtermInstanceRef.current.focus();
     }
   };
 
@@ -352,169 +435,252 @@ export function SSHTerminalModal({
     initTerminal();
   };
 
+  const handleClose = () => {
+    disconnectSession();
+    onClose();
+  };
+
+  // Title bar text: purely "PuTTY" or "PuTTY (inactive)"
+  const titleText = status === 'disconnected' ? 'PuTTY (inactive)' : 'PuTTY';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div
-        className={`bg-[#0D1526] border border-[#1E293B] rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-all duration-200 ${
-          isMaximized
-            ? 'w-full h-full m-0 rounded-none'
-            : 'w-full max-w-4xl h-[620px] max-h-[92vh]'
-        }`}
-      >
-        {/* ================= TERMINAL HEADER ================= */}
-        <div className="flex items-center justify-between px-4 py-3 bg-[#111A2E] border-b border-[#1E293B] select-none shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-              <TerminalIcon className="w-4 h-4" />
-            </div>
-
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white tracking-wide truncate">
-                  SSH Terminal: {target.name}
-                </h3>
-                <span className="text-[11px] font-mono text-cyan-300 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/25">
-                  {target.host && target.host !== '-' ? target.host : 'Internal IP'}:22
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 truncate flex items-center gap-1.5">
-                <span
-                  className={`w-2 h-2 rounded-full inline-block ${
-                    status === 'connected'
-                      ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)] animate-pulse'
-                      : status === 'connecting'
-                      ? 'bg-amber-400 animate-pulse'
-                      : 'bg-rose-500'
-                  }`}
-                />
-                <span className="capitalize font-medium">{status}:</span>
-                <span className="text-slate-300 truncate">{statusMessage}</span>
-              </p>
-            </div>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-1.5">
-            {status === 'connected' ? (
-              <button
-                type="button"
-                onClick={disconnectSession}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 rounded-lg transition-colors cursor-pointer"
-                title="Disconnect SSH Session"
-              >
-                <PowerOff className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Disconnect</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleReconnect}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg transition-colors cursor-pointer"
-                title="Reconnect SSH"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Reconnect</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={handleClearTerminal}
-              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-[#18233C] rounded-lg transition-colors cursor-pointer"
-              title="Clear Terminal Screen"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsMaximized(!isMaximized)}
-              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-[#18233C] rounded-lg transition-colors cursor-pointer"
-              title={isMaximized ? 'Restore size' : 'Maximize terminal'}
-            >
-              {isMaximized ? (
-                <Minimize2 className="w-3.5 h-3.5" />
-              ) : (
-                <Maximize2 className="w-3.5 h-3.5" />
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-              title="Close Terminal"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+    <>
+      {/* Minimized Taskbar Pill */}
+      {isMinimized && (
+        <div
+          onClick={() => setIsMinimized(false)}
+          className="fixed bottom-3 right-3 z-50 flex items-center gap-2 px-3 py-1.5 bg-[#1F1F1F] border border-[#3A3A3A] shadow-2xl text-slate-200 text-xs font-sans hover:bg-[#2A2A2A] cursor-pointer select-none transition-all"
+          title="Restore PuTTY Terminal"
+        >
+          <PuttyIcon className="w-4 h-4" />
+          <span className="font-medium text-[#D4D4D4]">{titleText}</span>
         </div>
+      )}
 
-        {/* ================= UNCONFIGURED NOTIFICATION BANNER ================= */}
-        {isUnconfigured && (
-          <div className="bg-amber-500/10 border-b border-amber-500/25 px-4 py-2.5 flex items-center justify-between text-xs text-amber-300">
-            <div className="flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                No saved SSH credentials found for <strong>{target.name}</strong>. Please enter the
-                SSH private key or password once to enable automatic one-click login.
+      {/* Main PuTTY Window Container */}
+      {!isMinimized && (
+        <div
+          className={`fixed z-50 flex flex-col bg-[#000000] select-none transition-all ${
+            isFullscreen
+              ? 'inset-0 w-screen h-screen rounded-none'
+              : 'inset-3 sm:inset-6 md:inset-8 shadow-2xl border border-[#3A3A3A] rounded-none'
+          }`}
+          onClick={handleWindowClick}
+          onContextMenu={handleContextMenu}
+        >
+          {/* ================= PUTTY TITLE BAR ================= */}
+          <div
+            className="h-8 bg-[#181818] border-b border-[#2C2C2C] flex items-center justify-between select-none shrink-0 font-sans text-xs"
+            onDoubleClick={() => setIsFullscreen(!isFullscreen)}
+          >
+            {/* Left: PuTTY Icon & Title */}
+            <div className="flex items-center gap-2 px-2.5 min-w-0">
+              <PuttyIcon className="w-4 h-4 shrink-0" />
+              <span className="text-[#D4D4D4] font-medium tracking-wide truncate">
+                {titleText}
               </span>
             </div>
-            {onConfigureSSH && (
+
+            {/* Right: Windows-style Minimize, Maximize/Restore, Close controls */}
+            <div className="flex items-center h-full">
+              {/* Minimize */}
               <button
                 type="button"
-                onClick={() => {
-                  onClose();
-                  onConfigureSSH(target);
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMinimized(true);
                 }}
-                className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 font-semibold shrink-0 cursor-pointer transition-colors"
+                className="w-11 h-full flex items-center justify-center text-[#CCCCCC] hover:bg-[#333333] transition-colors cursor-pointer"
+                title="Minimize"
               >
-                Configure SSH Credentials
+                <svg width="10" height="1" viewBox="0 0 10 1">
+                  <rect width="10" height="1" fill="currentColor" />
+                </svg>
               </button>
+
+              {/* Maximize / Restore */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsFullscreen(!isFullscreen);
+                }}
+                className="w-11 h-full flex items-center justify-center text-[#CCCCCC] hover:bg-[#333333] transition-colors cursor-pointer"
+                title={isFullscreen ? 'Restore' : 'Maximize'}
+              >
+                {isFullscreen ? (
+                  <svg width="10" height="10" viewBox="0 0 10 10">
+                    <path
+                      fill="currentColor"
+                      fillRule="evenodd"
+                      d="M2 0h8v8H8v2H0V2h2V0zm1 2h5v5H3V2zm-2 1h1v5h5v1H1V3z"
+                    />
+                  </svg>
+                ) : (
+                  <svg width="10" height="10" viewBox="0 0 10 10">
+                    <path
+                      fill="currentColor"
+                      fillRule="evenodd"
+                      d="M0 0v10h10V0H0zm9 9H1V1h8v8z"
+                    />
+                  </svg>
+                )}
+              </button>
+
+              {/* Close */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClose();
+                }}
+                className="w-11 h-full flex items-center justify-center text-[#CCCCCC] hover:bg-[#E81123] hover:text-white transition-colors cursor-pointer"
+                title="Close"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10">
+                  <path
+                    fill="currentColor"
+                    d="M10 .9L9.1 0 5 4.1.9 0 0 .9 4.1 5 0 9.1l.9.9L5 5.9 9.1 10l.9-.9-4.1-4.1z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* ================= PURE PUTTY TERMINAL AREA ================= */}
+          <div className="flex-1 bg-[#000000] p-1 w-full h-full overflow-hidden relative cursor-text putty-terminal">
+            <div
+              ref={terminalRef}
+              className="w-full h-full select-text"
+              style={{ minHeight: '100%', height: '100%' }}
+            />
+
+            {/* PuTTY Fatal Error Dialog */}
+            {errorMessage && !isUnconfigured && (
+              <div
+                className="absolute inset-0 flex items-center justify-center bg-black/60 z-30 select-none p-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="bg-[#2D2D2D] border border-[#555555] shadow-2xl w-[420px] max-w-[95vw] text-slate-200 font-sans text-xs">
+                  <div className="bg-[#1F1F1F] px-3 py-1.5 border-b border-[#3A3A3A] flex items-center justify-between font-semibold text-slate-200">
+                    <span>PuTTY Fatal Error</span>
+                    <button
+                      type="button"
+                      onClick={() => setErrorMessage(null)}
+                      className="text-slate-400 hover:text-white px-1.5 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="p-4 flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-rose-600 flex items-center justify-center text-white font-bold text-base shrink-0">
+                      ✕
+                    </div>
+                    <div className="text-slate-200 leading-relaxed pt-0.5">
+                      <p className="font-semibold text-sm text-white mb-1">Network Error</p>
+                      <p className="text-slate-300 font-mono text-[11px] break-all">{errorMessage}</p>
+                    </div>
+                  </div>
+                  <div className="bg-[#252525] px-4 py-2 border-t border-[#3A3A3A] flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={handleReconnect}
+                      className="px-4 py-1 bg-[#3A3A3A] hover:bg-[#4A4A4A] text-white border border-[#555555] text-xs font-medium cursor-pointer transition-colors"
+                    >
+                      Retry
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setErrorMessage(null)}
+                      className="px-4 py-1 bg-[#3A3A3A] hover:bg-[#4A4A4A] text-white border border-[#555555] text-xs font-medium cursor-pointer transition-colors"
+                    >
+                      OK
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* PuTTY Unconfigured SSH Credentials Dialog */}
+            {isUnconfigured && (
+              <div
+                className="absolute inset-0 flex items-center justify-center bg-black/60 z-30 select-none p-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="bg-[#2D2D2D] border border-[#555555] shadow-2xl w-[440px] max-w-[95vw] text-slate-200 font-sans text-xs">
+                  <div className="bg-[#1F1F1F] px-3 py-1.5 border-b border-[#3A3A3A] flex items-center justify-between font-semibold text-slate-200">
+                    <span>PuTTY Configuration</span>
+                    <button
+                      type="button"
+                      onClick={handleClose}
+                      className="text-slate-400 hover:text-white px-1.5 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="p-4 flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-amber-600 flex items-center justify-center text-white font-bold text-base shrink-0">
+                      !
+                    </div>
+                    <div className="text-slate-200 leading-relaxed pt-0.5">
+                      <p className="font-semibold text-sm text-white mb-1">No Saved SSH Credentials</p>
+                      <p className="text-slate-300">
+                        No saved SSH private key or password found for this server. Please configure credentials once to enable direct login.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-[#252525] px-4 py-2 border-t border-[#3A3A3A] flex items-center justify-end gap-2">
+                    {onConfigureSSH && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleClose();
+                          onConfigureSSH(target);
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white border border-blue-400 text-xs font-medium cursor-pointer transition-colors"
+                      >
+                        Configure SSH
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleClose}
+                      className="px-4 py-1 bg-[#3A3A3A] hover:bg-[#4A4A4A] text-white border border-[#555555] text-xs font-medium cursor-pointer transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
-        )}
-
-        {/* ================= ERROR NOTIFICATION BANNER ================= */}
-        {errorMessage && !isUnconfigured && (
-          <div className="bg-rose-500/10 border-b border-rose-500/25 px-4 py-2 flex items-center justify-between text-xs text-rose-300">
-            <div className="flex items-center gap-2 truncate">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span className="truncate">{errorMessage}</span>
-            </div>
-            <button
-              type="button"
-              onClick={handleReconnect}
-              className="text-rose-200 hover:underline font-semibold ml-2 shrink-0 cursor-pointer"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {/* ================= TERMINAL SCREEN ================= */}
-        <div className="flex-1 bg-[#080D1A] p-2 sm:p-3 overflow-hidden relative">
-          <div
-            ref={terminalRef}
-            className="w-full h-full select-text"
-            style={{ minHeight: '340px' }}
-          />
         </div>
+      )}
 
-        {/* ================= TERMINAL FOOTER BAR ================= */}
-        <div className="px-4 py-2 bg-[#0E1628] border-t border-[#1E293B] flex items-center justify-between text-[11px] text-slate-400 select-none shrink-0 font-mono">
-          <div className="flex items-center gap-3">
-            <span>Terminal: xterm-256color</span>
-            <span className="hidden sm:inline text-slate-600">|</span>
-            <span className="hidden sm:inline">Port: 22 (SSH)</span>
-            <span className="hidden sm:inline text-slate-600">|</span>
-            <span className="text-emerald-400 font-semibold">AES-256 Encrypted</span>
-          </div>
-          <div>
-            <span>Press Ctrl+C to interrupt • type &apos;exit&apos; to disconnect</span>
-          </div>
-        </div>
-      </div>
-    </div>
+      {/* Global CSS for PuTTY scrollbar & terminal viewport styling */}
+      <style jsx global>{`
+        .putty-terminal .xterm {
+          height: 100% !important;
+          padding: 2px 4px !important;
+        }
+        .putty-terminal .xterm-viewport {
+          background-color: #000000 !important;
+        }
+        .putty-terminal .xterm-viewport::-webkit-scrollbar {
+          width: 14px;
+          background-color: #000000;
+        }
+        .putty-terminal .xterm-viewport::-webkit-scrollbar-thumb {
+          background-color: #555555;
+          border: 3px solid #000000;
+        }
+        .putty-terminal .xterm-viewport::-webkit-scrollbar-thumb:hover {
+          background-color: #777777;
+        }
+        .putty-terminal .xterm-viewport::-webkit-scrollbar-track {
+          background-color: #000000;
+        }
+      `}</style>
+    </>
   );
 }

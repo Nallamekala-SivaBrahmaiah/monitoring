@@ -209,6 +209,92 @@ export async function executeAWSPowerAction({
 }
 
 /**
+ * Dynamically resolves the real Resource Group for an Azure Virtual Machine
+ * by querying Azure ARM compute API across the subscription or searching all resource groups.
+ */
+async function resolveAzureVMResourceGroup(
+  vmName: string,
+  token: string,
+  subscriptionId: string
+): Promise<{ resourceGroup: string; fullId: string; location?: string } | null> {
+  const cleanVmName = (vmName || '').trim().toLowerCase();
+  if (!cleanVmName || !subscriptionId || !token) return null;
+
+  try {
+    // 1. Query all virtual machines in the subscription directly from Azure ARM
+    const url = `https://management.azure.com/subscriptions/${subscriptionId}/providers/Microsoft.Compute/virtualMachines?api-version=2023-09-01`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const vms = data.value || [];
+      const matched = vms.find(
+        (v: any) =>
+          (v.name || '').trim().toLowerCase() === cleanVmName ||
+          (v.id || '').trim().toLowerCase().endsWith(`/${cleanVmName}`)
+      );
+
+      if (matched && matched.id) {
+        const rgMatch = matched.id.match(/\/resourcegroups\/([^\/]+)/i);
+        if (rgMatch && rgMatch[1]) {
+          return {
+            resourceGroup: rgMatch[1],
+            fullId: matched.id,
+            location: matched.location,
+          };
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[PowerService] Azure subscription VM lookup note:`, err.message);
+  }
+
+  // 2. Fallback: Search all resource groups in the subscription
+  try {
+    const rgListUrl = `https://management.azure.com/subscriptions/${subscriptionId}/resourcegroups?api-version=2021-04-01`;
+    const rgRes = await fetch(rgListUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (rgRes.ok) {
+      const rgData = await rgRes.json();
+      const rgs = rgData.value || [];
+      for (const rgObj of rgs) {
+        const rgName = rgObj.name;
+        if (!rgName) continue;
+        const checkUrl = `https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${rgName}/providers/Microsoft.Compute/virtualMachines/${vmName}?api-version=2023-09-01`;
+        const checkRes = await fetch(checkUrl, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        if (checkRes.ok) {
+          const vmData = await checkRes.json();
+          return {
+            resourceGroup: rgName,
+            fullId: vmData.id,
+            location: vmData.location,
+          };
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[PowerService] Resource groups iteration note:`, err.message);
+  }
+
+  return null;
+}
+
+/**
  * Execute real Azure Virtual Machine power action (Deallocate / Start / Restart)
  */
 export async function executeAzurePowerAction({
@@ -218,7 +304,7 @@ export async function executeAzurePowerAction({
   action,
 }: {
   vmName: string;
-  resourceGroup: string;
+  resourceGroup?: string;
   subscriptionId?: string;
   action: PowerAction;
 }): Promise<PowerActionResult> {
@@ -234,18 +320,63 @@ export async function executeAzurePowerAction({
     throw new Error('Failed to acquire Azure AD OAuth2 access token for Azure Resource Manager.');
   }
 
+  let targetRg = (resourceGroup || '').trim();
+
+  // If resourceGroup is missing, placeholder 'default-rg', or empty string, dynamically resolve real RG from Azure ARM
+  if (!targetRg || targetRg === 'default-rg') {
+    const resolved = await resolveAzureVMResourceGroup(vmName, tokenResponse.token, creds.subscriptionId);
+    if (resolved?.resourceGroup) {
+      targetRg = resolved.resourceGroup;
+      console.log(`[PowerService] 🔍 Auto-discovered real Azure resource group for "${vmName}": "${targetRg}"`);
+
+      // Persist real resourceGroup to CloudResource and Server in MongoDB
+      await CloudResource.updateMany(
+        { provider: 'azure', $or: [{ name: vmName }, { resourceId: new RegExp(`${vmName}$`, 'i') }] },
+        { $set: { resourceGroup: targetRg } }
+      );
+    }
+  }
+
   // Azure Compute endpoints
   // stop -> deallocate (releases compute reservation & stops billing)
   const operation = action === 'stop' ? 'deallocate' : action === 'start' ? 'start' : 'restart';
-  const url = `https://management.azure.com/subscriptions/${creds.subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Compute/virtualMachines/${vmName}/${operation}?api-version=2023-09-01`;
+  let url = `https://management.azure.com/subscriptions/${creds.subscriptionId}/resourceGroups/${targetRg || 'default-rg'}/providers/Microsoft.Compute/virtualMachines/${vmName}/${operation}?api-version=2023-09-01`;
 
-  const res = await fetch(url, {
+  let res = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${tokenResponse.token}`,
       'Content-Type': 'application/json',
     },
   });
+
+  // If 404 or resource group not found, attempt auto-resolution recovery
+  if (res.status === 404 || (!res.ok && res.status !== 202 && res.status !== 200 && res.status !== 204)) {
+    const errorBody = await res.clone().json().catch(() => ({}));
+    const errMsg = (errorBody?.error?.message || '').toLowerCase();
+    if (errMsg.includes('resource group') || errMsg.includes('could not be found') || res.status === 404) {
+      console.log(`[PowerService] ⚠️ Resource group "${targetRg}" failed for ${vmName}. Resolving subscription-wide...`);
+      const resolved = await resolveAzureVMResourceGroup(vmName, tokenResponse.token, creds.subscriptionId);
+      if (resolved?.resourceGroup && resolved.resourceGroup !== targetRg) {
+        targetRg = resolved.resourceGroup;
+        console.log(`[PowerService] 🔄 Retrying Azure VM ${operation} with discovered resource group "${targetRg}"...`);
+        url = `https://management.azure.com/subscriptions/${creds.subscriptionId}/resourceGroups/${targetRg}/providers/Microsoft.Compute/virtualMachines/${vmName}/${operation}?api-version=2023-09-01`;
+        res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tokenResponse.token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        // Persist newly discovered resource group
+        await CloudResource.updateMany(
+          { provider: 'azure', $or: [{ name: vmName }, { resourceId: new RegExp(`${vmName}$`, 'i') }] },
+          { $set: { resourceGroup: targetRg } }
+        );
+      }
+    }
+  }
 
   // Azure typically returns 200 OK or 202 Accepted for async power operations
   if (!res.ok && res.status !== 202 && res.status !== 200 && res.status !== 204) {
@@ -274,6 +405,7 @@ export async function executeAzurePowerAction({
         status: cloudStatus,
         'metadata.powerState': powerStateStr,
         'tags.powerState': powerStateStr,
+        resourceGroup: targetRg,
         lastSyncAt: new Date(),
       },
     }
@@ -299,9 +431,10 @@ export async function executeAzurePowerAction({
     success: true,
     action,
     status: newStatus,
-    message: `Azure VM "${vmName}" ${action} request accepted by Azure ARM.`,
+    message: `Azure VM "${vmName}" ${action} request accepted by Azure ARM in resource group "${targetRg}".`,
     provider: 'azure',
     resourceId: vmName,
+    details: { resourceGroup: targetRg },
   };
 }
 
@@ -448,7 +581,7 @@ export async function executeUnifiedPowerAction(
       }
     }
 
-    // Case B: Azure Virtual Machine Server (e.g. vm01, vm02, vm03)
+    // Case B: Azure Virtual Machine Server (e.g. vm01, vm02, vm03, vm01-schule)
     if (server.cloudProvider === 'azure') {
       const hostTrim = (server.host || '').trim();
       const serverNameTrim = (server.name || '').trim();
@@ -460,14 +593,19 @@ export async function executeUnifiedPowerAction(
           { publicIp: hostTrim },
           { privateIp: hostTrim },
           { 'metadata.sshServerId': server._id.toString() },
+          { resourceId: new RegExp(`${serverNameTrim}$`, 'i') },
         ],
       }).lean();
 
       const vmName = cr?.name || serverNameTrim;
-      const resourceGroup = cr?.resourceGroup || 'default-rg';
+      let resourceGroup = cr?.resourceGroup;
+      if (!resourceGroup || resourceGroup === 'default-rg') {
+        const extracted = (cr?.resourceId || '').match(/\/resourcegroups\/([^\/]+)/i)?.[1];
+        if (extracted) resourceGroup = extracted;
+      }
       const subscriptionId = cr?.subscriptionId;
 
-      console.log(`[PowerService] Executing Azure VM ${action} for ${vmName} in RG ${resourceGroup}`);
+      console.log(`[PowerService] Executing Azure VM ${action} for ${vmName} (Target RG: "${resourceGroup || 'auto-resolving'}")`);
       const result = await executeAzurePowerAction({
         vmName,
         resourceGroup,
@@ -536,9 +674,14 @@ export async function executeUnifiedPowerAction(
     }
 
     if (cloudRes.provider === 'azure') {
+      let rg = cloudRes.resourceGroup;
+      if (!rg || rg === 'default-rg') {
+        const extracted = (cloudRes.resourceId || '').match(/\/resourcegroups\/([^\/]+)/i)?.[1];
+        if (extracted) rg = extracted;
+      }
       return await executeAzurePowerAction({
         vmName: cloudRes.name,
-        resourceGroup: cloudRes.resourceGroup || 'default-rg',
+        resourceGroup: rg,
         subscriptionId: cloudRes.subscriptionId,
         action,
       });

@@ -43,49 +43,54 @@ export async function GET(request: NextRequest) {
         const sName = (s.name || '').toLowerCase().trim();
         const sHost = (s.host || '').trim();
 
-        const cr = cloudResources.find((c: any) => {
+        // Match ALL corresponding entries in CloudResource (both real VM and any registered server metadata)
+        const matchingCrs = cloudResources.filter((c: any) => {
           const cName = (c.name || '').toLowerCase().trim();
           const cResId = (c.resourceId || '').toLowerCase().trim();
           const cPub = (c.publicIp || '').trim();
           const cPriv = (c.privateIp || '').trim();
           const sshId = c.metadata?.sshServerId || c.tags?.sshServerId || '';
           if (sshId && sshId === s._id?.toString()) return true;
-          if (cResId && (cResId === sName || cResId === sHost)) return true;
+          if (cResId && (cResId === sName || cResId === sHost || cResId.endsWith('/' + sName))) return true;
           if (cName && (cName === sName || cName === sHost.toLowerCase())) return true;
           if (sHost && (sHost === cPub || sHost === cPriv)) return true;
           return false;
         });
 
-        if (cr) {
-          matchedCloudIds.add(cr.resourceId);
-          matchedCloudIds.add(cr._id.toString());
+        for (const mc of matchingCrs) {
+          if (mc.resourceId) matchedCloudIds.add(mc.resourceId);
+          if (mc._id) matchedCloudIds.add(mc._id.toString());
+          if (mc.name) matchedCloudIds.add(mc.name.toLowerCase().trim());
         }
 
+        // Prefer actual compute instance ('vm' or 'ec2') over generic 'Server' placeholder
+        const cr =
+          matchingCrs.find((c: any) => c.resourceType === 'vm' || c.resourceType === 'ec2') ||
+          matchingCrs[0];
+
         const cloudStatus = cr ? (cr.status as string) : null;
+        const isCloudRunning = cloudStatus ? cloudStatus.toLowerCase().includes('run') : false;
+        const isCloudStopped = cloudStatus
+          ? cloudStatus.toLowerCase().includes('stop') || cloudStatus.toLowerCase().includes('dealloc')
+          : false;
+
         let effectiveStatus = s.status;
 
-        // If cloud resource is Running, never trap the server in stale "Offline - Server stopped by operator"
-        if (
-          cloudStatus === 'Running' &&
-          (s.status === 'Offline' || s.lastError?.includes('stopped by operator'))
-        ) {
+        // If cloud resource is Running, reflect real cloud state as Online
+        if (isCloudRunning) {
           effectiveStatus = 'Online';
-          // Persist the correction back to MongoDB Server
           await Server.updateOne(
             { _id: s._id },
             { $set: { status: 'Online', lastError: null } }
           ).catch(() => null);
-        } else if (cloudStatus === 'Stopped') {
+        } else if (isCloudStopped) {
           effectiveStatus = 'Offline';
         }
 
         return {
           ...s,
           status: effectiveStatus,
-          lastError:
-            effectiveStatus === 'Online' && s.lastError?.includes('stopped by operator')
-              ? null
-              : s.lastError,
+          lastError: effectiveStatus === 'Online' ? null : s.lastError,
           cloudPowerState: cloudStatus || (effectiveStatus === 'Online' ? 'Running' : 'Stopped'),
           cloudResourceId: cr?.resourceId as string | undefined,
         };
@@ -98,7 +103,33 @@ export async function GET(request: NextRequest) {
       if (cr.resourceId && cr.resourceId.startsWith('srv-')) continue;
       // Strictly only synthesize real compute instances (AWS EC2 or Azure VMs)
       if (cr.resourceType !== 'vm' && cr.resourceType !== 'ec2') continue;
-      if (matchedCloudIds.has(cr.resourceId) || matchedCloudIds.has(cr._id.toString())) continue;
+
+      const crName = (cr.name || '').toLowerCase().trim();
+      const crResId = (cr.resourceId || '').toLowerCase().trim();
+      const crPub = (cr.publicIp || '').trim();
+      const crPriv = (cr.privateIp || '').trim();
+
+      if (
+        matchedCloudIds.has(cr.resourceId) ||
+        matchedCloudIds.has(cr._id.toString()) ||
+        (crName && matchedCloudIds.has(crName))
+      ) {
+        continue;
+      }
+
+      // Extra check: prevent duplicate synthesis if already present in reconciledServers
+      const alreadyInReconciled = reconciledServers.some((rs: any) => {
+        const rsName = (rs.name || '').toLowerCase().trim();
+        const rsHost = (rs.host || '').trim();
+        const rsCloudId = (rs.cloudResourceId || '').toLowerCase().trim();
+        if (rsName && rsName === crName) return true;
+        if (crResId && crResId.endsWith('/' + rsName)) return true;
+        if (rsCloudId && rsCloudId === crResId) return true;
+        if (rsHost && (rsHost === crPub || rsHost === crPriv)) return true;
+        return false;
+      });
+      if (alreadyInReconciled) continue;
+
       if (cloudFilter && cloudFilter !== 'all' && cr.provider !== cloudFilter) continue;
 
       const isRunning = (cr.status || '').toLowerCase().includes('run');
@@ -185,8 +216,28 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Final guarantee: Deduplicate across reconciled & synthesized servers by provider + name & host
     const allServers = [...reconciledServers, ...synthesizedServers];
-    return NextResponse.json(allServers);
+    const uniqueServers: any[] = [];
+    const seenNames = new Set<string>();
+    const seenHosts = new Set<string>();
+
+    for (const s of allServers) {
+      const nameKey = `${s.cloudProvider || 'other'}:${(s.name || '').toLowerCase().trim()}`;
+      const hostKey =
+        s.host && s.host !== '-'
+          ? `${s.cloudProvider || 'other'}:${(s.host || '').trim()}`
+          : null;
+
+      if (seenNames.has(nameKey)) continue;
+      if (hostKey && seenHosts.has(hostKey)) continue;
+
+      seenNames.add(nameKey);
+      if (hostKey) seenHosts.add(hostKey);
+      uniqueServers.push(s);
+    }
+
+    return NextResponse.json(uniqueServers);
   } catch (err: any) {
     console.error('Error fetching servers:', err);
     return NextResponse.json({ error: 'Failed to fetch servers' }, { status: 500 });

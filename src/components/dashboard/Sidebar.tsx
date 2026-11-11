@@ -19,6 +19,7 @@ import {
   Layers,
   X,
   Check,
+  CalendarClock,
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { useMonitoring } from '@/context/MonitoringContext';
@@ -77,6 +78,7 @@ export function Sidebar({
     { label: 'Servers', href: '/dashboard/servers', icon: Server },
     { label: 'EC2 Instances', href: '/dashboard/ec2', icon: Cpu },
     { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AppWindow },
+    { label: 'Server Scheduling', href: '/dashboard/schedules', icon: CalendarClock },
     { label: 'Docker Containers', href: '/dashboard/docker', icon: Boxes },
     { label: 'Kubernetes', href: '/dashboard/kubernetes', icon: Layers },
     { label: 'Metrics Explorer', href: '/dashboard/metrics', icon: Activity },

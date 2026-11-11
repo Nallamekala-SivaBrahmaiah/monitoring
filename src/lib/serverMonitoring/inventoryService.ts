@@ -145,10 +145,13 @@ export async function getUnifiedServerInventory(filter?: {
         privateIp: cr.privateIp || '-',
         cloudProvider: (cr.provider || matchingServer.cloudProvider || 'other') as any,
         region: cr.region || matchingServer.region || 'Region Not Available',
-        status: matchingServer.status === 'Online' ? 'Running' : (cr.status || 'Stopped'),
+        status: isRunning ? 'Running' : (cr.status || 'Stopped'),
         powerState: isRunning ? 'Running' : (cr.status || 'Stopped'),
         vmSize: cr.size || 'Standard_D2s_v3',
-        resourceGroup: cr.resourceGroup || 'default-rg',
+        resourceGroup:
+          cr.resourceGroup && cr.resourceGroup !== 'default-rg'
+            ? cr.resourceGroup
+            : (cr.resourceId || '').match(/\/resourcegroups\/([^\/]+)/i)?.[1] || 'default-rg',
         subscriptionId: cr.subscriptionId,
         accountId: cr.accountId,
         os: `${matchingServer.os?.name || 'Linux'} ${matchingServer.os?.version || ''}`.trim(),
@@ -211,7 +214,10 @@ export async function getUnifiedServerInventory(filter?: {
         status: isRunning ? 'Running' : (cr.status || 'Stopped'),
         powerState: isRunning ? 'Running' : (cr.status || 'Stopped'),
         vmSize: cr.size || (cr.provider === 'aws' ? 't3.micro' : 'Standard_D2s_v3'),
-        resourceGroup: cr.resourceGroup || 'default-rg',
+        resourceGroup:
+          cr.resourceGroup && cr.resourceGroup !== 'default-rg'
+            ? cr.resourceGroup
+            : (cr.resourceId || '').match(/\/resourcegroups\/([^\/]+)/i)?.[1] || 'default-rg',
         subscriptionId: cr.subscriptionId,
         accountId: cr.accountId,
         os: (cr.metadata as any)?.os || 'Linux',
