@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
@@ -47,11 +47,11 @@ export function CloudOpsQuickHUD() {
     return null;
   }
 
-  const runningEC2 = filteredEC2Instances.filter(
-    (i) => i.status?.toLowerCase() === 'running'
+  const runningEC2 = (filteredEC2Instances || []).filter(
+    (i) => i?.status?.toLowerCase() === 'running'
   ).length;
-  const runningAzure = filteredAzureVMs.filter(
-    (v) => v.powerState?.toLowerCase() === 'running'
+  const runningAzure = (filteredAzureVMs || []).filter(
+    (v) => (v?.powerState || '').toLowerCase() === 'running'
   ).length;
 
   return (

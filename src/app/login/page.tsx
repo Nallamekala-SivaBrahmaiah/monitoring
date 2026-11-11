@@ -62,9 +62,8 @@ export default function LoginPage() {
         return;
       }
 
-      // Successful login -> Redirect to dashboard
-      router.push('/');
-      router.refresh();
+      // Successful login -> Full browser navigation to cleanly mount dashboard
+      window.location.href = '/';
     } catch (err: any) {
       setError(err.message || 'Connection error. Please try again.');
     } finally {
