@@ -113,26 +113,6 @@ export async function GET(request: NextRequest) {
                 ],
               }).catch(() => null);
 
-              await AnsibleHost.deleteMany({
-                provider: 'aws',
-                region: reg,
-                $and: [
-                  { name: { $nin: Array.from(liveNames) } },
-                  { ip: { $nin: Array.from(liveIps) } },
-                  ...(liveIds.size > 0 ? [{ instanceId: { $nin: Array.from(liveIds) } }] : []),
-                ],
-              }).catch(() => null);
-
-              await AnsibleController.deleteMany({
-                provider: 'aws',
-                region: reg,
-                $and: [
-                  { name: { $nin: Array.from(liveNames) } },
-                  { ipAddress: { $nin: Array.from(liveIps) } },
-                  ...(liveIds.size > 0 ? [{ instanceId: { $nin: Array.from(liveIds) } }] : []),
-                ],
-              }).catch(() => null);
-
               // Clean up any legacy mirrored srv- records if a real EC2 instance exists for that name
               for (const liveName of liveNames) {
                 if (liveName) {

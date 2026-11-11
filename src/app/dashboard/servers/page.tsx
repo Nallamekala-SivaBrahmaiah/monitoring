@@ -34,7 +34,7 @@ import {
   Power,
   KeyRound,
 } from 'lucide-react';
-import { AwsLogo, AzureLogo, DockerIcon, KubernetesIcon, Ec2Icon, AzureVmIcon } from '@/components/icons/CloudIcons';
+import { AwsLogo, AzureLogo, Ec2Icon, AzureVmIcon } from '@/components/icons/CloudIcons';
 import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
 import { ConnectSSHModal, ConnectSSHTarget } from '@/components/dashboard/ConnectSSHModal';
 import { Sidebar } from '@/components/dashboard/Sidebar';
@@ -45,6 +45,9 @@ interface RegisteredServer {
   _id: string;
   name: string;
   host: string;
+  publicIp?: string;
+  privateIp?: string;
+  cloudResourceId?: string;
   port: number;
   username: string;
   authMethod: 'privateKey' | 'password';
@@ -105,19 +108,19 @@ interface RegisteredServer {
       packetsSent: number;
     }>;
   };
-  docker: {
+  docker?: {
     detected: boolean;
     version: string;
     containersCount: number;
     runningCount: number;
     imagesCount: number;
   };
-  kubernetes: {
+  kubernetes?: {
     detected: boolean;
     version: string;
     podsCount: number;
   };
-  agent: {
+  agent?: {
     installed: boolean;
     version: string;
     token: string;
@@ -132,7 +135,7 @@ export default function ServersPage() {
   // State
   const [servers, setServers] = useState<RegisteredServer[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [fleetFilter, setFleetFilter] = useState<'all' | 'azure' | 'aws' | 'online' | 'offline' | 'docker' | 'kubernetes'>('all');
+  const [fleetFilter, setFleetFilter] = useState<'all' | 'aws' | 'azure' | 'linux' | 'online' | 'offline'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'custom' | 'aws' | 'azure'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -432,105 +435,99 @@ export default function ServersPage() {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   };
 
+  // Format relative time
+  const formatRelativeTime = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return 'N/A';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return 'N/A';
+      const diffMs = Date.now() - d.getTime();
+      if (diffMs < 0) return 'Just now';
+      const s = Math.floor(diffMs / 1000);
+      if (s < 60) return `${s}s ago`;
+      const m = Math.floor(s / 60);
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      const days = Math.floor(h / 24);
+      if (days < 7) return `${days}d ago`;
+      return d.toLocaleDateString();
+    } catch {
+      return 'N/A';
+    }
+  };
+
   // Filtered servers
   const filteredServers = useMemo(() => {
     return servers.filter((s) => {
       if (fleetFilter === 'azure' && s.cloudProvider !== 'azure') return false;
       if (fleetFilter === 'aws' && s.cloudProvider !== 'aws') return false;
+      if (fleetFilter === 'linux' && (s.cloudProvider === 'aws' || s.cloudProvider === 'azure')) return false;
       if (fleetFilter === 'online' && s.status !== 'Online') return false;
       if (fleetFilter === 'offline' && s.status === 'Online') return false;
-      if (fleetFilter === 'docker' && !s.docker?.detected) return false;
-      if (fleetFilter === 'kubernetes' && !s.kubernetes?.detected) return false;
       if (cloudProvider === 'aws' && s.cloudProvider !== 'aws') return false;
       if (cloudProvider === 'azure' && s.cloudProvider !== 'azure') return false;
 
       if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const matchName = s.name.toLowerCase().includes(q);
-        const matchHost = s.host.toLowerCase().includes(q);
-        const matchTags = s.tags.some((t) => t.toLowerCase().includes(q));
+        const q = searchQuery.toLowerCase().trim();
+        const matchName = (s.name || '').toLowerCase().includes(q);
+        const matchHost = (s.host || '').toLowerCase().includes(q);
+        const matchPubIp = ((s as any).publicIp || '').toLowerCase().includes(q);
+        const matchPrivIp = ((s as any).privateIp || '').toLowerCase().includes(q);
+        const matchCloudId = ((s as any).cloudResourceId || '').toLowerCase().includes(q);
+        const matchTags = (s.tags || []).some((t) => t.toLowerCase().includes(q));
         const matchProvider = (s.cloudProvider || '').toLowerCase().includes(q);
         const matchRegion = (s.region || '').toLowerCase().includes(q);
-        return matchName || matchHost || matchTags || matchProvider || matchRegion;
+        const matchUser = (s.username || '').toLowerCase().includes(q);
+        return matchName || matchHost || matchPubIp || matchPrivIp || matchCloudId || matchTags || matchProvider || matchRegion || matchUser;
       }
       return true;
     });
   }, [servers, fleetFilter, cloudProvider, searchQuery]);
 
-  // Cloud provider groups
-  const azureServers = useMemo(() => {
-    const list = filteredServers.filter((s) => s.cloudProvider === 'azure');
-    const seen = new Set<string>();
-    return list.filter((s) => {
-      const key = (s.name || s._id).toLowerCase().trim();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [filteredServers]);
-
-  const awsServers = useMemo(() => {
-    const list = filteredServers.filter((s) => s.cloudProvider === 'aws');
-    const seen = new Set<string>();
-    return list.filter((s) => {
-      const key = (s.name || s._id).toLowerCase().trim();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [filteredServers]);
-
-  const otherServers = useMemo(() => filteredServers.filter((s) => s.cloudProvider !== 'azure' && s.cloudProvider !== 'aws'), [filteredServers]);
-
-  const totalAzureCount = useMemo(() => {
-    const list = servers.filter((s) => s.cloudProvider === 'azure');
-    const seen = new Set<string>();
-    return list.filter((s) => {
-      const key = (s.name || s._id).toLowerCase().trim();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    }).length;
-  }, [servers]);
-
-  const totalAwsCount = useMemo(() => {
-    const list = servers.filter((s) => s.cloudProvider === 'aws');
-    const seen = new Set<string>();
-    return list.filter((s) => {
-      const key = (s.name || s._id).toLowerCase().trim();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    }).length;
-  }, [servers]);
-
-    // Aggregate stats
-  const totalCustomServers = servers.length;
-  const onlineServersCount = servers.filter((s) => s.status === 'Online').length;
+  // Aggregate stats (6 KPI Metrics)
+  const totalServersCount = servers.length;
+  const onlineServersCount = useMemo(() => servers.filter((s) => s.status === 'Online').length, [servers]);
+  const offlineServersCount = useMemo(() => servers.filter((s) => s.status !== 'Online').length, [servers]);
+  const awsServersCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'aws').length, [servers]);
+  const azureServersCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'azure').length, [servers]);
+  const linuxServersCount = useMemo(() => servers.filter((s) => s.cloudProvider !== 'aws' && s.cloudProvider !== 'azure').length, [servers]);
 
   const renderTableHeader = () => (
     <thead className="bg-[#0D1526] text-slate-400 uppercase text-[10px] tracking-wider border-b border-[#1E293B]">
       <tr>
-        <th className="py-3 px-4">Server Name & Host</th>
-        <th className="py-3 px-4">Provider / Location</th>
-        <th className="py-3 px-4">Status</th>
-        <th className="py-3 px-4">CPU Usage</th>
-        <th className="py-3 px-4">RAM Usage</th>
-        <th className="py-3 px-4">Disk Space</th>
-        <th className="py-3 px-4 text-right">Actions</th>
+        <th className="py-3.5 px-4 font-semibold">Server Name & ID</th>
+        <th className="py-3.5 px-4 font-semibold">IP Addresses</th>
+        <th className="py-3.5 px-4 font-semibold">Provider / Region</th>
+        <th className="py-3.5 px-4 font-semibold">OS & User</th>
+        <th className="py-3.5 px-4 font-semibold">Status</th>
+        <th className="py-3.5 px-4 font-semibold">CPU Usage</th>
+        <th className="py-3.5 px-4 font-semibold">RAM Usage</th>
+        <th className="py-3.5 px-4 font-semibold">Disk Space</th>
+        <th className="py-3.5 px-4 font-semibold">Last Connected</th>
+        <th className="py-3.5 px-4 text-right font-semibold">Actions</th>
       </tr>
     </thead>
   );
 
   const renderServerRows = (serverList: RegisteredServer[]) => {
     return serverList.map((server) => {
-      const cpuVal = server.metrics?.cpu?.usagePercent ?? 0;
-      const memVal = server.metrics?.memory?.usagePercent ?? 0;
-      const diskVal = server.metrics?.disks?.[0]?.usagePercent ?? 0;
+      const hasMetrics = server.status === 'Online' && server.metrics;
+      const cpuVal = server.metrics?.cpu?.usagePercent;
+      const memVal = server.metrics?.memory?.usagePercent;
+      const diskVal = server.metrics?.disks?.[0]?.usagePercent;
+
+      const hasCpu = hasMetrics && typeof cpuVal === 'number' && !isNaN(cpuVal);
+      const hasMem = hasMetrics && typeof memVal === 'number' && !isNaN(memVal);
+      const hasDisk = hasMetrics && typeof diskVal === 'number' && !isNaN(diskVal);
+
+      const pubIp = server.publicIp || server.host;
+      const privIp = server.privateIp;
+      const resourceId = server.cloudResourceId || server._id;
 
       return (
         <tr key={server._id} className="hover:bg-[#15203A] transition-colors">
-          {/* Server Name & Host with SSH Verified badge (matching Second Image) */}
+          {/* 1. Server Name & Instance ID / Resource ID */}
           <td className="py-3.5 px-4">
             <Link href={`/dashboard/servers/${server._id}`} className="group block">
               <div className="font-semibold text-white group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
@@ -538,23 +535,45 @@ export default function ServersPage() {
                 <ExternalLink className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <Check className="w-2.5 h-2.5" />
-                  <span>SSH Verified</span>
+                <span className="text-[10px] font-mono text-slate-400 truncate max-w-[150px]" title={resourceId}>
+                  {resourceId}
                 </span>
-                <span className="text-[11px] font-mono text-emerald-400">
-                  {server.host}:{server.port || 22}
-                </span>
+                {server.status === 'Online' && (
+                  <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <Check className="w-2.5 h-2.5" />
+                    <span>SSH Verified</span>
+                  </span>
+                )}
               </div>
-              {server.os?.name && (
-                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                  {server.os.name} {server.os.version}
-                </div>
-              )}
             </Link>
           </td>
 
-          {/* Provider / Location */}
+          {/* 2. Public IP & Private IP Addresses */}
+          <td className="py-3.5 px-4 font-mono text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold text-slate-500">PUB:</span>
+              <span className="text-emerald-400 font-semibold">{pubIp || 'N/A'}</span>
+              {pubIp && pubIp !== 'N/A' && pubIp !== '-' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(pubIp);
+                    showNotification('info', 'Copied', 'Public IP address copied to clipboard');
+                  }}
+                  className="text-slate-500 hover:text-white"
+                  title="Copy Public IP"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] font-semibold text-slate-500">PRIV:</span>
+              <span className="text-slate-300">{privIp || 'N/A'}</span>
+            </div>
+          </td>
+
+          {/* 3. Cloud Provider & Region */}
           <td className="py-3.5 px-4">
             <span
               className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
@@ -562,15 +581,32 @@ export default function ServersPage() {
                   ? 'bg-[#0089D6]/15 text-[#5EA0EF] border-[#0089D6]/30'
                   : server.cloudProvider === 'aws'
                   ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                  : 'bg-slate-800/60 text-slate-300 border-slate-700/60'
+                  : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
               }`}
             >
+              {server.cloudProvider === 'azure' ? (
+                <AzureLogo className="w-3.5 h-3.5" />
+              ) : server.cloudProvider === 'aws' ? (
+                <AwsLogo className="w-3.5 h-3.5" />
+              ) : (
+                <Terminal className="w-3.5 h-3.5" />
+              )}
               <span className="uppercase font-bold">{server.cloudProvider}</span>
               {server.region && <span className="text-slate-400 font-normal">({server.region})</span>}
             </span>
           </td>
 
-          {/* Status */}
+          {/* 4. Operating System & SSH Username */}
+          <td className="py-3.5 px-4">
+            <div className="text-xs text-white font-medium truncate max-w-[130px]" title={server.os?.name ? `${server.os.name} ${server.os.version || ''}` : 'Linux'}>
+              {server.os?.name ? `${server.os.name} ${server.os.version || ''}` : 'Linux'}
+            </div>
+            <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+              {server.username || 'ubuntu'}:{server.port || 22}
+            </div>
+          </td>
+
+          {/* 5. Connection Status */}
           <td className="py-3.5 px-4">
             <div className="flex items-center gap-1.5">
               <span
@@ -601,68 +637,85 @@ export default function ServersPage() {
             )}
           </td>
 
-          {/* CPU */}
+          {/* 6. CPU Usage */}
           <td className="py-3.5 px-4">
-            <div className="w-28 space-y-1">
-              <div className="flex justify-between text-[11px]">
-                <span className="text-slate-300 font-semibold">{cpuVal}%</span>
-                <span className="text-slate-500 font-mono">{server.hardware?.cpuCores || 1}c</span>
+            {hasCpu ? (
+              <div className="w-24 space-y-1">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-slate-300 font-semibold">{cpuVal}%</span>
+                  <span className="text-slate-500 font-mono">{server.hardware?.cpuCores || 1}c</span>
+                </div>
+                <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      (cpuVal || 0) > 85 ? 'bg-rose-500' : (cpuVal || 0) > 60 ? 'bg-amber-400' : 'bg-emerald-400'
+                    }`}
+                    style={{ width: `${Math.min(100, cpuVal || 0)}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${
-                    cpuVal > 85 ? 'bg-rose-500' : cpuVal > 60 ? 'bg-amber-400' : 'bg-emerald-400'
-                  }`}
-                  style={{ width: `${Math.min(100, cpuVal)}%` }}
-                />
-              </div>
-            </div>
+            ) : (
+              <span className="text-slate-500 text-xs font-mono">N/A</span>
+            )}
           </td>
 
-          {/* Memory */}
+          {/* 7. RAM Usage */}
           <td className="py-3.5 px-4">
-            <div className="w-28 space-y-1">
-              <div className="flex justify-between text-[11px]">
-                <span className="text-slate-300 font-semibold">{memVal}%</span>
-                <span className="text-slate-500 font-mono">
-                  {formatBytes(server.metrics?.memory?.totalBytes || 0)}
-                </span>
+            {hasMem ? (
+              <div className="w-24 space-y-1">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-slate-300 font-semibold">{memVal}%</span>
+                  <span className="text-slate-500 font-mono">
+                    {formatBytes(server.metrics?.memory?.totalBytes || 0)}
+                  </span>
+                </div>
+                <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      (memVal || 0) > 90 ? 'bg-rose-500' : (memVal || 0) > 70 ? 'bg-amber-400' : 'bg-blue-400'
+                    }`}
+                    style={{ width: `${Math.min(100, memVal || 0)}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${
-                    memVal > 90 ? 'bg-rose-500' : memVal > 70 ? 'bg-amber-400' : 'bg-blue-400'
-                  }`}
-                  style={{ width: `${Math.min(100, memVal)}%` }}
-                />
-              </div>
-            </div>
+            ) : (
+              <span className="text-slate-500 text-xs font-mono">N/A</span>
+            )}
           </td>
 
-          {/* Disk */}
+          {/* 8. Disk Usage */}
           <td className="py-3.5 px-4">
-            <div className="w-24 space-y-1">
-              <div className="flex justify-between text-[11px]">
-                <span className="text-slate-300 font-semibold">{diskVal}%</span>
-                <span className="text-slate-500 font-mono">
-                  {server.metrics?.disks?.[0]?.mount || '/'}
-                </span>
+            {hasDisk ? (
+              <div className="w-24 space-y-1">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-slate-300 font-semibold">{diskVal}%</span>
+                  <span className="text-slate-500 font-mono">
+                    {server.metrics?.disks?.[0]?.mount || '/'}
+                  </span>
+                </div>
+                <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      (diskVal || 0) > 85 ? 'bg-rose-500' : 'bg-teal-400'
+                    }`}
+                    style={{ width: `${Math.min(100, diskVal || 0)}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${
-                    diskVal > 85 ? 'bg-rose-500' : 'bg-teal-400'
-                  }`}
-                  style={{ width: `${Math.min(100, diskVal)}%` }}
-                />
-              </div>
-            </div>
+            ) : (
+              <span className="text-slate-500 text-xs font-mono">N/A</span>
+            )}
           </td>
 
-          {/* Actions: Start & Stop + Login + Key + Refresh + View + Delete */}
+          {/* 9. Last Connected Time */}
+          <td className="py-3.5 px-4 text-xs font-mono text-slate-400 whitespace-nowrap">
+            {formatRelativeTime(server.lastConnectedAt || server.lastHeartbeatAt)}
+          </td>
+
+          {/* 10. Actions */}
           <td className="py-3.5 px-4 text-right">
             <div className="flex items-center justify-end gap-1.5">
-              {/* 1. Start & Stop Server Button Group */}
+              {/* Start & Stop Server Button Group */}
               {(() => {
                 const isOnline =
                   server.status === 'Online' ||
@@ -701,7 +754,7 @@ export default function ServersPage() {
                 );
               })()}
 
-              {/* 2. Direct interactive SSH Terminal Login button (from Second Image) */}
+              {/* SSH Terminal Login */}
               <button
                 type="button"
                 onClick={() => handleOpenTerminal(server)}
@@ -712,27 +765,27 @@ export default function ServersPage() {
                 <span>Login</span>
               </button>
 
-              {/* 3. SSH Key configuration button (from Second Image) */}
+              {/* SSH Key configuration */}
               <button
                 type="button"
                 onClick={() => handleOpenSSHModal(server)}
                 className="p-1.5 text-slate-400 hover:text-amber-400 rounded-lg hover:bg-[#18233C] transition-colors shrink-0 cursor-pointer border border-[#1E293B]"
-                title="Configure / Reconfigure SSH Credentials"
+                title="Configure / Edit SSH Credentials"
               >
                 <KeyRound className="w-3.5 h-3.5" />
               </button>
 
-              {/* 4. Refresh / Sync Button */}
+              {/* Refresh / Sync Button */}
               <button
                 onClick={() => handleRefreshServer(server._id)}
                 disabled={syncingId === server._id}
-                title="Synchronize live metrics via SSH"
+                title="Refresh Status & Live Telemetry"
                 className="p-1.5 rounded-lg bg-[#0D1526] hover:bg-[#1A2642] text-slate-300 hover:text-white border border-[#1E293B] transition-colors"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${syncingId === server._id ? 'animate-spin text-blue-400' : ''}`} />
               </button>
 
-              {/* 5. View / Details Button (matching Second Image) */}
+              {/* View Details Button */}
               <Link
                 href={`/dashboard/servers/${server._id}`}
                 className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-[#202E4E] text-slate-200 rounded-lg border border-[#1E293B] transition-colors"
@@ -740,10 +793,10 @@ export default function ServersPage() {
                 View
               </Link>
 
-              {/* 6. Delete / Disconnect Button */}
+              {/* Delete Button */}
               <button
                 onClick={() => setDeleteTarget(server)}
-                title="Remove server"
+                title="Delete Server"
                 className="p-1.5 rounded-lg bg-[#0D1526] hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-[#1E293B] transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -839,68 +892,72 @@ export default function ServersPage() {
             </div>
           </div>
 
-          {/* KPI Summary Cards */}
+          {/* KPI Summary Cards (Exactly 6 Cards) */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+            {/* 1. Total Servers */}
             <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5 shadow-sm">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Total Servers</span>
-              <div className="text-2xl font-bold text-white mt-1">{totalCustomServers}</div>
-              <span className="text-[10px] text-emerald-400 mt-0.5 block">{onlineServersCount} connected</span>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Total Servers</span>
+                <Server className="w-4 h-4 text-blue-400" />
+              </div>
+              <div className="text-2xl font-bold text-white mt-1">{totalServersCount}</div>
+              <span className="text-[10px] text-emerald-400 mt-0.5 block">{onlineServersCount} online</span>
             </div>
 
+            {/* 2. Online Servers */}
             <div className="bg-[#111A2E] border border-emerald-500/20 rounded-xl p-3.5 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">Online Nodes</span>
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">Online Servers</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               </div>
               <div className="text-2xl font-bold text-white mt-1">{onlineServersCount}</div>
               <span className="text-[10px] text-emerald-300/80 mt-0.5 block">Active Telemetry</span>
             </div>
 
-            <div className="bg-[#111A2E] border border-slate-700/60 rounded-xl p-3.5 shadow-sm">
+            {/* 3. Offline Servers */}
+            <div className="bg-[#111A2E] border border-rose-500/20 rounded-xl p-3.5 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Offline Nodes</span>
-                <XCircle className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-[11px] font-semibold text-rose-400 uppercase tracking-wider">Offline Servers</span>
+                <XCircle className="w-4 h-4 text-rose-400" />
               </div>
-              <div className="text-2xl font-bold text-white mt-1">{totalCustomServers - onlineServersCount}</div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Needs Attention</span>
+              <div className="text-2xl font-bold text-white mt-1">{offlineServersCount}</div>
+              <span className="text-[10px] text-rose-400/80 mt-0.5 block">Needs Attention</span>
             </div>
 
+            {/* 4. AWS EC2 Servers */}
+            <div className="bg-[#111A2E] border border-amber-500/20 rounded-xl p-3.5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider">AWS EC2 Servers</span>
+                <AwsLogo className="w-4 h-4 text-amber-400" />
+              </div>
+              <div className="text-2xl font-bold text-white mt-1">{awsServersCount}</div>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Amazon Web Services</span>
+            </div>
+
+            {/* 5. Azure Virtual Machines */}
             <div className="bg-[#111A2E] border border-blue-500/20 rounded-xl p-3.5 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-blue-400 uppercase tracking-wider">Docker Hosts</span>
-                <DockerIcon className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-semibold text-[#5EA0EF] uppercase tracking-wider">Azure Virtual Machines</span>
+                <AzureLogo className="w-4 h-4" />
               </div>
-              <div className="text-2xl font-bold text-white mt-1">
-                {servers.filter((s) => s.docker?.detected).length}
-              </div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Engine Detected</span>
+              <div className="text-2xl font-bold text-white mt-1">{azureServersCount}</div>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Microsoft Azure</span>
             </div>
 
-            <div className="bg-[#111A2E] border border-indigo-500/20 rounded-xl p-3.5 shadow-sm">
+            {/* 6. Linux Servers */}
+            <div className="bg-[#111A2E] border border-purple-500/20 rounded-xl p-3.5 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-indigo-400 uppercase tracking-wider">Kubernetes</span>
-                <KubernetesIcon className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-semibold text-purple-400 uppercase tracking-wider">Linux Servers</span>
+                <Terminal className="w-4 h-4 text-purple-400" />
               </div>
-              <div className="text-2xl font-bold text-white mt-1">
-                {servers.filter((s) => s.kubernetes?.detected).length}
-              </div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">K8s Nodes</span>
-            </div>
-
-            <div className="bg-[#111A2E] border border-cyan-500/20 rounded-xl p-3.5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-cyan-400 uppercase tracking-wider">Fleet Health</span>
-                <Activity className="w-3.5 h-3.5 text-cyan-400" />
-              </div>
-              <div className="text-2xl font-bold text-white mt-1">
-                {servers.filter((s) => (s.metrics?.cpu?.usagePercent || 0) < 80).length} / {totalCustomServers}
-              </div>
-              <span className="text-[10px] text-emerald-400 mt-0.5 block">Healthy Load</span>
+              <div className="text-2xl font-bold text-white mt-1">{linuxServersCount}</div>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Linux Servers</span>
             </div>
           </div>
+
           {/* Filter Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#111A2E] border border-[#1E293B] rounded-xl p-3">
-            {/* Fleet Status & Cloud Filters */}
+            {/* 6 Server Filters */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
               <button
                 onClick={() => setFleetFilter('all')}
@@ -910,19 +967,7 @@ export default function ServersPage() {
                     : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
                 }`}
               >
-                All Servers ({servers.length})
-              </button>
-
-              <button
-                onClick={() => setFleetFilter('azure')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  fleetFilter === 'azure'
-                    ? 'bg-[#0089D6] text-white shadow-sm ring-1 ring-[#5EA0EF]'
-                    : 'text-[#5EA0EF] hover:bg-[#0089D6]/15 hover:text-white'
-                }`}
-              >
-                <AzureLogo className="w-3.5 h-3.5" />
-                <span>Azure VMs ({totalAzureCount})</span>
+                All Servers ({totalServersCount})
               </button>
 
               <button
@@ -934,7 +979,31 @@ export default function ServersPage() {
                 }`}
               >
                 <AwsLogo className="w-3.5 h-3.5" />
-                <span>AWS EC2 ({totalAwsCount})</span>
+                <span>AWS EC2 ({awsServersCount})</span>
+              </button>
+
+              <button
+                onClick={() => setFleetFilter('azure')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  fleetFilter === 'azure'
+                    ? 'bg-[#0089D6] text-white shadow-sm ring-1 ring-[#5EA0EF]'
+                    : 'text-[#5EA0EF] hover:bg-[#0089D6]/15 hover:text-white'
+                }`}
+              >
+                <AzureLogo className="w-3.5 h-3.5" />
+                <span>Azure Virtual Machines ({azureServersCount})</span>
+              </button>
+
+              <button
+                onClick={() => setFleetFilter('linux')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  fleetFilter === 'linux'
+                    ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-300'
+                    : 'text-purple-400 hover:bg-purple-950/30 hover:text-white'
+                }`}
+              >
+                <Terminal className="w-3.5 h-3.5" />
+                <span>Linux Servers ({linuxServersCount})</span>
               </button>
 
               <button
@@ -951,256 +1020,114 @@ export default function ServersPage() {
 
               <button
                 onClick={() => setFleetFilter('offline')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
                   fleetFilter === 'offline'
-                    ? 'bg-slate-700 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-800'
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'text-rose-400 hover:bg-rose-950/30'
                 }`}
               >
-                Offline ({totalCustomServers - onlineServersCount})
-              </button>
-
-              <button
-                onClick={() => setFleetFilter('docker')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  fleetFilter === 'docker'
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'text-sky-400 hover:bg-sky-950/30'
-                }`}
-              >
-                <DockerIcon className="w-3 h-3" />
-                <span>Docker Hosts ({servers.filter((s) => s.docker?.detected).length})</span>
-              </button>
-
-              <button
-                onClick={() => setFleetFilter('kubernetes')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  fleetFilter === 'kubernetes'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-indigo-400 hover:bg-indigo-950/30'
-                }`}
-              >
-                <KubernetesIcon className="w-3.5 h-3.5" />
-                <span>Kubernetes ({servers.filter((s) => s.kubernetes?.detected).length})</span>
+                <XCircle className="w-3 h-3" />
+                <span>Offline ({offlineServersCount})</span>
               </button>
             </div>
 
             {/* Search Input */}
-            <div className="relative min-w-[240px]">
+            <div className="relative min-w-[260px]">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search server, IP, tag..."
+                placeholder="Search server name, IP address, ID..."
                 className="w-full pl-9 pr-3 py-1.5 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
               />
             </div>
           </div>
 
-          {/* ========================================================================= */}
-          {/* 1. AZURE VIRTUAL MACHINES (COMPUTE VMS) TABLE */}
-          {/* ========================================================================= */}
-          {(fleetFilter === 'all' || fleetFilter === 'azure' || (fleetFilter !== 'aws' && azureServers.length > 0)) && (
-            <div className="bg-[#111A2E] border border-blue-500/20 rounded-xl overflow-hidden shadow-sm">
-              <div className="px-5 py-3.5 border-b border-[#1E293B] bg-gradient-to-r from-[#0089D6]/10 via-transparent to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-[#0089D6]/15 border border-[#0089D6]/30 flex items-center justify-center shrink-0">
-                    <AzureLogo className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <span>Azure Virtual Machines (Compute VMs)</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0089D6]/20 text-[#5EA0EF] border border-[#0089D6]/30 font-semibold">
-                        {azureServers.length} {azureServers.length === 1 ? 'node' : 'nodes'}
-                      </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-semibold">
-                        {azureServers.filter((s) => s.status === 'Online').length} Online
-                      </span>
-                    </h3>
-                    <p className="text-[11px] text-slate-400">
-                      Microsoft Azure Linux servers with continuous SSH telemetry &amp; interactive terminal access.
-                    </p>
-                  </div>
+          {/* Infrastructure Servers Table */}
+          <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden shadow-sm">
+            <div className="px-5 py-3.5 border-b border-[#1E293B] bg-gradient-to-r from-blue-900/10 via-transparent to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0">
+                  <Server className="w-4 h-4 text-blue-400" />
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        cloudProvider: 'azure',
-                        region: 'austriaeast',
-                      }));
-                      setShowAddModal(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#0089D6]/20 hover:bg-[#0089D6]/30 text-[#5EA0EF] border border-[#0089D6]/40 transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Azure VM</span>
-                  </button>
-                </div>
-              </div>
-
-              {azureServers.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    {renderTableHeader()}
-                    <tbody className="divide-y divide-[#1E293B]">
-                      {renderServerRows(azureServers)}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="py-8 text-center text-slate-400">
-                  <p className="text-xs">No Azure Virtual Machines found matching your filter.</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* 2. AWS EC2 INSTANCES (COMPUTE FLEET) TABLE */}
-          {/* ========================================================================= */}
-          {(fleetFilter === 'all' || fleetFilter === 'aws' || (fleetFilter !== 'azure' && awsServers.length > 0)) && (
-            <div className="bg-[#111A2E] border border-amber-500/20 rounded-xl overflow-hidden shadow-sm">
-              <div className="px-5 py-3.5 border-b border-[#1E293B] bg-gradient-to-r from-amber-500/10 via-transparent to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
-                    <AwsLogo className="w-4 h-4 text-amber-400" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <span>AWS EC2 Instances (Compute Fleet)</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold">
-                        {awsServers.length} {awsServers.length === 1 ? 'node' : 'nodes'}
-                      </span>
-                      {awsServers.length > 0 && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-semibold">
-                          {awsServers.filter((s) => s.status === 'Online').length} Online
-                        </span>
-                      )}
-                    </h3>
-                    <p className="text-[11px] text-slate-400">
-                      Amazon Web Services EC2 Linux instances with continuous telemetry &amp; interactive terminal access.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        cloudProvider: 'aws',
-                        region: 'us-east-1',
-                      }));
-                      setShowAddModal(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add AWS EC2 Server</span>
-                  </button>
-                </div>
-              </div>
-
-              {awsServers.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    {renderTableHeader()}
-                    <tbody className="divide-y divide-[#1E293B]">
-                      {renderServerRows(awsServers)}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="py-8 px-4 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto text-amber-400">
-                    <AwsLogo className="w-6 h-6" />
-                  </div>
-                  <h4 className="text-sm font-semibold text-white">No AWS EC2 Instances Connected Yet</h4>
-                  <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-                    Connect your AWS EC2 Linux instances (Ubuntu, Amazon Linux, Debian, RHEL) with SSH credentials to enable automatic metric collection and 1-click interactive terminal login.
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>
+                      {fleetFilter === 'aws'
+                        ? 'AWS EC2 Instances'
+                        : fleetFilter === 'azure'
+                        ? 'Azure Virtual Machines'
+                        : fleetFilter === 'linux'
+                        ? 'Linux Servers'
+                        : fleetFilter === 'online'
+                        ? 'Online Infrastructure Servers'
+                        : fleetFilter === 'offline'
+                        ? 'Offline Infrastructure Servers'
+                        : 'Infrastructure Servers (Compute Fleet)'}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-semibold">
+                      {filteredServers.length} {filteredServers.length === 1 ? 'server' : 'servers'}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-semibold">
+                      {filteredServers.filter((s) => s.status === 'Online').length} Online
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Real-time operational inventory for AWS EC2, Azure VMs, and registered Linux servers.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        cloudProvider: 'aws',
-                        region: 'us-east-1',
-                      }));
-                      setShowAddModal(true);
-                    }}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md transition-all cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4 text-slate-950" />
-                    <span>Connect AWS EC2 Server</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* 3. ON-PREMISES & OTHER LINUX SERVERS TABLE */}
-          {/* ========================================================================= */}
-          {otherServers.length > 0 && (
-            <div className="bg-[#111A2E] border border-slate-700/40 rounded-xl overflow-hidden shadow-sm">
-              <div className="px-5 py-3.5 border-b border-[#1E293B] bg-gradient-to-r from-slate-900/40 via-transparent to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
-                    <Server className="w-4 h-4 text-slate-300" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <span>On-Premises &amp; Other Linux Servers</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold">
-                        {otherServers.length} {otherServers.length === 1 ? 'node' : 'nodes'}
-                      </span>
-                    </h3>
-                    <p className="text-[11px] text-slate-400">
-                      Bare-metal, hybrid cloud, and on-premises Linux host nodes.
-                    </p>
-                  </div>
                 </div>
               </div>
 
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      cloudProvider: fleetFilter === 'azure' ? 'azure' : fleetFilter === 'aws' ? 'aws' : 'other',
+                      region: fleetFilter === 'azure' ? 'austriaeast' : fleetFilter === 'aws' ? 'us-east-1' : '',
+                    }));
+                    setShowAddModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Server</span>
+                </button>
+              </div>
+            </div>
+
+            {filteredServers.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   {renderTableHeader()}
                   <tbody className="divide-y divide-[#1E293B]">
-                    {renderServerRows(otherServers)}
+                    {renderServerRows(filteredServers)}
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* 4. FILTER EMPTY STATE */}
-          {/* ========================================================================= */}
-          {filteredServers.length === 0 && !loading && (
-            <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-12 text-center text-slate-400 space-y-3">
-              <div className="w-12 h-12 rounded-xl bg-[#0D1526] border border-[#1E293B] flex items-center justify-center mx-auto text-slate-500">
-                <Server className="w-6 h-6" />
+            ) : (
+              <div className="py-12 px-4 text-center space-y-3">
+                <div className="w-12 h-12 rounded-xl bg-[#0D1526] border border-[#1E293B] flex items-center justify-center mx-auto text-slate-500">
+                  <Server className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-semibold text-white">No Servers Match Selected Criteria</h4>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  No servers found matching your current filter. Try selecting &quot;All Servers&quot; or clearing your search query.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFleetFilter('all');
+                    setSearchQuery('');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all cursor-pointer"
+                >
+                  <span>Reset Filters</span>
+                </button>
               </div>
-              <h4 className="text-sm font-semibold text-white">No Servers Match Selected Criteria</h4>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Try clearing your search query or selecting &quot;All Servers&quot; to view your registered cloud instances.
-              </p>
-              <button
-                onClick={() => {
-                  setFleetFilter('all');
-                  setSearchQuery('');
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all cursor-pointer"
-              >
-                <span>Reset Filters</span>
-              </button>
-            </div>
-          )}
+            )}
+          </div>
         </main>
       </div>
 
@@ -1380,11 +1307,9 @@ export default function ServersPage() {
                     onChange={(e) => setFormData({ ...formData, cloudProvider: e.target.value as any })}
                     className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white focus:outline-none focus:border-blue-500"
                   >
-                    <option value="other">On-Premise / Bare Metal / Other</option>
                     <option value="aws">AWS EC2</option>
                     <option value="azure">Azure Virtual Machine</option>
-                    <option value="gcp">Google Cloud Platform</option>
-                    <option value="on-premise">On-Premises Datacenter</option>
+                    <option value="other">Linux Server</option>
                   </select>
                 </div>
 
@@ -1394,7 +1319,7 @@ export default function ServersPage() {
                     type="text"
                     value={formData.region}
                     onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                    placeholder="e.g. us-east-1 or on-prem"
+                    placeholder="e.g. us-east-1 or ap-south-1"
                     className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
                   />
                 </div>

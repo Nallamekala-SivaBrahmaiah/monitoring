@@ -248,6 +248,54 @@ export default function AnsiblePage() {
     loadAll();
   }, [fetchControllers, fetchStats, fetchHosts, fetchPlaybooks, fetchExecutions]);
 
+  // Clean all execution logs and history
+  const handleClearHistory = async () => {
+    try {
+      const res = await fetch('/api/ansible/executions?all=true', {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('success', data.message || 'Execution logs cleaned successfully.');
+        setExecutions([]);
+        setSelectedLogExecution(null);
+        await Promise.all([
+          fetchExecutions(),
+          fetchStats(activeController?._id),
+        ]);
+      } else {
+        throw new Error(data.error || 'Failed to clean execution logs');
+      }
+    } catch (err: any) {
+      showToast('error', err.message);
+    }
+  };
+
+  // Delete single execution record
+  const handleDeleteExecution = async (ex: IAnsibleExecutionData) => {
+    try {
+      const targetId = ex._id || ex.jobId;
+      const res = await fetch(`/api/ansible/executions?id=${encodeURIComponent(targetId)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('success', `Execution record "${ex.jobId}" deleted.`);
+        if (selectedLogExecution?._id === ex._id || selectedLogExecution?.jobId === ex.jobId) {
+          setSelectedLogExecution(null);
+        }
+        await Promise.all([
+          fetchExecutions(),
+          fetchStats(activeController?._id),
+        ]);
+      } else {
+        throw new Error(data.error || 'Failed to delete execution record');
+      }
+    } catch (err: any) {
+      showToast('error', err.message);
+    }
+  };
+
   // Polling for live jobs
   useEffect(() => {
     const hasRunning = executions.some((e) => e.status === 'RUNNING');
@@ -559,6 +607,7 @@ export default function AnsiblePage() {
               selectedExecution={selectedLogExecution}
               onSelectExecution={setSelectedLogExecution}
               onRefresh={fetchExecutions}
+              onClearLogs={handleClearHistory}
             />
           )}
 
@@ -572,6 +621,8 @@ export default function AnsiblePage() {
                   handleQuickRun(String(ex.hostId), String(ex.playbookId), ex.extraVars || '');
                 }
               }}
+              onClearHistory={handleClearHistory}
+              onDeleteExecution={handleDeleteExecution}
             />
           )}
 

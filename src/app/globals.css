@@ -51,3 +51,123 @@ body {
 .animate-pulse-glow {
   animation: pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* Animated Rotating Laser Beam Border (Design 2) */
+@keyframes spinBeam {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.border-rotating-beam-container {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  background: #0d1e3d;
+}
+
+.border-rotating-beam-container::before {
+  content: '';
+  position: absolute;
+  width: 260%;
+  height: 260%;
+  top: -80%;
+  left: -80%;
+  background: conic-gradient(
+    transparent 0deg,
+    transparent 200deg,
+    #0084FF 250deg,
+    #00D4FF 295deg,
+    #FF9900 340deg,
+    transparent 360deg
+  );
+  animation: spinBeam 4s linear infinite;
+  z-index: 0;
+}
+
+.border-rotating-beam-inner {
+  position: relative;
+  background: rgba(7, 19, 43, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: calc(1.5rem - 2px);
+  margin: 2px;
+  z-index: 1;
+}
+
+/* Cyber Circuit Beam Stream Animation (Left Rail Style 1) */
+@keyframes streamDown {
+  0% {
+    top: -20%;
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    top: 110%;
+    opacity: 0;
+  }
+}
+
+.beam-stream-down {
+  position: absolute;
+  width: 100%;
+  height: 130px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #00D4FF 25%,
+    #0084FF 60%,
+    #FF9900 85%,
+    transparent 100%
+  );
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.9), 0 0 10px rgba(255, 153, 0, 0.9);
+  animation: streamDown 2.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Upward stream animation for Dual Parallel Cloud Bus (Style 4) */
+@keyframes streamUp {
+  0% {
+    bottom: -20%;
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    bottom: 110%;
+    opacity: 0;
+  }
+}
+
+.beam-stream-up {
+  position: absolute;
+  width: 100%;
+  height: 130px;
+  background: linear-gradient(
+    to top,
+    transparent 0%,
+    #FF9900 25%,
+    #0084FF 60%,
+    #00D4FF 85%,
+    transparent 100%
+  );
+  box-shadow: 0 0 10px rgba(255, 153, 0, 0.9), 0 0 10px rgba(0, 212, 255, 0.9);
+  animation: streamUp 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.writing-vertical-rl {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+}

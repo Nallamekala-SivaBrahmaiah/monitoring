@@ -5,6 +5,7 @@ import AnsiblePlaybook from '@/models/AnsiblePlaybook';
 import AnsibleHost from '@/models/AnsibleHost';
 import AnsibleController from '@/models/AnsibleController';
 import { buildSSHConfig, executeRemoteSSHCommand } from './ansibleSSH';
+import { decryptSecret } from '@/lib/serverMonitoring/crypto';
 import { ANSIBLE_TEMPLATES } from './ansibleTemplates';
 import { Client } from 'ssh2';
 import { spawn } from 'child_process';
@@ -283,6 +284,134 @@ export async function executeAnsiblePlaybook(executionId: string): Promise<void>
   activeJobs.set(executionId, jobHandle);
 
   try {
+    // If executingController has SSH credentials, execute directly on the remote controller
+    if (executingController && executingController.encryptedAuthSecret) {
+      execution.logs += `${logTime()} Connecting to Controller "${executingController.name}" (${executingController.ipAddress}) for execution...\n`;
+      await execution.save();
+
+      const ctrlClient = new Client();
+      jobHandle.sshClient = ctrlClient;
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            try { ctrlClient.end(); } catch {}
+            reject(new Error(`SSH connection to controller "${executingController.name}" timed out after 20s`));
+          }, 20000);
+
+          ctrlClient.on('ready', () => {
+            clearTimeout(timer);
+            resolve();
+          });
+          ctrlClient.on('error', (err) => {
+            clearTimeout(timer);
+            reject(new Error(`Controller SSH error: ${err.message}`));
+          });
+
+          const config = buildSSHConfig({
+            ip: executingController.ipAddress,
+            port: executingController.port || 22,
+            username: executingController.username,
+            authMethod: executingController.authMethod,
+            encryptedAuthSecret: executingController.encryptedAuthSecret,
+            authSecretIv: executingController.authSecretIv || '',
+            authSecretTag: executingController.authSecretTag || '',
+          }, 20000);
+          ctrlClient.connect(config);
+        });
+
+        execution.logs += `${logTime()} Controller SSH connected. Preparing workspace on controller...\n`;
+        await execution.save();
+
+        const safeJobId = (execution.jobId || execution._id.toString()).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const workDir = `/tmp/ansible_job_${safeJobId}`;
+        await executeRemoteSSHCommand(ctrlClient, `mkdir -p "${workDir}" && chmod 700 "${workDir}"`);
+
+        // Write playbook.yml
+        const b64Playbook = Buffer.from(playbookYaml).toString('base64');
+        await executeRemoteSSHCommand(ctrlClient, `echo "${b64Playbook}" | base64 -d > "${workDir}/playbook.yml"`);
+
+        // Write keys and inventory.ini
+        const inventoryLines: string[] = ['[all]'];
+        const keyFilesToClean: string[] = [];
+
+        for (const host of targetHosts) {
+          let workerKey = '';
+          if (host.encryptedAuthSecret) {
+            try {
+              workerKey = decryptSecret({
+                encrypted: host.encryptedAuthSecret,
+                iv: host.authSecretIv || '',
+                tag: host.authSecretTag || '',
+              });
+            } catch {}
+          }
+          if (!workerKey && executingController.encryptedAuthSecret) {
+            try {
+              workerKey = decryptSecret({
+                encrypted: executingController.encryptedAuthSecret,
+                iv: executingController.authSecretIv || '',
+                tag: executingController.authSecretTag || '',
+              });
+            } catch {}
+          }
+
+          const safeWorkerName = host.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const keyPath = `${workDir}/key_${safeWorkerName}.pem`;
+          const workerUser = host.username || (host.provider === 'azure' ? 'azureuser' : 'ubuntu');
+          const workerIp = host.ip || host.privateIp;
+
+          if (workerKey && workerKey.trim()) {
+            const b64Key = Buffer.from(workerKey.trim() + '\n').toString('base64');
+            await executeRemoteSSHCommand(
+              ctrlClient,
+              `echo "${b64Key}" | base64 -d > "${keyPath}" && chmod 600 "${keyPath}"`
+            );
+            keyFilesToClean.push(keyPath);
+            inventoryLines.push(
+              `${safeWorkerName} ansible_host=${workerIp} ansible_user=${workerUser} ansible_ssh_private_key_file=${keyPath} ansible_ssh_common_args="-o StrictHostKeyChecking=no -o ConnectTimeout=10"`
+            );
+          } else {
+            inventoryLines.push(
+              `${safeWorkerName} ansible_host=${workerIp} ansible_user=${workerUser} ansible_ssh_common_args="-o StrictHostKeyChecking=no -o ConnectTimeout=10"`
+            );
+          }
+        }
+
+        const b64Inventory = Buffer.from(inventoryLines.join('\n') + '\n').toString('base64');
+        await executeRemoteSSHCommand(ctrlClient, `echo "${b64Inventory}" | base64 -d > "${workDir}/inventory.ini"`);
+
+        // Run ansible-playbook command on controller
+        const extraVarsArg = execution.extraVars ? `-e '${execution.extraVars.replace(/'/g, "'\\''")}'` : '';
+        const runCmd = `cd "${workDir}" && ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i inventory.ini playbook.yml ${extraVarsArg}`;
+
+        execution.logs += `${logTime()} Executing on controller: ${runCmd}\n\n`;
+        await execution.save();
+
+        const cmdRes = await executeRemoteSSHCommand(ctrlClient, runCmd);
+
+        execution.logs += (cmdRes.output || '') + '\n';
+
+        // Cleanup
+        await executeRemoteSSHCommand(ctrlClient, `rm -rf "${workDir}"`).catch(() => null);
+        try { ctrlClient.end(); } catch {}
+
+        const outputStr = cmdRes.output || '';
+        const isSuccess = cmdRes.exitCode === 0 && !outputStr.includes('failed=1') && !outputStr.includes('unreachable=1');
+        execution.status = isSuccess ? 'SUCCESS' : 'FAILED';
+        execution.endTime = new Date();
+        execution.durationSeconds = Math.round((execution.endTime.getTime() - startTime.getTime()) / 1000);
+        if (!isSuccess && cmdRes.exitCode !== 0) {
+          execution.errorMessage = outputStr.slice(-300);
+        }
+        await execution.save();
+        return;
+      } catch (ctrlErr: any) {
+        execution.logs += `${logTime()} Controller remote execution notice: ${ctrlErr.message}. Falling back to internal engine...\n`;
+        await execution.save();
+      }
+    }
+
     // 1. Parse Playbook YAML structure
     let parsedPlaybook: any[] = [];
     try {

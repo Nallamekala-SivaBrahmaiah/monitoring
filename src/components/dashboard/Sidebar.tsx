@@ -4,24 +4,31 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard,
   Cloud,
-  Globe,
-  Server,
-  Cpu,
-  Boxes,
-  Activity,
-  AlertTriangle,
-  BellRing,
-  Settings,
-  LogOut,
-  AppWindow,
-  Layers,
   X,
   Check,
-  CalendarClock,
+  LogOut,
 } from 'lucide-react';
-import { AwsLogo, AzureLogo, MavenLogo, AnsibleLogo } from '@/components/icons/CloudIcons';
+import {
+  AwsLogo,
+  AzureLogo,
+  MavenLogo,
+  AnsibleLogo,
+  NginxLogo,
+  DockerLogo,
+  KubernetesLogo,
+  AwsEc2Logo,
+  AzureVmLogo,
+  DashboardIcon,
+  CloudAccountsIcon,
+  RegionsIcon,
+  ServersFleetIcon,
+  SchedulingIcon,
+  MetricsExplorerIcon,
+  AlertsIcon,
+  NotificationChannelsIcon,
+  SettingsIcon,
+} from '@/components/icons/CloudIcons';
 import { useMonitoring } from '@/context/MonitoringContext';
 
 interface SidebarProps {
@@ -72,31 +79,32 @@ export function Sidebar({
     icon: any;
     badge?: number | string;
   }> = [
-    { label: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { label: 'Cloud Accounts', href: '/dashboard/cloud-accounts', icon: Cloud },
-    { label: 'Regions', href: '/dashboard/regions', icon: Globe },
-    { label: 'Servers', href: '/dashboard/servers', icon: Server },
-    { label: 'EC2 Instances', href: '/dashboard/ec2', icon: Cpu },
-    { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AppWindow },
-    { label: 'Server Scheduling', href: '/dashboard/schedules', icon: CalendarClock },
+    { label: 'Dashboard', href: '/', icon: DashboardIcon },
+    { label: 'Cloud Accounts', href: '/dashboard/cloud-accounts', icon: CloudAccountsIcon },
+    { label: 'Regions', href: '/dashboard/regions', icon: RegionsIcon },
+    { label: 'Servers', href: '/dashboard/servers', icon: ServersFleetIcon },
+    { label: 'EC2 Instances', href: '/dashboard/ec2', icon: AwsEc2Logo },
+    { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AzureVmLogo },
+    { label: 'Server Scheduling', href: '/dashboard/schedules', icon: SchedulingIcon },
     { label: 'Maven', href: '/dashboard/maven', icon: MavenLogo },
     { label: 'Ansible', href: '/dashboard/ansible', icon: AnsibleLogo },
-    { label: 'Docker Containers', href: '/dashboard/docker', icon: Boxes },
-    { label: 'Kubernetes', href: '/dashboard/kubernetes', icon: Layers },
-    { label: 'Metrics Explorer', href: '/dashboard/metrics', icon: Activity },
+    { label: 'Nginx', href: '/dashboard/nginx', icon: NginxLogo },
+    { label: 'Docker Containers', href: '/dashboard/docker', icon: DockerLogo },
+    { label: 'Kubernetes', href: '/dashboard/kubernetes', icon: KubernetesLogo },
+    { label: 'Metrics Explorer', href: '/dashboard/metrics', icon: MetricsExplorerIcon },
     {
       label: 'Alerts',
       href: '/dashboard/alerts',
-      icon: AlertTriangle,
+      icon: AlertsIcon,
       badge: alertBadgeCount,
     },
     {
       label: 'Notification Channels',
       href: '/dashboard/notifications',
-      icon: BellRing,
+      icon: NotificationChannelsIcon,
       badge: unreadNotifCount,
     },
-    { label: 'Settings', href: '/dashboard/settings', icon: Settings },
+    { label: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
   ];
 
   const handleLogout = async () => {
@@ -149,18 +157,22 @@ export function Sidebar({
               key={item.label}
               href={item.href}
               onClick={onCloseMobile}
-              className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+              className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                 isActive
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-semibold'
-                  : 'text-slate-400 hover:text-slate-100 hover:bg-[#18233C]'
+                  : 'text-slate-300 hover:text-white hover:bg-[#18233C]'
               }`}
             >
-              <div className="flex items-center gap-3">
-                <Icon
-                  className={`w-4 h-4 ${
-                    isActive ? 'text-white' : 'text-slate-400'
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className={`w-5 h-5 flex items-center justify-center shrink-0 transition-transform ${
+                    isActive
+                      ? 'scale-105 drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]'
+                      : 'group-hover:scale-105 opacity-90 group-hover:opacity-100'
                   }`}
-                />
+                >
+                  <Icon className="w-5 h-5" />
+                </div>
                 <span className="truncate">{item.label}</span>
               </div>
               {item.badge !== undefined && (
@@ -196,7 +208,7 @@ export function Sidebar({
                 : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
             }`}
           >
-            <AwsLogo className="w-5 h-4" />
+            <AwsLogo className="w-4 h-4" />
             <span>AWS</span>
           </button>
           <div className="h-4 w-px bg-slate-700/60" />
@@ -209,7 +221,7 @@ export function Sidebar({
                 : 'text-[#5EA0EF] hover:text-white hover:bg-[#18233C]'
             }`}
           >
-            <AzureLogo className="w-3.5 h-3.5" />
+            <AzureLogo className="w-4 h-4" />
             <span>Azure</span>
           </button>
         </div>

@@ -74,7 +74,7 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
       username: server.username,
       authMethod: server.authMethod,
       authSecret,
-      timeoutMs: 3500,
+      timeoutMs: 12000,
     });
 
     // Update server state
@@ -144,7 +144,7 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
       resourceId: `srv-${server._id.toString()}`,
       provider: server.cloudProvider,
       accountId: 'custom-server',
-      region: server.region || 'on-prem',
+      region: server.region || 'global',
       name: server.name,
       resourceType: 'Server',
       status: 'Running',

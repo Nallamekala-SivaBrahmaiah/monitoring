@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import AnsibleHost from '@/models/AnsibleHost';
 import AnsibleController from '@/models/AnsibleController';
@@ -36,7 +37,18 @@ export async function discoverCloudServers(
   // 1. Fetch all controllers to ensure NO controller is shown as a worker
   const [allControllers, existingAnsibleHosts, serversWithSecrets] = await Promise.all([
     AnsibleController.find({}).lean(),
-    AnsibleHost.find(targetControllerId ? { controllerId: targetControllerId } : {}).lean(),
+    AnsibleHost.find(
+      targetControllerId
+        ? {
+            $or: [
+              { controllerId: targetControllerId },
+              ...(mongoose.Types.ObjectId.isValid(targetControllerId)
+                ? [{ controllerId: new mongoose.Types.ObjectId(targetControllerId) }]
+                : []),
+            ],
+          }
+        : {}
+    ).lean(),
     Server.find({ encryptedAuthSecret: { $exists: true, $ne: '' } }).lean(),
   ]);
 

@@ -21,3 +21,28 @@ export async function GET(
   }
 }
 
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await connectToDatabase();
+    const { id } = await params;
+
+    const result = await AnsibleExecution.findOneAndDelete({
+      $or: [{ _id: id }, { jobId: id }],
+    });
+
+    if (!result) {
+      return NextResponse.json({ success: false, error: 'Execution not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Execution ${id} deleted successfully.`,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
+

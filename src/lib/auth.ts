@@ -52,26 +52,57 @@ export function verifySessionToken(token?: string | null): AuthSessionPayload | 
 }
 
 /**
- * Seeds or synchronizes the administrator user monitoring365@gmail.com.
+ * Seeds or synchronizes the administrator users in MongoDB.
  */
 export async function ensureDefaultAdminUser(): Promise<void> {
   try {
     await connectToDatabase();
     
-    // Remove old default admin credentials
+    // Remove old obsolete placeholder usernames
     await User.deleteMany({ username: { $in: ['admin', 'siva'] } });
 
-    // Ensure monitoring365 user exists
-    const existing = await User.findOne({
+    // 1. Ensure primary user nallasiva552@gmail.com exists with password Nsbyadav@143
+    const sivaUser = await User.findOne({
       $or: [
-        { username: 'monitoring365@gmail.com' },
+        { email: 'nallasiva552@gmail.com' },
+        { username: 'nallasiva552@gmail.com' },
+        { username: 'nallasiva552' },
+      ],
+    });
+
+    const { salt: sivaSalt, hash: sivaHash } = hashPassword('Nsbyadav@143');
+
+    if (!sivaUser) {
+      console.log('[Auth] Creating user nallasiva552@gmail.com in MongoDB...');
+      await User.create({
+        username: 'nallasiva552@gmail.com',
+        email: 'nallasiva552@gmail.com',
+        name: 'Siva Brahmaiah',
+        role: 'Admin',
+        passwordHash: sivaHash,
+        salt: sivaSalt,
+      });
+      console.log('[Auth] User nallasiva552@gmail.com created successfully.');
+    } else {
+      sivaUser.email = 'nallasiva552@gmail.com';
+      sivaUser.name = sivaUser.name || 'Siva Brahmaiah';
+      sivaUser.role = 'Admin';
+      sivaUser.passwordHash = sivaHash;
+      sivaUser.salt = sivaSalt;
+      await sivaUser.save();
+      console.log('[Auth] User nallasiva552@gmail.com password updated successfully.');
+    }
+
+    // 2. Also ensure monitoring365 backup user exists
+    const existingBackup = await User.findOne({
+      $or: [
         { email: 'monitoring365@gmail.com' },
+        { username: 'monitoring365@gmail.com' },
         { username: 'monitoring365' },
       ],
     });
 
-    if (!existing) {
-      console.log('[Auth] Creating user monitoring365@gmail.com in MongoDB...');
+    if (!existingBackup) {
       const { salt, hash } = hashPassword('monitoring365');
       await User.create({
         username: 'monitoring365@gmail.com',
@@ -81,14 +112,6 @@ export async function ensureDefaultAdminUser(): Promise<void> {
         passwordHash: hash,
         salt,
       });
-      console.log('[Auth] User monitoring365@gmail.com created successfully.');
-    } else {
-      // Ensure password is synchronized to monitoring365
-      const { salt, hash } = hashPassword('monitoring365');
-      existing.passwordHash = hash;
-      existing.salt = salt;
-      existing.email = 'monitoring365@gmail.com';
-      await existing.save();
     }
   } catch (err) {
     console.warn('[Auth] Note during user initialization:', err);

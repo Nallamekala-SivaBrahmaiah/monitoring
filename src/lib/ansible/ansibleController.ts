@@ -297,80 +297,98 @@ export async function syncControllerWorkerCounts(): Promise<void> {
   try {
     await connectToDatabase();
 
-    // 1. Fetch active cloud compute resources to reconcile against
-    const activeCloudCompute = await CloudResource.find({
-      provider: { $in: ['aws', 'azure'] },
-      isDeleted: { $ne: true },
-      status: { $nin: ['Terminated', 'terminated', 'shutting-down', 'deleted', 'Deleted'] },
-    }).lean();
-
-    const liveIps = new Set<string>();
-    const liveNames = new Set<string>();
-    const liveIds = new Set<string>();
-
-    for (const cr of activeCloudCompute as any[]) {
-      if (cr.publicIp) liveIps.add(cr.publicIp.trim().toLowerCase());
-      if (cr.privateIp) liveIps.add(cr.privateIp.trim().toLowerCase());
-      if (cr.name) liveNames.add(cr.name.trim().toLowerCase());
-      if (cr.resourceId) liveIds.add(cr.resourceId.trim().toLowerCase());
-    }
-
-    // 2. Prune any workers in AnsibleHost whose cloud VM was terminated or deleted
-    const allHosts = await AnsibleHost.find({}).lean();
-    for (const h of allHosts as any[]) {
-      if (
-        h.provider === 'aws' ||
-        h.provider === 'azure' ||
-        h.sourceResourceType === 'ec2' ||
-        (h.instanceId && h.instanceId.startsWith('i-'))
-      ) {
-        const hIp = (h.ip || '').trim().toLowerCase();
-        const hName = (h.name || '').trim().toLowerCase();
-        const hId = (h.instanceId || '').trim().toLowerCase();
-        const isLive = (hIp && liveIps.has(hIp)) || (hName && liveNames.has(hName)) || (hId && liveIds.has(hId));
-        if (!isLive) {
-          // Worker instance was terminated in cloud console
-          await AnsibleHost.deleteOne({ _id: h._id }).catch(() => null);
-        }
-      }
-    }
-
-    // 3. Prune any controllers in AnsibleController whose cloud VM was terminated or deleted
     let controllers = await AnsibleController.find({});
-    for (const c of controllers) {
-      if (c.provider === 'aws' || c.provider === 'azure' || c.type === 'cloud') {
-        const cIp = (c.ipAddress || '').trim().toLowerCase();
-        const cName = (c.name || '').trim().toLowerCase();
-        const cId = (c.instanceId || '').trim().toLowerCase();
-        const isLive = (cIp && liveIps.has(cIp)) || (cName && liveNames.has(cName)) || (cId && liveIds.has(cId));
-        if (!isLive) {
-          // Controller cloud instance was terminated in cloud console
-          const wasActive = c.isActive;
-          await AnsibleController.deleteOne({ _id: c._id }).catch(() => null);
-          await AnsibleHost.deleteMany({
-            $or: [{ controllerId: c._id }, { controllerId: String(c._id) }],
-          }).catch(() => null);
-
-          if (wasActive) {
-            const nextCtrl = await AnsibleController.findOne().sort({ createdAt: 1 });
-            if (nextCtrl) {
-              nextCtrl.isActive = true;
-              await nextCtrl.save();
-            }
-          }
-        }
-      }
-    }
-
-    // Reload active controllers
-    controllers = await AnsibleController.find({});
     if (controllers.length === 0) return;
 
-    // Ensure at least one remaining controller is active
+    // Ensure at least one controller is marked active
     const hasActive = controllers.some((c) => c.isActive);
     if (!hasActive && controllers.length > 0) {
       controllers[0].isActive = true;
       await controllers[0].save();
+    }
+
+    // Identify target controllers
+    const awsCtrl = controllers.find(
+      (c) => c.name.toLowerCase().includes('ansible-controller') || c.provider === 'aws'
+    );
+    const azureCtrl = controllers.find(
+      (c) => c.name.toLowerCase().includes('vm01') || c.provider === 'azure'
+    );
+
+    // Reconcile and backfill workers from Server collection without destroying inventory
+    const registeredServers = await Server.find({}).lean();
+
+    for (const s of registeredServers as any[]) {
+      const hostIp = (s.host || s.ip || '').trim();
+      if (!hostIp) continue;
+
+      const isAws =
+        s.cloudProvider === 'aws' ||
+        s.name.toLowerCase().includes('ansible-worker') ||
+        ['13.236.178.62', '3.106.237.77', '16.176.13.156'].includes(hostIp);
+
+      const isAzure =
+        s.cloudProvider === 'azure' ||
+        s.name.toLowerCase().includes('vm01') ||
+        hostIp === '20.244.18.230';
+
+      const targetCtrl = isAws ? awsCtrl : isAzure ? azureCtrl : null;
+      if (!targetCtrl) continue;
+
+      // Don't add controller as its own worker
+      if (
+        (targetCtrl.ipAddress && targetCtrl.ipAddress.trim() === hostIp) ||
+        (targetCtrl.name && targetCtrl.name.trim().toLowerCase() === s.name.trim().toLowerCase())
+      ) {
+        continue;
+      }
+
+      // Check if host already exists in inventory
+      let existingHost = await AnsibleHost.findOne({
+        $or: [
+          { ip: hostIp },
+          { name: s.name },
+          ...(s.resourceId ? [{ instanceId: s.resourceId }] : []),
+        ],
+      });
+
+      if (!existingHost) {
+        // Create under the designated controller
+        await AnsibleHost.create({
+          name: s.name,
+          controllerId: targetCtrl._id,
+          controllerName: targetCtrl.name,
+          instanceId: s.resourceId || undefined,
+          ip: hostIp,
+          provider: isAws ? 'aws' : isAzure ? 'azure' : 'linux',
+          region: s.region || targetCtrl.region || 'ap-southeast-2',
+          os: s.os?.name || 'Ubuntu Linux',
+          username: s.username || (isAzure ? 'azureuser' : 'ubuntu'),
+          port: s.port || 22,
+          authMethod: s.authMethod || 'privateKey',
+          encryptedAuthSecret: s.encryptedAuthSecret || targetCtrl.encryptedAuthSecret || '',
+          authSecretIv: s.authSecretIv || targetCtrl.authSecretIv || '',
+          authSecretTag: s.authSecretTag || targetCtrl.authSecretTag || '',
+          status: s.encryptedAuthSecret || targetCtrl.encryptedAuthSecret ? 'Connected' : 'Disconnected',
+          sourceResourceId: s._id ? s._id.toString() : undefined,
+          sourceResourceType: isAws ? 'ec2' : isAzure ? 'azure-vm' : 'server',
+          groups: [isAws ? 'aws' : isAzure ? 'azure' : 'linux', 'all'],
+          installedServices: [],
+        });
+      } else {
+        // Re-align controller affinity if misaligned or missing
+        if (targetCtrl && (!existingHost.controllerId || String(existingHost.controllerId) !== String(targetCtrl._id))) {
+          existingHost.controllerId = targetCtrl._id;
+          existingHost.controllerName = targetCtrl.name;
+        }
+        if (!existingHost.encryptedAuthSecret && (s.encryptedAuthSecret || targetCtrl.encryptedAuthSecret)) {
+          existingHost.encryptedAuthSecret = s.encryptedAuthSecret || targetCtrl.encryptedAuthSecret;
+          existingHost.authSecretIv = s.authSecretIv || targetCtrl.authSecretIv;
+          existingHost.authSecretTag = s.authSecretTag || targetCtrl.authSecretTag;
+          existingHost.status = 'Connected';
+        }
+        await existingHost.save();
+      }
     }
 
     // Update accurate live worker counts for each controller

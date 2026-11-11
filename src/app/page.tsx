@@ -68,7 +68,7 @@ export default function DashboardPage() {
                   changeText={overviewMetrics.awsResources.changeText}
                   trendData={overviewMetrics.awsResources.trend}
                   color="#FF9900"
-                  icon={<AwsLogo className="w-5 h-5 text-[#FF9900]" />}
+                  icon={<AwsLogo className="w-5 h-5" />}
                 />
               )}
 
@@ -80,7 +80,7 @@ export default function DashboardPage() {
                   changeText={overviewMetrics.azureResources.changeText}
                   trendData={overviewMetrics.azureResources.trend}
                   color="#0089D6"
-                  icon={<AzureLogo className="w-4 h-4 text-[#0089D6]" />}
+                  icon={<AzureLogo className="w-5 h-5" />}
                 />
               )}
 
@@ -256,7 +256,7 @@ export default function DashboardPage() {
                           : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      <AzureLogo className="w-3.5 h-3.5" />
+                      <AzureLogo className="w-4 h-4" />
                       <span>Azure Virtual Machines ({filteredAzureVMs.length})</span>
                     </button>
                     <button
@@ -267,7 +267,7 @@ export default function DashboardPage() {
                           : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      <AwsLogo className="w-4 h-3" />
+                      <AwsLogo className="w-4 h-4" />
                       <span>AWS EC2 Instances ({filteredEC2Instances.length})</span>
                     </button>
                   </div>

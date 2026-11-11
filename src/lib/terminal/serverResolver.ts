@@ -1,6 +1,7 @@
 import connectToDatabase from '@/lib/mongodb';
 import Server, { IServer } from '@/models/Server';
 import CloudResource from '@/models/CloudResource';
+import AnsibleController from '@/models/AnsibleController';
 import { decryptSecret } from '@/lib/serverMonitoring/crypto';
 import { convertPPKToOpenSSH } from '@/lib/serverMonitoring/ppkConverter';
 import mongoose from 'mongoose';
@@ -81,6 +82,26 @@ export async function resolveServerCredentials(target: {
     }
   }
 
+  // 5. Check NginxServer registration if not found in Server
+  if (!serverDoc) {
+    try {
+      const NginxServer = (await import('@/models/NginxServer')).default;
+      if (target.sshServerId && mongoose.Types.ObjectId.isValid(target.sshServerId)) {
+        serverDoc = await NginxServer.findById(target.sshServerId).lean();
+      }
+      if (!serverDoc && targetHost && targetHost !== '-') {
+        serverDoc = await NginxServer.findOne({
+          host: { $regex: new RegExp(`^${targetHost}$`, 'i') },
+        }).lean();
+      }
+      if (!serverDoc && targetName) {
+        serverDoc = await NginxServer.findOne({
+          name: { $regex: new RegExp(`^${targetName}$`, 'i') },
+        }).lean();
+      }
+    } catch {}
+  }
+
   if (!serverDoc) {
     return null;
   }
@@ -98,6 +119,48 @@ export async function resolveServerCredentials(target: {
       console.error('Failed to decrypt SSH secret for server:', serverDoc.name, err);
       throw new Error('Failed to decrypt saved SSH credentials. Please reconfigure credentials.');
     }
+  }
+
+  if (!rawSecret) {
+    // Fallback: inherit credentials from Server or Controller monitoring
+    try {
+      const orConditions: any[] = [
+        { host: serverDoc.host },
+        { ip: serverDoc.host },
+        { name: serverDoc.name },
+      ];
+      if (serverDoc.cloudProvider === 'aws') {
+        orConditions.push({ cloudProvider: 'aws' });
+      }
+
+      const srv: any = await Server.findOne({
+        $or: orConditions,
+        encryptedAuthSecret: { $exists: true, $ne: '' },
+      }).lean();
+
+      if (srv && srv.encryptedAuthSecret) {
+        rawSecret = decryptSecret({
+          encrypted: srv.encryptedAuthSecret,
+          iv: srv.authSecretIv || '',
+          tag: srv.authSecretTag || '',
+        });
+      }
+    } catch {}
+  }
+
+  if (!rawSecret) {
+    try {
+      const ctrl: any = await AnsibleController.findOne({
+        encryptedAuthSecret: { $exists: true, $ne: '' },
+      }).lean();
+      if (ctrl && ctrl.encryptedAuthSecret) {
+        rawSecret = decryptSecret({
+          encrypted: ctrl.encryptedAuthSecret,
+          iv: ctrl.authSecretIv || '',
+          tag: ctrl.authSecretTag || '',
+        });
+      }
+    } catch {}
   }
 
   if (!rawSecret) {

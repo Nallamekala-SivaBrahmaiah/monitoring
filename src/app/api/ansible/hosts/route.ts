@@ -69,44 +69,7 @@ export async function GET(req: NextRequest) {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Reconcile against active cloud compute instances: prune terminated cloud workers
-    const activeCloud = await CloudResource.find({
-      provider: { $in: ['aws', 'azure'] },
-      isDeleted: { $ne: true },
-      status: { $nin: ['Terminated', 'terminated', 'shutting-down', 'deleted', 'Deleted'] },
-    }).lean();
-
-    const liveIps = new Set<string>();
-    const liveNames = new Set<string>();
-    const liveIds = new Set<string>();
-
-    for (const cr of activeCloud as any[]) {
-      if (cr.publicIp) liveIps.add(cr.publicIp.trim().toLowerCase());
-      if (cr.privateIp) liveIps.add(cr.privateIp.trim().toLowerCase());
-      if (cr.name) liveNames.add(cr.name.trim().toLowerCase());
-      if (cr.resourceId) liveIds.add(cr.resourceId.trim().toLowerCase());
-    }
-
-    const liveHosts: any[] = [];
-    for (const h of hosts as any[]) {
-      if (
-        h.provider === 'aws' ||
-        h.provider === 'azure' ||
-        h.sourceResourceType === 'ec2' ||
-        (h.instanceId && h.instanceId.startsWith('i-'))
-      ) {
-        const hIp = (h.ip || '').trim().toLowerCase();
-        const hName = (h.name || '').trim().toLowerCase();
-        const hId = (h.instanceId || '').trim().toLowerCase();
-        const isLive = (hIp && liveIps.has(hIp)) || (hName && liveNames.has(hName)) || (hId && liveIds.has(hId));
-        if (!isLive) {
-          // Cloud instance was terminated in cloud console - delete immediately
-          await AnsibleHost.deleteOne({ _id: h._id }).catch(() => null);
-          continue;
-        }
-      }
-      liveHosts.push(h);
-    }
+    const liveHosts: any[] = hosts;
 
     // Map real cloud instance IDs to enrich hosts whose instanceId was missing or set to a MongoDB ObjectId
     const [cloudResources, servers] = await Promise.all([

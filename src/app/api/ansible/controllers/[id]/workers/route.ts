@@ -144,10 +144,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
         }
       }
 
-      // Check if worker already exists under THIS controller
+      // Check if worker already exists under THIS controller or elsewhere in inventory
       let existingHost = await AnsibleHost.findOne({
-        controllerId: controller._id,
         $or: [
+          { controllerId: controller._id, ip },
           { ip },
           ...(instanceId ? [{ instanceId }] : []),
           { name },
@@ -156,6 +156,8 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
       if (existingHost) {
         existingHost.name = name;
+        existingHost.controllerId = controller._id;
+        existingHost.controllerName = controller.name;
         existingHost.ip = ip;
         if (privateIp) existingHost.privateIp = privateIp;
         if (instanceId) existingHost.instanceId = instanceId;

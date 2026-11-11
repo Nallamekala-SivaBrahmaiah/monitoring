@@ -183,3 +183,65 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+
+/**
+ * DELETE: Clean/delete execution logs and history
+ * - Supports deleting single execution by ?id=...
+ * - Supports deleting controller executions by ?controllerId=...
+ * - Supports deleting all executions if no filter or ?all=true
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    await connectToDatabase();
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    const controllerId = searchParams.get('controllerId');
+    const all = searchParams.get('all');
+
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      // No JSON body
+    }
+
+    const targetId = id || body.id;
+    const targetControllerId = controllerId || body.controllerId;
+    const isAll = all === 'true' || body.all === true;
+
+    // Single item deletion
+    if (targetId) {
+      const deleted = await AnsibleExecution.findOneAndDelete({
+        $or: [{ _id: targetId }, { jobId: targetId }],
+      });
+      return NextResponse.json({
+        success: true,
+        deleted: !!deleted,
+        message: deleted ? `Execution ${targetId} deleted successfully.` : 'Execution not found.',
+      });
+    }
+
+    // Bulk deletion: if controllerId is specified and not 'all', delete for that controller
+    const filter: any = {};
+    if (!isAll && targetControllerId && targetControllerId !== 'all') {
+      filter.$or = [{ controllerId: targetControllerId }];
+      try {
+        const { default: mongoose } = await import('mongoose');
+        if (mongoose.Types.ObjectId.isValid(targetControllerId)) {
+          filter.$or.push({ controllerId: new mongoose.Types.ObjectId(targetControllerId) });
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const result = await AnsibleExecution.deleteMany(filter);
+    return NextResponse.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: `Successfully cleaned ${result.deletedCount} execution log(s).`,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}

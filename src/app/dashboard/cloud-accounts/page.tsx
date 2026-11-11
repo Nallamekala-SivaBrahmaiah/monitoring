@@ -310,7 +310,7 @@ export default function CloudAccountsPage() {
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#FF9900]/15 hover:bg-[#FF9900]/25 text-[#FF9900] border border-[#FF9900]/30 rounded-lg transition-colors shadow-sm"
                 >
-                  <AwsLogo className="w-4 h-3" />
+                  <AwsLogo className="w-4 h-4" />
                   <span>Connect AWS Account</span>
                 </button>
               )}
@@ -333,7 +333,7 @@ export default function CloudAccountsPage() {
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#0089D6]/15 hover:bg-[#0089D6]/25 text-[#5EA0EF] border border-[#0089D6]/30 rounded-lg transition-colors shadow-sm"
                 >
-                  <AzureLogo className="w-3.5 h-3.5" />
+                  <AzureLogo className="w-4 h-4" />
                   <span>Connect Azure Subscription</span>
                 </button>
               )}
@@ -347,7 +347,7 @@ export default function CloudAccountsPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <AwsLogo className="w-5 h-4" />
+                    <AwsLogo className="w-5 h-5" />
                     <span>AWS Accounts ({awsAccounts.length})</span>
                   </h3>
                 </div>
@@ -363,7 +363,7 @@ export default function CloudAccountsPage() {
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-[#FF9900]/15 text-[#FF9900] flex items-center justify-center flex-shrink-0">
-                          <AwsLogo className="w-6 h-5" />
+                          <AwsLogo className="w-6 h-6" />
                         </div>
                         <div>
                           <h4 className="text-sm font-bold text-white">
@@ -472,7 +472,7 @@ export default function CloudAccountsPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <AzureLogo className="w-4 h-4 text-[#0089D6]" />
+                    <AzureLogo className="w-5 h-5" />
                     <span>Azure Subscriptions ({azureSubscriptions.length})</span>
                   </h3>
                 </div>
@@ -488,7 +488,7 @@ export default function CloudAccountsPage() {
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-[#0089D6]/15 text-[#0089D6] flex items-center justify-center flex-shrink-0">
-                          <AzureLogo className="w-5 h-5" />
+                          <AzureLogo className="w-6 h-6" />
                         </div>
                         <div>
                           <h4 className="text-sm font-bold text-white">

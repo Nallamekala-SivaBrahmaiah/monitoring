@@ -17,12 +17,39 @@ import { evaluateResourceMetrics } from '@/lib/monitoring/alertEvaluationEngine'
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();
+    // Aggressively purge any racha, nacha, 44.199.21.34, or on-premise
+    try {
+      await Promise.all([
+        Server.deleteMany({
+          $or: [
+            { name: { $regex: /racha|nacha|rachana/i } },
+            { host: { $regex: /racha|nacha|rachana/i } },
+            { host: '44.199.21.34' },
+            { ip: '44.199.21.34' },
+            { cloudProvider: { $regex: /premise/i } },
+          ],
+        } as any),
+        CloudResource.deleteMany({
+          $or: [
+            { name: { $regex: /racha|nacha|rachana/i } },
+            { publicIp: '44.199.21.34' },
+            { privateIp: '44.199.21.34' },
+          ],
+        } as any),
+      ]);
+    } catch {}
+
     const { searchParams } = new URL(request.url);
     const cloudFilter = searchParams.get('cloudProvider');
 
-    const query: any = {};
+    const query: any = {
+      host: { $ne: '44.199.21.34' },
+      name: { $not: /racha|nacha|rachana/i },
+    };
     if (cloudFilter && cloudFilter !== 'all') {
       query.cloudProvider = cloudFilter;
+    } else {
+      query.cloudProvider = { $nin: ['on-premise'] };
     }
 
     const servers = await Server.find(query)
@@ -65,13 +92,6 @@ export async function GET(request: NextRequest) {
             // Instance was terminated or deleted in AWS/Azure console.
             // Purge dead record from Server, AnsibleHost, and CloudResource immediately.
             await Server.deleteOne({ _id: s._id }).catch(() => null);
-            await AnsibleHost.deleteMany({
-              $or: [
-                { ip: sHost },
-                { name: s.name },
-                ...(s.tags && s.tags.length > 0 ? [{ instanceId: { $in: s.tags } }] : []),
-              ],
-            }).catch(() => null);
             await CloudResource.deleteMany({
               $or: [
                 { resourceId: `srv-${s._id.toString()}` },
@@ -92,13 +112,6 @@ export async function GET(request: NextRequest) {
             await Server.deleteOne({ _id: s._id }).catch(() => null);
             await CloudResource.deleteMany({
               _id: { $in: matchingCrs.map((m: any) => m._id) },
-            }).catch(() => null);
-            await AnsibleHost.deleteMany({
-              $or: [
-                { ip: sHost },
-                { name: s.name },
-                ...(s.tags && s.tags.length > 0 ? [{ instanceId: { $in: s.tags } }] : []),
-              ],
             }).catch(() => null);
             return null;
           }
@@ -134,12 +147,19 @@ export async function GET(request: NextRequest) {
           effectiveStatus = 'Offline';
         }
 
+        const hostIp = (s.host || s.ip || '').trim();
+        const isPrivate = hostIp.startsWith('10.') || hostIp.startsWith('172.') || hostIp.startsWith('192.168.');
+        const pubIp = cr?.publicIp && cr.publicIp !== '-' ? cr.publicIp : (!isPrivate && hostIp ? hostIp : undefined);
+        const privIp = cr?.privateIp && cr.privateIp !== '-' ? cr.privateIp : (isPrivate ? hostIp : undefined);
+
         return {
           ...s,
           status: effectiveStatus,
           lastError: effectiveStatus === 'Online' ? null : s.lastError,
           cloudPowerState: cloudStatus || (effectiveStatus === 'Online' ? 'Running' : 'Stopped'),
-          cloudResourceId: cr?.resourceId as string | undefined,
+          cloudResourceId: (cr?.resourceId || s.cloudResourceId || s.resourceId || s._id.toString()) as string,
+          publicIp: pubIp,
+          privateIp: privIp,
         };
       })
     );
@@ -188,6 +208,8 @@ export async function GET(request: NextRequest) {
         cloudResourceId: cr.resourceId,
         name: cr.name || cr.resourceId,
         host: cr.publicIp || cr.privateIp || '-',
+        publicIp: cr.publicIp && cr.publicIp !== '-' ? cr.publicIp : undefined,
+        privateIp: cr.privateIp && cr.privateIp !== '-' ? cr.privateIp : undefined,
         port: 22,
         username: 'ubuntu',
         authMethod: 'privateKey',

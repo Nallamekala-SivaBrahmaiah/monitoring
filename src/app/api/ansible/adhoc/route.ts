@@ -211,3 +211,56 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/**
+ * DELETE: Clean/delete Ad-hoc execution logs and history
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    await connectToDatabase();
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    const controllerId = searchParams.get('controllerId');
+    const all = searchParams.get('all');
+
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      // No JSON body
+    }
+
+    const targetId = id || body.id;
+    const targetControllerId = controllerId || body.controllerId;
+    const isAll = all === 'true' || body.all === true;
+
+    if (targetId) {
+      const deleted = await AnsibleAdHocExecution.findOneAndDelete({
+        $or: [{ _id: targetId }, { jobId: targetId }],
+      });
+      return NextResponse.json({
+        success: true,
+        deleted: !!deleted,
+        message: deleted ? `Ad-hoc execution ${targetId} deleted successfully.` : 'Execution not found.',
+      });
+    }
+
+    const filter: any = {};
+    if (!isAll && targetControllerId && targetControllerId !== 'all') {
+      if (mongoose.Types.ObjectId.isValid(targetControllerId)) {
+        filter.controllerId = new mongoose.Types.ObjectId(targetControllerId);
+      } else {
+        filter.controllerId = targetControllerId;
+      }
+    }
+
+    const result = await AnsibleAdHocExecution.deleteMany(filter);
+    return NextResponse.json({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: `Successfully cleaned ${result.deletedCount} ad-hoc execution log(s).`,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
+

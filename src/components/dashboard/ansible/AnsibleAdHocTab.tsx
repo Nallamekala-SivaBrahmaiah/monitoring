@@ -137,6 +137,52 @@ export function AnsibleAdHocTab({
     setCurrentExecution(null);
   }, [activeController?._id]);
 
+  const [cleanHistoryConfirmOpen, setCleanHistoryConfirmOpen] = useState(false);
+  const [isCleaningHistory, setIsCleaningHistory] = useState(false);
+  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+
+  const handleClearHistory = async () => {
+    if (!activeController?._id) return;
+    setIsCleaningHistory(true);
+    try {
+      const res = await fetch(`/api/ansible/adhoc?controllerId=${encodeURIComponent(activeController._id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('success', data.message || 'Ad-hoc execution logs cleaned.');
+        setHistory([]);
+        setCleanHistoryConfirmOpen(false);
+      } else {
+        throw new Error(data.error || 'Failed to clean ad-hoc logs');
+      }
+    } catch (err: any) {
+      showToast('error', err.message);
+    } finally {
+      setIsCleaningHistory(false);
+    }
+  };
+
+  const handleDeleteHistoryItem = async (id: string) => {
+    setDeletingHistoryId(id);
+    try {
+      const res = await fetch(`/api/ansible/adhoc?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('success', 'Ad-hoc record deleted.');
+        setHistory((prev) => prev.filter((item) => String(item._id) !== id && item.jobId !== id));
+      } else {
+        throw new Error(data.error || 'Failed to delete ad-hoc record');
+      }
+    } catch (err: any) {
+      showToast('error', err.message);
+    } finally {
+      setDeletingHistoryId(null);
+    }
+  };
+
   // Poll active execution while running
   useEffect(() => {
     if (!activePollId) return;
@@ -913,6 +959,27 @@ export function AnsibleAdHocTab({
               <option value="PARTIAL">PARTIAL</option>
               <option value="FAILED">FAILED</option>
             </select>
+
+            <button
+              type="button"
+              onClick={fetchHistory}
+              disabled={historyLoading}
+              className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition"
+              title="Refresh ad-hoc history"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${historyLoading ? 'animate-spin text-blue-400' : ''}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCleanHistoryConfirmOpen(true)}
+              disabled={history.length === 0 || isCleaningHistory}
+              className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-semibold border border-rose-500/30 flex items-center gap-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+              title="Clean all ad-hoc execution logs"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clean Logs</span>
+            </button>
           </div>
         </div>
 
@@ -990,17 +1057,29 @@ export function AnsibleAdHocTab({
                         {new Date(item.startTime).toLocaleString()}
                       </td>
                       <td className="py-2.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedModule(item.moduleName);
-                            setCommandInput(item.commandArgs);
-                          }}
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-sans font-semibold transition"
-                          title="Re-populate command into builder"
-                        >
-                          Re-run
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedModule(item.moduleName);
+                              setCommandInput(item.commandArgs);
+                            }}
+                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-sans font-semibold transition"
+                            title="Re-populate command into builder"
+                          >
+                            Re-run
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHistoryItem(String(item._id))}
+                            disabled={deletingHistoryId === String(item._id)}
+                            className="p-1 rounded bg-slate-800/80 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700/80 hover:border-rose-500/30 transition disabled:opacity-50"
+                            title="Delete this record"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1010,6 +1089,47 @@ export function AnsibleAdHocTab({
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal for Clean Ad-hoc History */}
+      {cleanHistoryConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-[#111A2E] border border-slate-700/80 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 flex-shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-white">Clean Ad-hoc Command Logs</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Are you sure you want to permanently clear all ad-hoc command logs for controller{' '}
+                  <strong className="text-white">&quot;{activeController?.name}&quot;</strong>?
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setCleanHistoryConfirmOpen(false)}
+                disabled={isCleaningHistory}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleClearHistory}
+                disabled={isCleaningHistory}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-rose-600/30 transition disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isCleaningHistory ? 'Cleaning...' : 'Clean All Logs'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
