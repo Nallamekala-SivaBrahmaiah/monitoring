@@ -145,3 +145,15 @@ export function MavenLogo({ className = 'w-5 h-5' }: { className?: string }) {
     </svg>
   );
 }
+
+export function AnsibleLogo({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <circle cx="12" cy="12" r="10" fill="#2563EB" />
+      <path
+        d="M12 6L7.5 17H9.8L10.8 14.4H13.2L14.2 17H16.5L12 6ZM11.4 12.6L12 10.8L12.6 12.6H11.4Z"
+        fill="#FFFFFF"
+      />
+    </svg>
+  );
+}
