@@ -99,3 +99,49 @@ export function KubernetesIcon({ className = 'w-5 h-5' }: { className?: string }
     </svg>
   );
 }
+
+export function MavenLogo({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 100 100" fill="none" className={className}>
+      <defs>
+        <linearGradient id="featherGrad1" x1="15%" y1="100%" x2="85%" y2="0%">
+          <stop offset="0%" stopColor="#C32057" />
+          <stop offset="25%" stopColor="#D92837" />
+          <stop offset="50%" stopColor="#EB5729" />
+          <stop offset="70%" stopColor="#EFA426" />
+          <stop offset="100%" stopColor="#25A4D4" />
+        </linearGradient>
+        <linearGradient id="featherGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#28B8D5" />
+          <stop offset="40%" stopColor="#306EB2" />
+          <stop offset="80%" stopColor="#6C3992" />
+          <stop offset="100%" stopColor="#B3236A" />
+        </linearGradient>
+      </defs>
+      {/* Quill / Central stem */}
+      <path
+        d="M20 85 C 35 65, 55 45, 82 15"
+        stroke="#E6E8EC"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+      />
+      {/* Left vane */}
+      <path
+        d="M82 15 C 65 20, 40 38, 25 65 C 22 72, 28 72, 33 67 C 42 56, 58 42, 82 15 Z"
+        fill="url(#featherGrad1)"
+      />
+      {/* Right vane */}
+      <path
+        d="M82 15 C 75 32, 60 55, 38 78 C 34 83, 39 85, 45 80 C 60 66, 74 44, 82 15 Z"
+        fill="url(#featherGrad2)"
+      />
+      {/* Detail highlights */}
+      <path
+        d="M62 30 C 50 42, 38 56, 28 70"
+        stroke="rgba(255,255,255,0.4)"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}

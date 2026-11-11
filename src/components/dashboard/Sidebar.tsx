@@ -21,7 +21,7 @@ import {
   Check,
   CalendarClock,
 } from 'lucide-react';
-import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
+import { AwsLogo, AzureLogo, MavenLogo } from '@/components/icons/CloudIcons';
 import { useMonitoring } from '@/context/MonitoringContext';
 
 interface SidebarProps {
@@ -80,6 +80,7 @@ export function Sidebar({
     { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AppWindow },
     { label: 'Server Scheduling', href: '/dashboard/schedules', icon: CalendarClock },
     { label: 'Docker Containers', href: '/dashboard/docker', icon: Boxes },
+    { label: 'Maven', href: '/dashboard/maven', icon: MavenLogo },
     { label: 'Kubernetes', href: '/dashboard/kubernetes', icon: Layers },
     { label: 'Metrics Explorer', href: '/dashboard/metrics', icon: Activity },
     {
