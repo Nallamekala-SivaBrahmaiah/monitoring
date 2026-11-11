@@ -105,10 +105,13 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
         // Any resource previously stored for this subscription that is not in live inventory is purged
         const pruneAzureRes = await CloudResource.deleteMany({
           provider: 'azure',
-          subscriptionId: acc.subscriptionId,
-          resourceType: 'vm',
-          resourceId: { $nin: Array.from(liveAzureIds) },
-        });
+          $or: [
+            { subscriptionId: acc.subscriptionId, resourceId: { $nin: Array.from(liveAzureIds) } },
+            { resourceType: { $in: ['vm', 'Server' as any] }, resourceId: { $nin: Array.from(liveAzureIds) } },
+            { status: 'Terminated' },
+            { isDeleted: true },
+          ],
+        } as any);
 
         // Also clean up any deleted Azure VMs from the Server collection
         const liveAzureNames = liveAzureResources.map((r) => (r.name || '').toLowerCase().trim());
@@ -116,13 +119,11 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
           [r.publicIp, r.privateIp].filter((ip): ip is string => Boolean(ip)).map((ip) => ip.trim())
         );
 
-        if (liveAzureResources.length > 0) {
-          await Server.deleteMany({
-            cloudProvider: 'azure',
-            name: { $nin: liveAzureNames },
-            host: { $nin: liveAzureIps },
-          });
-        }
+        await Server.deleteMany({
+          cloudProvider: 'azure',
+          name: { $nin: liveAzureNames },
+          host: { $nin: liveAzureIps },
+        });
 
         prunedCount += pruneAzureRes.deletedCount || 0;
         azureCount += liveAzureResources.length;

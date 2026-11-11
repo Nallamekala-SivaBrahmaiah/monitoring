@@ -96,6 +96,8 @@ export async function GET(request: NextRequest) {
     const synthesizedServers: any[] = [];
     for (const cr of cloudResources) {
       if (cr.resourceId && cr.resourceId.startsWith('srv-')) continue;
+      // Strictly only synthesize real compute instances (AWS EC2 or Azure VMs)
+      if (cr.resourceType !== 'vm' && cr.resourceType !== 'ec2') continue;
       if (matchedCloudIds.has(cr.resourceId) || matchedCloudIds.has(cr._id.toString())) continue;
       if (cloudFilter && cloudFilter !== 'all' && cr.provider !== cloudFilter) continue;
 
