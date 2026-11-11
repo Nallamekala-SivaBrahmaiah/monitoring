@@ -1,8 +1,40 @@
 import React from 'react';
 
 // ==========================================
-// 1. Core Cloud Provider Logos
+// 1. Core Cloud Provider Logos & Platform Brand
 // ==========================================
+
+export function MultiCloudBrandLogo({ className = 'w-6 h-6' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 64 64" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="mcCloudGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#00D4FF" />
+          <stop offset="100%" stopColor="#0084FF" />
+        </linearGradient>
+        <linearGradient id="mcAmberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FFA826" />
+          <stop offset="100%" stopColor="#FF9900" />
+        </linearGradient>
+      </defs>
+      {/* Cloud Contour */}
+      <path
+        d="M48 45H19C14.03 45 10 40.97 10 36C10 31.34 13.53 27.51 18.1 27.06C18.55 19.35 24.85 13.5 32.95 13.5C40.15 13.5 45.99 18.45 47.34 25.2C51.84 25.65 55 29.25 55 33.75C55 40.05 50.5 45 48 45Z"
+        stroke="url(#mcCloudGrad)"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* 3 Internal Telemetry Bars */}
+      <rect x="23.5" y="32" width="4.5" height="8" rx="2" fill="#0084FF" />
+      <rect x="30" y="26" width="4.5" height="14" rx="2" fill="#00D4FF" />
+      <rect x="36.5" y="20" width="4.5" height="20" rx="2" fill="url(#mcAmberGrad)" />
+      {/* Orbiting AWS Amber Satellite Beacon */}
+      <circle cx="50" cy="15" r="3.5" fill="url(#mcAmberGrad)" />
+      <circle cx="50" cy="15" r="1.5" fill="#FFFFFF" />
+    </svg>
+  );
+}
 
 export function AwsLogo({ className = 'w-6 h-6' }: { className?: string }) {
   return (

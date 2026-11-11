@@ -17,7 +17,16 @@ import {
   Layers,
   Terminal,
 } from 'lucide-react';
-import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
+import {
+  MultiCloudBrandLogo,
+  AwsLogo,
+  AzureLogo,
+  DockerLogo,
+  KubernetesLogo,
+  AnsibleLogo,
+  MavenLogo,
+  NginxLogo,
+} from '@/components/icons/CloudIcons';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -131,23 +140,7 @@ export default function LoginPage() {
           <div className="space-y-2">
             <div className="flex items-center gap-3.5">
               <div className="relative w-14 h-14 flex items-center justify-center">
-                <svg
-                  className="w-14 h-14 text-cyan-400 drop-shadow-[0_0_15px_rgba(6,182,212,0.85)]"
-                  viewBox="0 0 64 64"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M49 46H18C12.477 46 8 41.523 8 36C8 30.824 11.928 26.564 17 26.066C17.5 17.5 24.5 11 33.5 11C41.5 11 48 16.5 49.5 24C54.5 24.5 58 28.5 58 33.5C58 40.5 53 46 49 46Z"
-                    stroke="currentColor"
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <rect x="23" y="32" width="4.5" height="8" rx="2" fill="currentColor" />
-                  <rect x="30" y="26" width="4.5" height="14" rx="2" fill="currentColor" />
-                  <rect x="37" y="20" width="4.5" height="20" rx="2" fill="currentColor" />
-                </svg>
+                <MultiCloudBrandLogo className="w-14 h-14 drop-shadow-[0_0_15px_rgba(6,182,212,0.85)]" />
               </div>
 
               <div className="flex flex-col">

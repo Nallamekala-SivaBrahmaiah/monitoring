@@ -5,6 +5,15 @@ import { MonitoringProvider } from '@/context/MonitoringContext';
 export const metadata: Metadata = {
   title: 'Multi-Cloud Monitoring Platform | AWS & Azure Infrastructure',
   description: 'Real-time observability, server health, EC2 instances, Azure VMs, Docker containers, and Kubernetes metrics.',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', type: 'image/x-icon' },
+    ],
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({

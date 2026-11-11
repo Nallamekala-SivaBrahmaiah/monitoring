@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="cloudGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D4FF"/>
+      <stop offset="100%" stop-color="#0084FF"/>
+    </linearGradient>
+    <linearGradient id="amberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFA826"/>
+      <stop offset="100%" stop-color="#FF9900"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="2.5" flood-color="#00D4FF" flood-opacity="0.7"/>
+    </filter>
+  </defs>
+
+  <!-- Deep Navy Squircle Base for High Contrast in all Browsers -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#07132B" stroke="#0084FF" stroke-width="1.5" stroke-opacity="0.6"/>
+
+  <!-- Cloud Contour -->
+  <path d="M48 45H19C14.03 45 10 40.97 10 36C10 31.34 13.53 27.51 18.1 27.06C18.55 19.35 24.85 13.5 32.95 13.5C40.15 13.5 45.99 18.45 47.34 25.2C51.84 25.65 55 29.25 55 33.75C55 40.05 50.5 45 48 45Z" stroke="url(#cloudGrad)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+
+  <!-- 3 Internal Telemetry Bars -->
+  <rect x="23.5" y="32" width="4.5" height="8" rx="2" fill="#0084FF" />
+  <rect x="30" y="26" width="4.5" height="14" rx="2" fill="#00D4FF" />
+  <rect x="36.5" y="20" width="4.5" height="20" rx="2" fill="url(#amberGrad)" />
+
+  <!-- Orbiting AWS Amber Satellite Beacon -->
+  <circle cx="50" cy="15" r="3.5" fill="url(#amberGrad)" />
+  <circle cx="50" cy="15" r="1.5" fill="#FFFFFF"/>
+</svg>
+

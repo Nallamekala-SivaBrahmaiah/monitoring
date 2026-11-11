@@ -10,6 +10,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import {
+  MultiCloudBrandLogo,
   AwsLogo,
   AzureLogo,
   MavenLogo,
@@ -120,8 +121,8 @@ export function Sidebar({
       {/* Brand Header */}
       <div className="p-5 flex items-center justify-between border-b border-[#1E293B]/70">
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 shadow-lg shadow-blue-500/25 group-hover:scale-105 transition-transform">
-            <Cloud className="w-6 h-6 text-white" />
+          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#081226] border border-cyan-500/40 shadow-lg shadow-cyan-500/20 group-hover:scale-105 group-hover:border-cyan-400 transition-all">
+            <MultiCloudBrandLogo className="w-7 h-7" />
           </div>
           <div>
             <h1 className="font-bold text-white text-base tracking-tight leading-snug">
