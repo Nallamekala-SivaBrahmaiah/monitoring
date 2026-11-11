@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
-import MavenBuild from '@/models/MavenBuild';
+import MavenBuild, { ensureSafeBuildIndexes } from '@/models/MavenBuild';
 import MavenProject from '@/models/MavenProject';
 import { executeMavenBuild, isValidGitUrl, sanitizeMavenCommand } from '@/lib/maven/mavenBuildEngine';
 
@@ -97,26 +97,48 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const lastBuild = await MavenBuild.findOne({ projectId: project._id })
-      .sort({ buildNumber: -1 })
-      .lean();
-    const buildNumber = (lastBuild?.buildNumber || 0) + 1;
+    await ensureSafeBuildIndexes();
 
-    const build = await MavenBuild.create({
-      projectId: project._id,
-      projectName: project.name,
-      buildNumber,
-      repositoryUrl: repositoryUrl.trim(),
-      branch: branch.trim(),
-      projectFolder: projectFolder.trim(),
-      command: sanitizedCmd,
-      executionMode,
-      status: 'QUEUED',
-      startTime: new Date(),
-      durationSeconds: 0,
-      logs: `[+] Enqueued ad-hoc build #${buildNumber} for repository "${repositoryUrl}"...\n`,
-      artifacts: [],
-    });
+    const lastGlobalBuild = await MavenBuild.findOne()
+      .sort({ buildNumber: -1 })
+      .select('buildNumber')
+      .lean();
+    let currentBuildNumber = (lastGlobalBuild?.buildNumber || 0) + 1;
+
+    let build: any = null;
+    let attempts = 0;
+
+    while (!build && attempts < 5) {
+      try {
+        build = await MavenBuild.create({
+          projectId: project._id,
+          projectName: project.name,
+          buildNumber: currentBuildNumber,
+          repositoryUrl: repositoryUrl.trim(),
+          branch: branch.trim(),
+          projectFolder: projectFolder.trim(),
+          command: sanitizedCmd,
+          executionMode,
+          status: 'QUEUED',
+          startTime: new Date(),
+          durationSeconds: 0,
+          logs: `[+] Enqueued ad-hoc build #${currentBuildNumber} for repository "${repositoryUrl}"...\n`,
+          artifacts: [],
+        });
+      } catch (err: any) {
+        if (err.code === 11000) {
+          attempts++;
+          await ensureSafeBuildIndexes();
+          currentBuildNumber += 1;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!build) {
+      throw new Error('Failed to create build record after multiple attempts.');
+    }
 
     project.lastBuildStatus = 'RUNNING';
     project.lastBuildAt = new Date();
@@ -132,9 +154,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       buildId: build._id,
-      buildNumber,
+      buildNumber: currentBuildNumber,
       projectName: project.name,
-      message: `Maven build #${buildNumber} started successfully.`,
+      message: `Maven build #${currentBuildNumber} started successfully.`,
     });
   } catch (err: any) {
     console.error('Error starting ad-hoc Maven build:', err);

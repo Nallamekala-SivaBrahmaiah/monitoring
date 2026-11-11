@@ -44,3 +44,7 @@ next-env.d.ts
 
 # local persistent fallback data
 .data/
+
+# maven isolated build workspaces
+.maven-workspaces/
+

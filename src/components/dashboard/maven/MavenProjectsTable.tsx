@@ -24,6 +24,7 @@ interface MavenProjectsTableProps {
   onEdit: (project: IMavenProjectData) => void;
   onDelete: (id: string, name: string) => void;
   onRunBuild: (project: IMavenProjectData) => void;
+  onRunApp?: (project: IMavenProjectData) => void;
   runningProjectId?: string | null;
 }
 
@@ -34,6 +35,7 @@ export function MavenProjectsTable({
   onEdit,
   onDelete,
   onRunBuild,
+  onRunApp,
   runningProjectId,
 }: MavenProjectsTableProps) {
   const formatDate = (d?: string | Date | null) => {
@@ -179,6 +181,17 @@ export function MavenProjectsTable({
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="inline-flex items-center gap-1">
+                        {isSuccess && onRunApp && (
+                          <button
+                            onClick={() => onRunApp(p)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-teal-600/20 hover:bg-teal-600/30 text-teal-400 border border-teal-500/30 font-semibold text-[11px] transition-colors"
+                            title="Run Built Application"
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                            <span>Run App</span>
+                          </button>
+                        )}
+
                         <button
                           onClick={() => onRunBuild(p)}
                           disabled={isRunning}

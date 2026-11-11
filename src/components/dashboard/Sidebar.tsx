@@ -79,8 +79,8 @@ export function Sidebar({
     { label: 'EC2 Instances', href: '/dashboard/ec2', icon: Cpu },
     { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AppWindow },
     { label: 'Server Scheduling', href: '/dashboard/schedules', icon: CalendarClock },
-    { label: 'Docker Containers', href: '/dashboard/docker', icon: Boxes },
     { label: 'Maven', href: '/dashboard/maven', icon: MavenLogo },
+    { label: 'Docker Containers', href: '/dashboard/docker', icon: Boxes },
     { label: 'Kubernetes', href: '/dashboard/kubernetes', icon: Layers },
     { label: 'Metrics Explorer', href: '/dashboard/metrics', icon: Activity },
     {

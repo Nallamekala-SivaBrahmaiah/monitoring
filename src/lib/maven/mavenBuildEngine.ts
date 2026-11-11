@@ -76,20 +76,61 @@ function resolveJavaHome(jdkVersion?: string): string | undefined {
 /**
  * Locate best available Maven executable on host
  */
-function resolveMavenBinary(workspaceDir: string): { cmd: string; isWrapper: boolean } {
-  // 1. Check for mvnw.cmd in workspace
-  const mvnwCmd = path.join(workspaceDir, 'mvnw.cmd');
-  if (fs.existsSync(mvnwCmd)) {
-    return { cmd: mvnwCmd, isWrapper: true };
+function resolveMavenBinary(workspaceDir: string, rootDir?: string): { cmd: string; isWrapper: boolean } {
+  // 1. Prefer Maven Wrapper (mvnw.cmd on Windows, mvnw on Linux) when available
+  const dirs = [workspaceDir];
+  if (rootDir && rootDir !== workspaceDir) {
+    dirs.push(rootDir);
+  }
+
+  for (const dir of dirs) {
+    if (process.platform === 'win32') {
+      const mvnwCmd = path.join(dir, 'mvnw.cmd');
+      if (fs.existsSync(mvnwCmd)) {
+        return { cmd: mvnwCmd, isWrapper: true };
+      }
+    } else {
+      const mvnw = path.join(dir, 'mvnw');
+      if (fs.existsSync(mvnw)) {
+        try {
+          fs.chmodSync(mvnw, 0o755);
+        } catch {
+          // Ignore chmod errors if permissions are restricted
+        }
+        return { cmd: mvnw, isWrapper: true };
+      }
+    }
   }
 
   // 2. Check known installed Maven installation path
   const knownMvn = 'C:\\Program Files\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin\\mvn.cmd';
-  if (fs.existsSync(knownMvn)) {
+  if (process.platform === 'win32' && fs.existsSync(knownMvn)) {
     return { cmd: knownMvn, isWrapper: false };
   }
 
-  // 3. Fallback to system mvn.cmd or mvn
+  // 3. Check MAVEN_HOME or M2_HOME environment variables
+  if (process.env.MAVEN_HOME) {
+    const candidate = path.join(
+      process.env.MAVEN_HOME,
+      'bin',
+      process.platform === 'win32' ? 'mvn.cmd' : 'mvn'
+    );
+    if (fs.existsSync(candidate)) {
+      return { cmd: candidate, isWrapper: false };
+    }
+  }
+  if (process.env.M2_HOME) {
+    const candidate = path.join(
+      process.env.M2_HOME,
+      'bin',
+      process.platform === 'win32' ? 'mvn.cmd' : 'mvn'
+    );
+    if (fs.existsSync(candidate)) {
+      return { cmd: candidate, isWrapper: false };
+    }
+  }
+
+  // 4. Support system-installed Maven as a fallback
   return { cmd: process.platform === 'win32' ? 'mvn.cmd' : 'mvn', isWrapper: false };
 }
 
@@ -256,9 +297,16 @@ export async function executeMavenBuild(buildId: string): Promise<void> {
 
     if (javaHome) {
       env.JAVA_HOME = javaHome;
-      env.PATH = `${path.join(javaHome, 'bin')}${path.delimiter}C:\\Program Files\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin${path.delimiter}${env.PATH || ''}`;
+      const extraPaths = [path.join(javaHome, 'bin')];
+      if (process.platform === 'win32') {
+        extraPaths.push('C:\\Program Files\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin');
+      }
+      env.PATH = `${extraPaths.join(path.delimiter)}${path.delimiter}${env.PATH || ''}`;
       build.logs += `[+] Using JAVA_HOME: ${javaHome}\n`;
     }
+
+    // Set MAVEN_BASEDIR to avoid mvn.cmd directory traversal permissions warnings on Windows
+    env.MAVEN_BASEDIR = buildCwd;
 
     // Inject custom project environment variables & secrets
     if (project?.envVariables && Array.isArray(project.envVariables)) {
@@ -271,7 +319,7 @@ export async function executeMavenBuild(buildId: string): Promise<void> {
     }
 
     // Step 4: Resolve Maven Executable
-    const mavenBin = resolveMavenBinary(buildCwd);
+    const mavenBin = resolveMavenBinary(buildCwd, workspaceDir);
     build.logs += `[+] Selected Maven executable: ${mavenBin.cmd} (${mavenBin.isWrapper ? 'Maven Wrapper' : 'System Maven'})\n`;
 
     const sanitizedCmd = sanitizeMavenCommand(build.command);
@@ -368,7 +416,9 @@ export async function executeMavenBuild(buildId: string): Promise<void> {
 }
 
 /**
- * Runs a child process with streaming output capture and PID registration
+ * Runs a child process with streaming output capture and PID registration.
+ * Correctly handles Windows CMD argument quoting and paths containing spaces,
+ * while preserving clean standard argument array execution on Linux/macOS.
  */
 function runSubprocess(
   cmd: string,
@@ -380,10 +430,39 @@ function runSubprocess(
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     try {
-      const child = spawn(cmd, args, {
+      const isWin = process.platform === 'win32';
+      const isBatch = isWin && /\.(cmd|bat)$/i.test(cmd);
+
+      let executable: string;
+      let spawnArgs: string[];
+      let windowsVerbatim = false;
+
+      if (isBatch) {
+        // On Windows, .cmd and .bat files must be executed through cmd.exe.
+        // We use cmd.exe /d /s /c call "<cmd>" arg1 arg2 with windowsVerbatimArguments: true.
+        // The 'call' prefix ensures cmd.exe does not strip quotes from the executable path,
+        // correctly handling paths with spaces (e.g. "C:\Program Files\...\mvn.cmd")
+        // without triggering the "'C:\Program' is not recognized" failure.
+        executable = process.env.ComSpec || 'cmd.exe';
+        const formattedArgs = args.map((arg) => {
+          if (arg.includes(' ') && !arg.startsWith('"') && !arg.endsWith('"')) {
+            return `"${arg}"`;
+          }
+          return arg;
+        });
+        spawnArgs = ['/d', '/s', '/c', 'call', `"${cmd}"`, ...formattedArgs];
+        windowsVerbatim = true;
+      } else {
+        // Direct executable (.exe, git, java, or Linux/macOS binary)
+        executable = cmd;
+        spawnArgs = args;
+      }
+
+      const child = spawn(executable, spawnArgs, {
         cwd,
         env: env || process.env,
-        shell: true,
+        shell: false,
+        windowsVerbatimArguments: windowsVerbatim,
       });
 
       if (buildId) {

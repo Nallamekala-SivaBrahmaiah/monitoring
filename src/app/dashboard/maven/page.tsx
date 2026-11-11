@@ -14,6 +14,9 @@ import {
   FolderGit2,
   FileBox,
   Layers,
+  Radio,
+  Server,
+  Activity,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -21,8 +24,12 @@ import { MavenLogo } from '@/components/icons/CloudIcons';
 import { MavenQuickRunCard } from '@/components/dashboard/maven/MavenQuickRunCard';
 import { MavenProjectsTable } from '@/components/dashboard/maven/MavenProjectsTable';
 import { MavenBuildHistoryTable } from '@/components/dashboard/maven/MavenBuildHistoryTable';
+import { MavenActiveAppsTable } from '@/components/dashboard/maven/MavenActiveAppsTable';
 import { CreateMavenProjectModal } from '@/components/dashboard/maven/CreateMavenProjectModal';
+import { RunAppConfigModal } from '@/components/dashboard/maven/RunAppConfigModal';
+import { AppLogsModal } from '@/components/dashboard/maven/AppLogsModal';
 import { IMavenProjectData } from '@/models/MavenProject';
+import { IMavenAppData } from '@/models/MavenApp';
 
 interface MavenSummary {
   totalProjects: number;
@@ -34,9 +41,10 @@ interface MavenSummary {
 
 export default function MavenPage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'runner' | 'projects' | 'history'>('runner');
+  const [activeTab, setActiveTab] = useState<'runner' | 'apps' | 'projects' | 'history'>('runner');
 
   const [projects, setProjects] = useState<IMavenProjectData[]>([]);
+  const [apps, setApps] = useState<IMavenAppData[]>([]);
   const [summary, setSummary] = useState<MavenSummary>({
     totalProjects: 0,
     successfulBuilds: 0,
@@ -46,9 +54,25 @@ export default function MavenPage() {
   });
 
   const [loading, setLoading] = useState(true);
+  const [appsLoading, setAppsLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<IMavenProjectData | null>(null);
   const [runningProjectId, setRunningProjectId] = useState<string | null>(null);
+
+  // Active Runner State
+  const [runnerProject, setRunnerProject] = useState<IMavenProjectData | null>(null);
+  const [runnerBuildId, setRunnerBuildId] = useState<string | null>(null);
+
+  // Run App Modal State
+  const [runModalTarget, setRunModalTarget] = useState<{
+    projectId?: string;
+    projectName?: string;
+    buildId?: string;
+    artifactName?: string;
+  } | null>(null);
+
+  // App Logs Modal State
+  const [selectedAppForLogs, setSelectedAppForLogs] = useState<IMavenAppData | null>(null);
 
   // Delete confirm dialog
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
@@ -76,9 +100,28 @@ export default function MavenPage() {
     }
   };
 
+  const fetchApps = async () => {
+    try {
+      setAppsLoading(true);
+      const res = await fetch('/api/maven/apps');
+      if (res.ok) {
+        const data = await res.json();
+        setApps(data.apps || []);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch apps:', err);
+    } finally {
+      setAppsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchProjectsAndSummary();
-    const interval = setInterval(fetchProjectsAndSummary, 15000);
+    fetchApps();
+    const interval = setInterval(() => {
+      fetchProjectsAndSummary();
+      fetchApps();
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -128,8 +171,11 @@ export default function MavenPage() {
       if (res.ok && data.success) {
         setActionFeedback({
           type: 'success',
-          message: `Build #${data.buildNumber} started for "${project.name}". Switch to Active Runner to view live logs.`,
+          message: `Build #${data.buildNumber} started for "${project.name}". Switched to Active Runner to view live logs.`,
         });
+        setRunnerProject(project);
+        setRunnerBuildId(data.buildId);
+        setActiveTab('runner');
         fetchProjectsAndSummary();
       } else {
         throw new Error(data.error || 'Failed to trigger build');
@@ -143,6 +189,48 @@ export default function MavenPage() {
       setRunningProjectId(null);
     }
   };
+
+  const handleStopApp = async (appId: string) => {
+    try {
+      const res = await fetch(`/api/maven/apps/${appId}/stop`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setActionFeedback({
+          type: 'success',
+          message: data.message || 'Application stopped.',
+        });
+        fetchApps();
+      } else {
+        throw new Error(data.error || 'Failed to stop application');
+      }
+    } catch (err: any) {
+      setActionFeedback({
+        type: 'error',
+        message: err.message || 'Failed to stop application',
+      });
+    }
+  };
+
+  const handleDeleteApp = async (appId: string) => {
+    try {
+      const res = await fetch(`/api/maven/apps/${appId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        setActionFeedback({
+          type: 'success',
+          message: 'Application record removed.',
+        });
+        fetchApps();
+      }
+    } catch (err: any) {
+      setActionFeedback({
+        type: 'error',
+        message: err.message || 'Failed to delete app record',
+      });
+    }
+  };
+
+  const runningAppsCount = apps.filter((a) => a.status === 'RUNNING' || a.status === 'STARTING').length;
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col font-sans">
@@ -165,14 +253,17 @@ export default function MavenPage() {
                   <span>Maven</span>
                 </h1>
                 <p className="text-xs text-slate-400">
-                  Build Java projects using Maven inside isolated execution workspaces
+                  Build Java projects and autonomously run executable applications with browser access
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <button
-                onClick={fetchProjectsAndSummary}
+                onClick={() => {
+                  fetchProjectsAndSummary();
+                  fetchApps();
+                }}
                 disabled={loading}
                 title="Refresh projects and metrics"
                 className="p-2 rounded-xl bg-[#111A2E] hover:bg-[#18233C] border border-[#1E293B] text-slate-300 transition-colors"
@@ -218,7 +309,7 @@ export default function MavenPage() {
 
           {/* Summary Cards */}
           <section aria-label="Maven Summary Metrics">
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3.5">
               {/* Total Maven Projects */}
               <div className="p-4 rounded-2xl bg-[#111A2E] border border-[#1E293B] shadow-md flex flex-col justify-between">
                 <span className="text-[11px] font-semibold text-slate-400 tracking-wide">
@@ -281,7 +372,7 @@ export default function MavenPage() {
               </div>
 
               {/* Total Build Artifacts */}
-              <div className="p-4 rounded-2xl bg-[#111A2E] border border-[#1E293B] shadow-md flex flex-col justify-between col-span-2 sm:col-span-1">
+              <div className="p-4 rounded-2xl bg-[#111A2E] border border-[#1E293B] shadow-md flex flex-col justify-between">
                 <span className="text-[11px] font-semibold text-slate-400 tracking-wide">
                   Total Build Artifacts
                 </span>
@@ -294,14 +385,30 @@ export default function MavenPage() {
                   </span>
                 </div>
               </div>
+
+              {/* Running Applications */}
+              <div className="p-4 rounded-2xl bg-[#111A2E] border border-[#1E293B] shadow-md flex flex-col justify-between">
+                <span className="text-[11px] font-semibold text-slate-400 tracking-wide">
+                  Running Applications
+                </span>
+                <div className="mt-2 flex items-baseline justify-between">
+                  <span className="text-2xl font-bold font-mono text-emerald-400">
+                    {runningAppsCount}
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span className={`w-1.5 h-1.5 rounded-full ${runningAppsCount > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                    Live
+                  </span>
+                </div>
+              </div>
             </div>
           </section>
 
           {/* Navigation Tabs */}
-          <div className="flex items-center gap-2 border-b border-[#1E293B] pb-1 select-none">
+          <div className="flex items-center gap-2 border-b border-[#1E293B] pb-1 select-none overflow-x-auto">
             <button
               onClick={() => setActiveTab('runner')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 whitespace-nowrap ${
                 activeTab === 'runner'
                   ? 'border-blue-500 text-white bg-[#111A2E]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -312,8 +419,20 @@ export default function MavenPage() {
             </button>
 
             <button
+              onClick={() => setActiveTab('apps')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 whitespace-nowrap ${
+                activeTab === 'apps'
+                  ? 'border-blue-500 text-white bg-[#111A2E]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
+              <span>Active Applications ({runningAppsCount})</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('projects')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 whitespace-nowrap ${
                 activeTab === 'projects'
                   ? 'border-blue-500 text-white bg-[#111A2E]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -325,7 +444,7 @@ export default function MavenPage() {
 
             <button
               onClick={() => setActiveTab('history')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 whitespace-nowrap ${
                 activeTab === 'history'
                   ? 'border-blue-500 text-white bg-[#111A2E]'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -338,7 +457,45 @@ export default function MavenPage() {
 
           {/* Tab Content */}
           {activeTab === 'runner' && (
-            <MavenQuickRunCard onBuildCompleted={fetchProjectsAndSummary} />
+            <MavenQuickRunCard
+              projects={projects}
+              selectedProject={runnerProject}
+              activeBuildId={runnerBuildId}
+              onResetToDefault={() => {
+                setRunnerProject(null);
+                setRunnerBuildId(null);
+              }}
+              onBuildCompleted={() => {
+                fetchProjectsAndSummary();
+                fetchApps();
+              }}
+              onAppStarted={(app) => {
+                fetchApps();
+                setActionFeedback({
+                  type: 'success',
+                  message: `Application "${app.projectName}" is running on port ${app.port}!`,
+                });
+              }}
+            />
+          )}
+
+          {activeTab === 'apps' && (
+            <MavenActiveAppsTable
+              apps={apps}
+              loading={appsLoading}
+              onRefresh={fetchApps}
+              onStartApp={(app) => {
+                setRunModalTarget({
+                  projectId: app.projectId,
+                  projectName: app.projectName,
+                  buildId: app.buildId,
+                  artifactName: app.artifactName,
+                });
+              }}
+              onStopApp={handleStopApp}
+              onDeleteApp={handleDeleteApp}
+              onViewLogs={(app) => setSelectedAppForLogs(app)}
+            />
           )}
 
           {activeTab === 'projects' && (
@@ -349,6 +506,12 @@ export default function MavenPage() {
               onEdit={handleEdit}
               onDelete={(id, name) => setDeleteConfirm({ id, name })}
               onRunBuild={handleRunBuildFromTable}
+              onRunApp={(project) => {
+                setRunModalTarget({
+                  projectId: project._id,
+                  projectName: project.name,
+                });
+              }}
               runningProjectId={runningProjectId}
             />
           )}
@@ -369,6 +532,35 @@ export default function MavenPage() {
         onSaved={fetchProjectsAndSummary}
         editProject={editingProject}
       />
+
+      {/* Run Application Modal */}
+      {runModalTarget && (
+        <RunAppConfigModal
+          isOpen={Boolean(runModalTarget)}
+          onClose={() => setRunModalTarget(null)}
+          onAppStarted={(app) => {
+            fetchApps();
+            setActionFeedback({
+              type: 'success',
+              message: `Application "${app.projectName}" launched on port ${app.port}. Click Open App to access.`,
+            });
+          }}
+          defaultProjectId={runModalTarget.projectId}
+          defaultProjectName={runModalTarget.projectName}
+          defaultBuildId={runModalTarget.buildId}
+          defaultArtifactName={runModalTarget.artifactName}
+        />
+      )}
+
+      {/* Application Logs Modal */}
+      {selectedAppForLogs && (
+        <AppLogsModal
+          app={selectedAppForLogs}
+          isOpen={Boolean(selectedAppForLogs)}
+          onClose={() => setSelectedAppForLogs(null)}
+          onStopApp={handleStopApp}
+        />
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
@@ -406,4 +598,3 @@ export default function MavenPage() {
     </div>
   );
 }
-

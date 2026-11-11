@@ -149,5 +149,23 @@ export const MavenBuild: Model<IMavenBuild> =
   mongoose.models.MavenBuild ||
   mongoose.model<IMavenBuild>('MavenBuild', MavenBuildSchema);
 
+/**
+ * Drop legacy unique indexes that cause E11000 duplicate key errors across projects
+ */
+export async function ensureSafeBuildIndexes() {
+  try {
+    const collection = MavenBuild.collection;
+    const indexes = await collection.indexes();
+    for (const idx of indexes) {
+      if (idx.name === 'buildNumber_1' && (idx as any).unique) {
+        await collection.dropIndex('buildNumber_1');
+        console.log('[MavenBuild] Successfully dropped legacy unique index: buildNumber_1');
+      }
+    }
+  } catch (err: any) {
+    // Ignore index not found or collection empty errors
+  }
+}
+
 export default MavenBuild;
 
