@@ -140,6 +140,64 @@ function CircularGauge({
   );
 }
 
+interface ResourceMetricCardProps {
+  label: string;
+  icon: React.ReactNode;
+  valuePercent: number | null;
+  detailText?: string | null;
+  subText?: string | null;
+  barColor: string;
+}
+
+function ResourceMetricCard({
+  label,
+  icon,
+  valuePercent,
+  detailText,
+  subText,
+  barColor,
+}: ResourceMetricCardProps) {
+  const displayPct =
+    valuePercent !== null && !isNaN(valuePercent) ? `${valuePercent}%` : 'N/A';
+  const barWidth = Math.min(100, Math.max(0, valuePercent || 0));
+
+  return (
+    <div className="bg-[#0D1526] border border-[#1E293B] rounded-xl p-3 sm:p-3.5 flex flex-col justify-between h-[96px] shadow-sm transition-all hover:border-[#26354D]">
+      {/* Top row: Label & Icon */}
+      <div className="flex items-center justify-between text-slate-400">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          {label}
+        </span>
+        <div className="shrink-0">{icon}</div>
+      </div>
+
+      {/* Middle row: Big Percent & Detail info */}
+      <div className="flex items-baseline justify-between gap-1.5">
+        <span className="text-lg sm:text-xl font-extrabold text-white font-mono tracking-tight">
+          {displayPct}
+        </span>
+        {detailText ? (
+          <span className="text-[10px] sm:text-[11px] text-slate-400 font-mono font-medium truncate">
+            {detailText}
+          </span>
+        ) : subText ? (
+          <span className="text-[10px] text-slate-400 font-medium">
+            {subText}
+          </span>
+        ) : null}
+      </div>
+
+      {/* Bottom row: Progress Bar */}
+      <div className="w-full h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+          style={{ width: `${barWidth}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ResourceOverviewChart({
   initialMetric = 'CPU',
   data,
@@ -456,6 +514,8 @@ export function ResourceOverviewChart({
     ? activeServerDetail.status === 'Online' || (activeServerDetail.status || '').toLowerCase().includes('run')
     : false;
 
+  const isAws = activeServerDetail?.provider === 'aws';
+
   // Live present timestamp updating continuously
   const [presentTime, setPresentTime] = useState<number | null>(null);
 
@@ -621,81 +681,85 @@ export function ResourceOverviewChart({
     return points;
   }, [data, filteredList, selectedMetric, activeServerDetail, presentTime]);
 
-  const showAws = !activeServerDetail || activeServerDetail.provider === 'aws';
-  const showAzure = !activeServerDetail || activeServerDetail.provider === 'azure';
-
   return (
     <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col gap-4 relative">
-      {/* ================= 1. HEADER ================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[#1E293B]/70">
-        <div className="flex items-center gap-2.5 flex-wrap">
+      {/* ================= 1. STANDARDIZED HEADER (AWS & AZURE IDENTICAL) ================= */}
+      <div className="flex items-center justify-between gap-2.5 pb-3 border-b border-[#1E293B]/70 min-w-0">
+        {/* LEFT: Title & Badges in a single un-wrapped line on desktop */}
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 overflow-hidden">
           <div className="p-1.5 rounded-lg bg-teal-500/10 text-teal-400 border border-teal-500/20 shrink-0">
             <Activity className="w-4 h-4" />
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-base font-bold text-white tracking-tight">Resource Overview</h3>
 
-            {activeServerDetail ? (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {/* Selected Server Name Badge */}
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30">
-                  <ServerIcon className="w-3 h-3 text-blue-400" />
-                  <span>{activeServerDetail.name}</span>
-                </span>
+          <h3 className="text-sm sm:text-base font-bold text-white tracking-tight shrink-0 whitespace-nowrap">
+            Resource Overview
+          </h3>
 
-                {/* Cloud Provider Badge */}
-                <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
-                    activeServerDetail.provider === 'aws'
-                      ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                      : activeServerDetail.provider === 'azure'
-                      ? 'bg-[#0089D6]/15 text-[#5EA0EF] border-[#0089D6]/30'
-                      : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
-                  }`}
-                >
-                  {activeServerDetail.provider === 'aws' ? (
-                    <AwsLogo className="w-3 h-3" />
-                  ) : activeServerDetail.provider === 'azure' ? (
-                    <AzureLogo className="w-3 h-3" />
-                  ) : null}
-                  <span>{activeServerDetail.provider}</span>
-                </span>
-
-                {/* Server Status Badge */}
-                <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                    isOnline
-                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                      : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                  }`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
-                    }`}
-                  />
-                  <span>{isOnline ? 'Online' : activeServerDetail.status || 'Offline'}</span>
-                </span>
-              </div>
-            ) : selectedServer === 'all' ? (
-              <span className="text-xs text-slate-400 font-medium">
-                Fleet Aggregate • {allServers.length} servers
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="text-[11px] text-slate-400 flex items-center gap-2">
           {activeServerDetail ? (
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400 font-medium hidden sm:inline">IP:</span>
-              <span className="text-emerald-400 font-mono text-xs font-semibold bg-[#0D1526] px-2 py-0.5 rounded border border-[#1E293B]">
-                {activeServerDetail.publicIp || activeServerDetail.privateIp || activeServerDetail.host || 'N/A'}
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 overflow-hidden">
+              {/* Selected Server Name Badge (with ellipsis and tooltip) */}
+              <span
+                title={activeServerDetail.name}
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[11px] sm:text-xs font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30 max-w-[100px] sm:max-w-[140px] truncate shrink"
+              >
+                <ServerIcon className="w-3 h-3 text-blue-400 shrink-0" />
+                <span className="truncate">{activeServerDetail.name}</span>
+              </span>
+
+              {/* Cloud Provider Badge (AWS / AZURE standardized dimensions) */}
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-[11px] font-bold uppercase tracking-wider shrink-0 border ${
+                  isAws
+                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    : 'bg-[#0089D6]/15 text-[#5EA0EF] border-[#0089D6]/30'
+                }`}
+              >
+                {isAws ? (
+                  <AwsLogo className="w-3 h-3 shrink-0" />
+                ) : (
+                  <AzureLogo className="w-3 h-3 shrink-0" />
+                )}
+                <span>{isAws ? 'AWS' : 'AZURE'}</span>
+              </span>
+
+              {/* Server Status Badge (Online / Offline standardized) */}
+              <span
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-semibold shrink-0 border ${
+                  isOnline
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                  }`}
+                />
+                <span>{isOnline ? 'Online' : 'Offline'}</span>
               </span>
             </div>
-          ) : (
-            <span className="text-slate-400">Live guest OS telemetry & hardware usage</span>
-          )}
+          ) : selectedServer === 'all' ? (
+            <span className="text-xs text-slate-400 font-medium truncate">
+              Fleet Aggregate • {allServers.length} servers
+            </span>
+          ) : null}
+        </div>
+
+        {/* RIGHT: IP Address */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+          <span className="text-[11px] text-slate-400 font-medium hidden md:inline">IP:</span>
+          <span
+            title={
+              activeServerDetail
+                ? activeServerDetail.publicIp || activeServerDetail.privateIp || activeServerDetail.host || 'N/A'
+                : undefined
+            }
+            className="text-emerald-400 font-mono text-xs font-semibold bg-[#0D1526] px-2.5 py-1 rounded-md border border-[#1E293B] shadow-inner tracking-wide whitespace-nowrap"
+          >
+            {activeServerDetail
+              ? activeServerDetail.publicIp || activeServerDetail.privateIp || activeServerDetail.host || 'N/A'
+              : 'Live Telemetry'}
+          </span>
         </div>
       </div>
 
@@ -724,30 +788,28 @@ export function ResourceOverviewChart({
                 </span>
               </div>
             ) : activeServerDetail ? (
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                 <span
                   className={`w-2 h-2 rounded-full shrink-0 ${
                     isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
                   }`}
                 />
-                <span className="font-semibold text-white truncate max-w-[120px]">
+                <span className="font-semibold text-white truncate max-w-[100px] sm:max-w-[120px]">
                   {activeServerDetail.name}
                 </span>
                 {(activeServerDetail.publicIp || activeServerDetail.privateIp || activeServerDetail.host) && (
-                  <span className="text-[11px] font-mono text-emerald-400 truncate max-w-[110px]">
+                  <span className="text-[11px] font-mono text-emerald-400 truncate max-w-[100px] sm:max-w-[110px]">
                     {activeServerDetail.publicIp || activeServerDetail.privateIp || activeServerDetail.host}
                   </span>
                 )}
                 <span
-                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase shrink-0 ${
-                    activeServerDetail.provider === 'aws'
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 border ${
+                    isAws
                       ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                      : activeServerDetail.provider === 'azure'
-                      ? 'bg-[#0089D6]/20 text-[#5EA0EF] border border-[#0089D6]/30'
-                      : 'bg-purple-500/20 text-purple-300'
+                      : 'bg-[#0089D6]/20 text-[#5EA0EF] border border-[#0089D6]/30'
                   }`}
                 >
-                  {activeServerDetail.provider}
+                  {isAws ? 'AWS' : 'AZURE'}
                 </span>
               </div>
             ) : (
@@ -1022,82 +1084,39 @@ export function ResourceOverviewChart({
           {activeServerDetail && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* CPU Metric Card */}
-              <div className="bg-[#0D1526] border border-[#1E293B] rounded-lg p-3 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-slate-400 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider">CPU USAGE</span>
-                  <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-                </div>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-lg font-bold text-white font-mono">
-                    {activeServerDetail.cpuPercent !== null ? `${activeServerDetail.cpuPercent}%` : 'N/A'}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-medium">Guest OS</span>
-                </div>
-                <div className="w-full h-1.5 bg-[#1E293B] rounded-full overflow-hidden mt-2">
-                  <div
-                    className="h-full bg-cyan-400 rounded-full transition-all duration-500"
-                    style={{
-                      width: `${Math.min(100, Math.max(0, activeServerDetail.cpuPercent || 0))}%`,
-                    }}
-                  />
-                </div>
-              </div>
+              <ResourceMetricCard
+                label="CPU USAGE"
+                icon={<Cpu className="w-3.5 h-3.5 text-cyan-400" />}
+                valuePercent={activeServerDetail.cpuPercent}
+                subText="Guest OS"
+                barColor="bg-cyan-400"
+              />
 
               {/* RAM Metric Card */}
-              <div className="bg-[#0D1526] border border-[#1E293B] rounded-lg p-3 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-slate-400 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider">RAM USAGE</span>
-                  <HardDrive className="w-3.5 h-3.5 text-indigo-400" />
-                </div>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-lg font-bold text-white font-mono">
-                    {activeServerDetail.memoryPercent !== null
-                      ? `${activeServerDetail.memoryPercent}%`
-                      : 'N/A'}
-                  </span>
-                  {activeServerDetail.memoryDetails && (
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {activeServerDetail.memoryDetails.usedGB.toFixed(1)} / {activeServerDetail.memoryDetails.totalGB.toFixed(1)} GB
-                    </span>
-                  )}
-                </div>
-                <div className="w-full h-1.5 bg-[#1E293B] rounded-full overflow-hidden mt-2">
-                  <div
-                    className="h-full bg-indigo-500 rounded-full transition-all duration-500"
-                    style={{
-                      width: `${Math.min(100, Math.max(0, activeServerDetail.memoryPercent || 0))}%`,
-                    }}
-                  />
-                </div>
-              </div>
+              <ResourceMetricCard
+                label="RAM USAGE"
+                icon={<HardDrive className="w-3.5 h-3.5 text-indigo-400" />}
+                valuePercent={activeServerDetail.memoryPercent}
+                detailText={
+                  activeServerDetail.memoryDetails
+                    ? `${activeServerDetail.memoryDetails.usedGB.toFixed(1)} / ${activeServerDetail.memoryDetails.totalGB.toFixed(1)} GB`
+                    : null
+                }
+                barColor="bg-indigo-500"
+              />
 
               {/* Disk Metric Card */}
-              <div className="bg-[#0D1526] border border-[#1E293B] rounded-lg p-3 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-slate-400 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider">DISK USAGE</span>
-                  <Database className="w-3.5 h-3.5 text-amber-400" />
-                </div>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-lg font-bold text-white font-mono">
-                    {activeServerDetail.diskPercent !== null
-                      ? `${activeServerDetail.diskPercent}%`
-                      : 'N/A'}
-                  </span>
-                  {activeServerDetail.diskDetails && (
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {activeServerDetail.diskDetails.usedGB.toFixed(1)} / {activeServerDetail.diskDetails.totalGB.toFixed(1)} GB
-                    </span>
-                  )}
-                </div>
-                <div className="w-full h-1.5 bg-[#1E293B] rounded-full overflow-hidden mt-2">
-                  <div
-                    className="h-full bg-amber-400 rounded-full transition-all duration-500"
-                    style={{
-                      width: `${Math.min(100, Math.max(0, activeServerDetail.diskPercent || 0))}%`,
-                    }}
-                  />
-                </div>
-              </div>
+              <ResourceMetricCard
+                label="DISK USAGE"
+                icon={<Database className="w-3.5 h-3.5 text-amber-400" />}
+                valuePercent={activeServerDetail.diskPercent}
+                detailText={
+                  activeServerDetail.diskDetails
+                    ? `${activeServerDetail.diskDetails.usedGB.toFixed(1)} / ${activeServerDetail.diskDetails.totalGB.toFixed(1)} GB`
+                    : null
+                }
+                barColor="bg-amber-400"
+              />
             </div>
           )}
 
@@ -1109,13 +1128,17 @@ export function ResourceOverviewChart({
                 margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
               >
                 <defs>
-                  <linearGradient id="awsGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#FF9900" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#FF9900" stopOpacity={0.0} />
-                  </linearGradient>
-                  <linearGradient id="azureGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0089D6" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#0089D6" stopOpacity={0.0} />
+                  <linearGradient id="resourceAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop
+                      offset="5%"
+                      stopColor={isAws ? '#FF9900' : '#0089D6'}
+                      stopOpacity={0.28}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor={isAws ? '#FF9900' : '#0089D6'}
+                      stopOpacity={0.0}
+                    />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
@@ -1142,26 +1165,23 @@ export function ResourceOverviewChart({
                 <Tooltip
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length) {
+                      const val = payload[0].value;
                       return (
-                        <div className="bg-[#0D1526]/95 border border-[#1E293B] backdrop-blur-md px-3 py-2 rounded-lg shadow-xl text-xs">
-                          <p className="text-slate-400 font-semibold mb-1">{label}</p>
-                          <div className="space-y-1">
-                            {payload
-                              .filter((p) => (showAws && p.dataKey === 'aws') || (showAzure && p.dataKey === 'azure'))
-                              .map((p, idx) => (
-                                <div key={idx} className="flex items-center gap-2">
-                                  <span
-                                    className="w-2 h-2 rounded-full"
-                                    style={{ backgroundColor: p.stroke }}
-                                  />
-                                  <span className="text-slate-300">
-                                    {p.dataKey === 'aws' ? 'AWS' : activeServerDetail ? activeServerDetail.name : 'Azure'}:
-                                  </span>
-                                  <span className="font-bold text-white">
-                                    {p.value}%
-                                  </span>
-                                </div>
-                              ))}
+                        <div className="bg-[#0D1526]/95 border border-[#1E293B] backdrop-blur-md px-3 py-2 rounded-lg shadow-xl text-xs space-y-1">
+                          <p className="text-slate-400 font-semibold">{label}</p>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: isAws ? '#FF9900' : '#0089D6' }}
+                            />
+                            <span className="text-slate-300 font-medium">
+                              {activeServerDetail
+                                ? `${activeServerDetail.name} (${activeServerDetail.provider.toUpperCase()}):`
+                                : 'Server:'}
+                            </span>
+                            <span className="font-bold text-white font-mono">
+                              {val}%
+                            </span>
                           </div>
                         </div>
                       );
@@ -1169,30 +1189,26 @@ export function ResourceOverviewChart({
                     return null;
                   }}
                 />
-                {showAws && (
-                  <Area
-                    type="monotone"
-                    dataKey="aws"
-                    stroke="#FF9900"
-                    strokeWidth={2.5}
-                    fillOpacity={1}
-                    fill="url(#awsGradient)"
-                    dot={{ r: 3.5, fill: '#FF9900', strokeWidth: 1, stroke: '#111A2E' }}
-                    activeDot={{ r: 5.5, fill: '#FF9900', stroke: '#fff', strokeWidth: 2 }}
-                  />
-                )}
-                {showAzure && (
-                  <Area
-                    type="monotone"
-                    dataKey="azure"
-                    stroke="#0089D6"
-                    strokeWidth={2.5}
-                    fillOpacity={1}
-                    fill="url(#azureGradient)"
-                    dot={{ r: 3.5, fill: '#0089D6', strokeWidth: 1, stroke: '#111A2E' }}
-                    activeDot={{ r: 5.5, fill: '#0089D6', stroke: '#fff', strokeWidth: 2 }}
-                  />
-                )}
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke={isAws ? '#FF9900' : '#0089D6'}
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#resourceAreaGradient)"
+                  dot={{
+                    r: 3,
+                    fill: isAws ? '#FF9900' : '#0089D6',
+                    strokeWidth: 1,
+                    stroke: '#111A2E',
+                  }}
+                  activeDot={{
+                    r: 5,
+                    fill: isAws ? '#FF9900' : '#0089D6',
+                    stroke: '#ffffff',
+                    strokeWidth: 2,
+                  }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
