@@ -153,14 +153,14 @@ export default function DashboardPage() {
 
           {/* Row 2: Performance Charts & Distributions (3 Cards) */}
           <section aria-label="Performance and Status Overview">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-              <div className="lg:col-span-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+              <div className="lg:col-span-12 xl:col-span-6">
                 <ResourceOverviewChart initialMetric="CPU" />
               </div>
-              <div className="lg:col-span-3">
+              <div className="lg:col-span-6 xl:col-span-3">
                 <CloudDistributionChart />
               </div>
-              <div className="lg:col-span-3">
+              <div className="lg:col-span-6 xl:col-span-3">
                 <ServerStatusChart />
               </div>
             </div>
