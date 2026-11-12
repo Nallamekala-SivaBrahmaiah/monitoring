@@ -136,6 +136,7 @@ export default function ServersPage() {
   const [servers, setServers] = useState<RegisteredServer[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [fleetFilter, setFleetFilter] = useState<'all' | 'aws' | 'azure' | 'linux' | 'online' | 'offline'>('all');
+  const [displayMode, setDisplayMode] = useState<'divided' | 'unified'>('divided');
   const [typeFilter, setTypeFilter] = useState<'all' | 'custom' | 'aws' | 'azure'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -493,6 +494,20 @@ export default function ServersPage() {
   const azureServersCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'azure').length, [servers]);
   const linuxServersCount = useMemo(() => servers.filter((s) => s.cloudProvider !== 'aws' && s.cloudProvider !== 'azure').length, [servers]);
 
+  // Cloud-divided server subsets
+  const azureFilteredServers = useMemo(
+    () => filteredServers.filter((s) => s.cloudProvider === 'azure'),
+    [filteredServers]
+  );
+  const awsFilteredServers = useMemo(
+    () => filteredServers.filter((s) => s.cloudProvider === 'aws'),
+    [filteredServers]
+  );
+  const linuxFilteredServers = useMemo(
+    () => filteredServers.filter((s) => s.cloudProvider !== 'aws' && s.cloudProvider !== 'azure'),
+    [filteredServers]
+  );
+
   const renderTableHeader = () => (
     <thead className="bg-[#0D1526] text-slate-400 uppercase text-[10px] tracking-wider border-b border-[#1E293B]">
       <tr>
@@ -808,6 +823,81 @@ export default function ServersPage() {
     });
   };
 
+  const renderServerSection = (options: {
+    id: string;
+    title: string;
+    subtitle: string;
+    icon: React.ReactNode;
+    headerBg: string;
+    borderAccent: string;
+    badgeStyle: string;
+    serverList: RegisteredServer[];
+    addProvider: 'aws' | 'azure' | 'other';
+    addLabel: string;
+  }) => {
+    const onlineCount = options.serverList.filter((s) => s.status === 'Online').length;
+    return (
+      <div key={options.id} className={`bg-[#111A2E] border ${options.borderAccent} rounded-xl overflow-hidden shadow-sm`}>
+        <div className={`px-5 py-3.5 border-b border-[#1E293B] ${options.headerBg} flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[#0D1526]/90 border border-[#1E293B] flex items-center justify-center shrink-0">
+              {options.icon}
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <span>{options.title}</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${options.badgeStyle}`}>
+                  {options.serverList.length} {options.serverList.length === 1 ? 'instance' : 'instances'}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-semibold">
+                  {onlineCount} Online
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                {options.subtitle}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setFormData((prev) => ({
+                  ...prev,
+                  cloudProvider: options.addProvider,
+                  region: options.addProvider === 'azure' ? 'centralindia' : options.addProvider === 'aws' ? 'ap-southeast-2' : '',
+                }));
+                setShowAddModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#0D1526] hover:bg-[#15203A] text-slate-200 border border-[#1E293B] transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{options.addLabel}</span>
+            </button>
+          </div>
+        </div>
+
+        {options.serverList.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              {renderTableHeader()}
+              <tbody className="divide-y divide-[#1E293B]">
+                {renderServerRows(options.serverList)}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="py-8 px-4 text-center space-y-2">
+            <p className="text-xs text-slate-400">
+              No servers in this cloud section match the current search or filter.
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col">
       <Sidebar />
@@ -1031,73 +1121,177 @@ export default function ServersPage() {
               </button>
             </div>
 
-            {/* Search Input */}
-            <div className="relative min-w-[260px]">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search server name, IP address, ID..."
-                className="w-full pl-9 pr-3 py-1.5 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-              />
+            {/* View Mode Switcher + Search Input */}
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              {/* View Mode Toggle: Divided vs Unified */}
+              <div className="flex items-center rounded-lg bg-[#0D1526] p-0.5 border border-[#1E293B] shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setDisplayMode('divided')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    displayMode === 'divided'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Divided View: Display AWS and Azure servers in dedicated individual sections"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Divided View</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisplayMode('unified')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    displayMode === 'unified'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Unified View: Display all servers in a single combined table"
+                >
+                  <Boxes className="w-3.5 h-3.5" />
+                  <span>Unified View</span>
+                </button>
+              </div>
+
+              {/* Search Input */}
+              <div className="relative min-w-[220px]">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search server name, IP address, ID..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Infrastructure Servers Table */}
-          <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden shadow-sm">
-            <div className="px-5 py-3.5 border-b border-[#1E293B] bg-gradient-to-r from-blue-900/10 via-transparent to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0">
-                  <Server className="w-4 h-4 text-blue-400" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <span>
-                      {fleetFilter === 'aws'
-                        ? 'AWS EC2 Instances'
-                        : fleetFilter === 'azure'
-                        ? 'Azure Virtual Machines'
-                        : fleetFilter === 'linux'
-                        ? 'Linux Servers'
-                        : fleetFilter === 'online'
-                        ? 'Online Infrastructure Servers'
-                        : fleetFilter === 'offline'
-                        ? 'Offline Infrastructure Servers'
-                        : 'Infrastructure Servers (Compute Fleet)'}
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-semibold">
-                      {filteredServers.length} {filteredServers.length === 1 ? 'server' : 'servers'}
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-semibold">
-                      {filteredServers.filter((s) => s.status === 'Online').length} Online
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Real-time operational inventory for AWS EC2, Azure VMs, and registered Linux servers.
-                  </p>
-                </div>
+          {/* Infrastructure Servers Tables (Divided vs Unified) */}
+          {filteredServers.length === 0 ? (
+            <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-12 text-center space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-[#0D1526] border border-[#1E293B] flex items-center justify-center mx-auto text-slate-500">
+                <Server className="w-6 h-6" />
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setFormData((prev) => ({
-                      ...prev,
-                      cloudProvider: fleetFilter === 'azure' ? 'azure' : fleetFilter === 'aws' ? 'aws' : 'other',
-                      region: fleetFilter === 'azure' ? 'austriaeast' : fleetFilter === 'aws' ? 'us-east-1' : '',
-                    }));
-                    setShowAddModal(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 transition-colors cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Server</span>
-                </button>
-              </div>
+              <h4 className="text-sm font-semibold text-white">No Servers Match Selected Criteria</h4>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                No servers found matching your current filter. Try selecting &quot;All Servers&quot; or clearing your search query.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setFleetFilter('all');
+                  setSearchQuery('');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all cursor-pointer"
+              >
+                <span>Reset Filters</span>
+              </button>
             </div>
+          ) : displayMode === 'divided' ? (
+            <div className="space-y-6">
+              {/* Azure Virtual Machines Section */}
+              {(fleetFilter === 'all' || fleetFilter === 'azure' || fleetFilter === 'online' || fleetFilter === 'offline') &&
+                (azureFilteredServers.length > 0 || fleetFilter === 'azure') &&
+                renderServerSection({
+                  id: 'azure-section',
+                  title: 'Microsoft Azure Virtual Machines',
+                  subtitle: 'High-performance cloud virtual machines managed via Microsoft Azure Resource Manager (ARM)',
+                  icon: <AzureLogo className="w-4 h-4" />,
+                  headerBg: 'bg-gradient-to-r from-[#0078D4]/20 via-[#0078D4]/5 to-transparent',
+                  borderAccent: 'border-[#0078D4]/30',
+                  badgeStyle: 'bg-[#0078D4]/20 text-[#5EA0EF] border border-[#0078D4]/30',
+                  serverList: azureFilteredServers,
+                  addProvider: 'azure',
+                  addLabel: 'Add Azure VM',
+                })}
 
-            {filteredServers.length > 0 ? (
+              {/* AWS EC2 Instances Section */}
+              {(fleetFilter === 'all' || fleetFilter === 'aws' || fleetFilter === 'online' || fleetFilter === 'offline') &&
+                (awsFilteredServers.length > 0 || fleetFilter === 'aws') &&
+                renderServerSection({
+                  id: 'aws-section',
+                  title: 'Amazon Web Services (AWS EC2)',
+                  subtitle: 'Elastic Compute Cloud instances managed via AWS EC2 API across global regions',
+                  icon: <AwsLogo className="w-4 h-4" />,
+                  headerBg: 'bg-gradient-to-r from-amber-500/20 via-amber-500/5 to-transparent',
+                  borderAccent: 'border-amber-500/30',
+                  badgeStyle: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+                  serverList: awsFilteredServers,
+                  addProvider: 'aws',
+                  addLabel: 'Add AWS Server',
+                })}
+
+              {/* Linux / Bare Metal Section (if custom linux servers exist or linux filter active) */}
+              {(fleetFilter === 'all' || fleetFilter === 'linux' || fleetFilter === 'online' || fleetFilter === 'offline') &&
+                (linuxFilteredServers.length > 0 || fleetFilter === 'linux') &&
+                renderServerSection({
+                  id: 'linux-section',
+                  title: 'Linux & On-Premise Servers',
+                  subtitle: 'Direct SSH telemetry monitoring for Bare-Metal and custom Linux hosts',
+                  icon: <Terminal className="w-4 h-4 text-purple-400" />,
+                  headerBg: 'bg-gradient-to-r from-purple-900/20 via-purple-900/5 to-transparent',
+                  borderAccent: 'border-purple-500/30',
+                  badgeStyle: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
+                  serverList: linuxFilteredServers,
+                  addProvider: 'other',
+                  addLabel: 'Add Linux Server',
+                })}
+            </div>
+          ) : (
+            /* Unified Combined Table */
+            <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden shadow-sm">
+              <div className="px-5 py-3.5 border-b border-[#1E293B] bg-gradient-to-r from-blue-900/10 via-transparent to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0">
+                    <Server className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>
+                        {fleetFilter === 'aws'
+                          ? 'AWS EC2 Instances'
+                          : fleetFilter === 'azure'
+                          ? 'Azure Virtual Machines'
+                          : fleetFilter === 'linux'
+                          ? 'Linux Servers'
+                          : fleetFilter === 'online'
+                          ? 'Online Infrastructure Servers'
+                          : fleetFilter === 'offline'
+                          ? 'Offline Infrastructure Servers'
+                          : 'Infrastructure Servers (Unified Fleet)'}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-semibold">
+                        {filteredServers.length} {filteredServers.length === 1 ? 'server' : 'servers'}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-semibold">
+                        {filteredServers.filter((s) => s.status === 'Online').length} Online
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Unified operational inventory for AWS EC2, Azure VMs, and registered Linux servers.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        cloudProvider: fleetFilter === 'azure' ? 'azure' : fleetFilter === 'aws' ? 'aws' : 'other',
+                        region: fleetFilter === 'azure' ? 'centralindia' : fleetFilter === 'aws' ? 'ap-southeast-2' : '',
+                      }));
+                      setShowAddModal(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Server</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   {renderTableHeader()}
@@ -1106,28 +1300,8 @@ export default function ServersPage() {
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <div className="py-12 px-4 text-center space-y-3">
-                <div className="w-12 h-12 rounded-xl bg-[#0D1526] border border-[#1E293B] flex items-center justify-center mx-auto text-slate-500">
-                  <Server className="w-6 h-6" />
-                </div>
-                <h4 className="text-sm font-semibold text-white">No Servers Match Selected Criteria</h4>
-                <p className="text-xs text-slate-400 max-w-md mx-auto">
-                  No servers found matching your current filter. Try selecting &quot;All Servers&quot; or clearing your search query.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFleetFilter('all');
-                    setSearchQuery('');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all cursor-pointer"
-                >
-                  <span>Reset Filters</span>
-                </button>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </main>
       </div>
 
