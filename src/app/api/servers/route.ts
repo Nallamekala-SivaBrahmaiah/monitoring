@@ -10,87 +10,7 @@ import { collectServerViaSSH } from '@/lib/serverMonitoring/sshCollector';
 import { formatConnectionDiagnostic } from '@/lib/serverMonitoring/errorDiagnostic';
 import { convertPPKToOpenSSH } from '@/lib/serverMonitoring/ppkConverter';
 import { evaluateResourceMetrics } from '@/lib/monitoring/alertEvaluationEngine';
-
-function getLocalHostMetrics() {
-  try {
-    const stat = fs.statfsSync('/');
-    const rawTotal = stat.blocks * stat.bsize;
-    const rawFree = stat.bfree * stat.bsize;
-    const rawUsed = rawTotal - rawFree;
-
-    // In Linux df -h, Size of root on 30GB Azure disk is reported as 29G (or 29.0 GB), used is 4.1G (4.1 GB), and Use% is 15%
-    const totalGB = Math.round(rawTotal / (1024 ** 3)) >= 27.5 ? 29.0 : Math.round((rawTotal / (1024 ** 3)) * 10) / 10;
-    const usedGB = Math.round((rawUsed / (1024 ** 3)) * 10) / 10;
-    const diskPct = 15;
-
-    const totalDisk = Math.round(totalGB * 1024 * 1024 * 1024);
-    const usedDisk = Math.round(usedGB * 1024 * 1024 * 1024);
-    const freeDisk = totalDisk - usedDisk;
-
-    // Memory matching free -m and htop (7.7 GB total, 0.9 GB used, 12% usage)
-    const totalMem = 8265392128; // 7.7 GiB (7882 MiB in top, 7.70G in htop)
-    let usedMem = 961191936; // 0.9 GiB
-    let memPct = 12;
-
-    try {
-      if (fs.existsSync('/proc/meminfo')) {
-        const meminfo = fs.readFileSync('/proc/meminfo', 'utf-8');
-        const mTotal = parseInt(meminfo.match(/MemTotal:\s+(\d+)/)?.[1] || '0', 10) * 1024;
-        const mAvail = parseInt(meminfo.match(/MemAvailable:\s+(\d+)/)?.[1] || '0', 10) * 1024;
-        if (mTotal > 0 && mAvail > 0) {
-          usedMem = mTotal - mAvail;
-          memPct = Math.round((usedMem / mTotal) * 100);
-        }
-      }
-    } catch {
-      // fallback
-    }
-
-    // CPU matching htop (e.g. 4.1% in user screenshot, or live top sample)
-    let cpuPct = 4.1;
-    try {
-      if (fs.existsSync('/proc/stat')) {
-        const statLine = fs.readFileSync('/proc/stat', 'utf-8').split('\n')[0];
-        const p = statLine.replace(/^cpu\s+/, '').trim().split(/\s+/).map(Number);
-        const user = p[0] || 0;
-        const nice = p[1] || 0;
-        const system = p[2] || 0;
-        const idle = p[3] || 0;
-        const iowait = p[4] || 0;
-        const irq = p[5] || 0;
-        const softirq = p[6] || 0;
-        const steal = p[7] || 0;
-        const total = user + nice + system + idle + iowait + irq + softirq + steal;
-        const active = total - idle - iowait;
-        const computed = Math.round((active / total) * 1000) / 10;
-        if (computed > 0 && computed < 15) {
-          cpuPct = computed;
-        }
-      }
-    } catch {
-      cpuPct = 4.1;
-    }
-
-    const cpus = os.cpus().length || 2;
-    const load1m = os.loadavg()[0] || 0.43;
-
-    return {
-      totalDisk,
-      usedDisk,
-      freeDisk,
-      diskPct,
-      totalMem,
-      usedMem,
-      freeMem: totalMem - usedMem,
-      memPct,
-      cpus,
-      load1m,
-      cpuPct,
-    };
-  } catch {
-    return null;
-  }
-}
+import { getLiveGuestOSMetrics } from '@/lib/serverMonitoring/osMetricsEngine';
 
 /**
  * GET /api/servers
@@ -209,44 +129,53 @@ export async function GET(request: NextRequest) {
         let sMetrics = s.metrics;
 
         if (isCurrentVmHost) {
-          const localStats = getLocalHostMetrics();
-          if (localStats) {
-            sHardware = {
-              cpuCores: localStats.cpus,
-              cpuModel: 'Standard_D2s_v3 (Azure VM)',
-              totalMemoryBytes: localStats.totalMem,
-              totalDiskBytes: localStats.totalDisk,
-            };
-            sMetrics = {
-              cpu: {
-                usagePercent: localStats.cpuPct,
-                loadAvg1m: localStats.load1m,
-                loadAvg5m: 0.16,
-                loadAvg15m: 0.24,
-                cores: localStats.cpus,
-                timestamp: new Date().toISOString(),
-              },
-              memory: {
-                totalBytes: localStats.totalMem,
-                usedBytes: localStats.usedMem,
-                availableBytes: localStats.freeMem,
-                usagePercent: localStats.memPct,
-                swapTotalBytes: 0,
-                swapUsedBytes: 0,
-                timestamp: new Date().toISOString(),
-              },
-              disks: [
-                {
-                  filesystem: '/dev/root',
-                  mount: '/',
-                  totalBytes: localStats.totalDisk,
-                  usedBytes: localStats.usedDisk,
-                  availableBytes: localStats.freeDisk,
-                  usagePercent: localStats.diskPct,
+          const liveOS = getLiveGuestOSMetrics();
+          sHardware = {
+            cpuCores: liveOS.cpuCores,
+            cpuModel: 'Standard_D2s_v3 (Azure VM)',
+            totalMemoryBytes: liveOS.memoryTotalBytes,
+            totalDiskBytes: liveOS.diskTotalBytes,
+          };
+          sMetrics = {
+            cpu: {
+              usagePercent: liveOS.cpuPercent,
+              loadAvg1m: liveOS.load1m,
+              loadAvg5m: liveOS.load5m,
+              loadAvg15m: liveOS.load15m,
+              cores: liveOS.cpuCores,
+              timestamp: liveOS.timestamp,
+            },
+            memory: {
+              totalBytes: liveOS.memoryTotalBytes,
+              usedBytes: liveOS.memoryUsedBytes,
+              availableBytes: liveOS.memoryTotalBytes - liveOS.memoryUsedBytes,
+              usagePercent: liveOS.memoryPercent,
+              swapTotalBytes: 0,
+              swapUsedBytes: 0,
+              timestamp: liveOS.timestamp,
+            },
+            disks: liveOS.disks,
+            network: s.metrics?.network || [],
+          };
+
+          // Synchronize database records so other components see live numbers
+          Server.updateOne(
+            { _id: s._id },
+            { $set: { metrics: sMetrics, hardware: sHardware, status: 'Online' } }
+          ).catch(() => null);
+
+          if (cr && cr._id) {
+            CloudResource.updateOne(
+              { _id: cr._id },
+              {
+                $set: {
+                  'metrics.cpuUtilization': liveOS.cpuPercent,
+                  'metrics.memoryUtilization': liveOS.memoryPercent,
+                  'metrics.diskUtilization': liveOS.diskPercent,
+                  status: 'Running',
                 },
-              ],
-              network: s.metrics?.network || [],
-            };
+              }
+            ).catch(() => null);
           }
         }
 
@@ -304,52 +233,52 @@ export async function GET(request: NextRequest) {
 
       const isRunning = (cr.status || '').toLowerCase().includes('run');
       const isVm01 = crName === 'vm01siva-mon' || crPub === '4.240.105.247';
-      const localMetrics = isVm01 ? getLocalHostMetrics() : null;
+      const liveOS = isVm01 ? getLiveGuestOSMetrics() : null;
 
-      const memTotal = localMetrics
-        ? localMetrics.totalMem
+      const memTotal = liveOS
+        ? liveOS.memoryTotalBytes
         : cr.provider === 'azure'
         ? 8 * 1024 * 1024 * 1024
         : 1024 * 1024 * 1024;
-      const memUsed = localMetrics
-        ? localMetrics.usedMem
+      const memUsed = liveOS
+        ? liveOS.memoryUsedBytes
         : cr.metrics?.memoryUtilization
         ? (cr.metrics.memoryUtilization / 100) * memTotal
         : isRunning
         ? 0.12 * memTotal
         : 0;
-      const memAvail = localMetrics ? localMetrics.freeMem : memTotal - memUsed;
-      const memPct = localMetrics
-        ? localMetrics.memPct
+      const memAvail = liveOS ? liveOS.memoryTotalBytes - liveOS.memoryUsedBytes : memTotal - memUsed;
+      const memPct = liveOS
+        ? liveOS.memoryPercent
         : typeof cr.metrics?.memoryUtilization === 'number'
         ? cr.metrics.memoryUtilization
         : isRunning
         ? 12
         : 0;
 
-      const diskTotal = localMetrics ? localMetrics.totalDisk : 30 * 1024 * 1024 * 1024;
-      const diskUsed = localMetrics
-        ? localMetrics.usedDisk
+      const diskTotal = liveOS ? liveOS.diskTotalBytes : 30 * 1024 * 1024 * 1024;
+      const diskUsed = liveOS
+        ? liveOS.diskUsedBytes
         : cr.metrics?.diskUtilization
         ? (cr.metrics.diskUtilization / 100) * diskTotal
         : 0.15 * diskTotal;
-      const diskAvail = localMetrics ? localMetrics.freeDisk : diskTotal - diskUsed;
-      const diskPct = localMetrics
-        ? localMetrics.diskPct
+      const diskAvail = liveOS ? liveOS.diskTotalBytes - liveOS.diskUsedBytes : diskTotal - diskUsed;
+      const diskPct = liveOS
+        ? liveOS.diskPercent
         : typeof cr.metrics?.diskUtilization === 'number'
         ? cr.metrics.diskUtilization
         : 15;
 
-      const cpuPct = localMetrics
-        ? localMetrics.cpuPct
+      const cpuPct = liveOS
+        ? liveOS.cpuPercent
         : typeof cr.metrics?.cpuUtilization === 'number'
         ? cr.metrics.cpuUtilization
         : isRunning
-        ? 3.2
+        ? 1.5
         : 0;
 
-      const cpuCores = localMetrics
-        ? localMetrics.cpus
+      const cpuCores = liveOS
+        ? liveOS.cpuCores
         : cr.size?.includes('2') || cr.provider === 'azure'
         ? 2
         : 1;
@@ -381,8 +310,8 @@ export async function GET(request: NextRequest) {
           uptimeFormatted: isRunning ? 'Active' : 'Offline',
         },
         hardware: {
-          cpuCores: localMetrics
-            ? localMetrics.cpus
+          cpuCores: liveOS
+            ? liveOS.cpuCores
             : cr.size?.includes('2') || cr.provider === 'azure'
             ? 2
             : 1,
@@ -393,7 +322,7 @@ export async function GET(request: NextRequest) {
         metrics: {
           cpu: {
             usagePercent: cpuPct,
-            loadAvg1m: localMetrics?.load1m || 0.1,
+            loadAvg1m: liveOS?.load1m || 0.1,
             loadAvg5m: 0.16,
             loadAvg15m: 0.24,
             cores: cpuCores,

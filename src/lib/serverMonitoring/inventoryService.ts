@@ -1,6 +1,7 @@
 import connectToDatabase from '@/lib/mongodb';
 import Server, { IServer } from '@/models/Server';
 import CloudResource, { ICloudResource } from '@/models/CloudResource';
+import { getLiveGuestOSMetrics } from '@/lib/serverMonitoring/osMetricsEngine';
 
 export interface UnifiedServerResource {
   id: string;
@@ -135,6 +136,42 @@ export async function getUnifiedServerInventory(filter?: {
     if (matchingServer) {
       matchedServerIds.add(matchingServer._id.toString());
 
+      const isCurrentHost =
+        crName === 'vm01siva-mon' ||
+        crPublicIp === '4.240.105.247' ||
+        normalizeIp(matchingServer.host) === '4.240.105.247' ||
+        (matchingServer.name || '').toLowerCase().trim() === 'vm01siva-mon';
+
+      let liveMetrics = null;
+      if (isCurrentHost) {
+        liveMetrics = getLiveGuestOSMetrics();
+        Server.updateOne(
+          { _id: matchingServer._id },
+          {
+            $set: {
+              'metrics.cpu.usagePercent': liveMetrics.cpuPercent,
+              'metrics.cpu.loadAvg1m': liveMetrics.load1m,
+              'metrics.memory.usagePercent': liveMetrics.memoryPercent,
+              'metrics.disks.0.usagePercent': liveMetrics.diskPercent,
+              status: 'Online',
+              lastConnectedAt: new Date(),
+            },
+          }
+        ).catch(() => null);
+
+        CloudResource.updateOne(
+          { _id: cr._id },
+          {
+            $set: {
+              'metrics.cpuUtilization': liveMetrics.cpuPercent,
+              'metrics.memoryUtilization': liveMetrics.memoryPercent,
+              'metrics.diskUtilization': liveMetrics.diskPercent,
+              status: 'Running',
+            },
+          }
+        ).catch(() => null);
+      }
+
       // Merged Record: Real in-guest metrics from SSH server + Cloud metadata from Azure/AWS SDK
       unifiedList.push({
         id: cr._id.toString(),
@@ -164,19 +201,22 @@ export async function getUnifiedServerInventory(filter?: {
         lastSyncedAt: matchingServer.lastConnectedAt || cr.lastSyncedAt,
 
         metrics: {
-          cpu: matchingServer.metrics?.cpu?.usagePercent ?? (cr.metrics?.cpuUtilization ?? null),
-          memory: matchingServer.metrics?.memory?.usagePercent ?? null,
-          disk:
-            (matchingServer.metrics?.disks?.find((d: any) => d.mount === '/') ||
-              matchingServer.metrics?.disks?.[0])?.usagePercent ??
-            (cr.metrics?.diskUtilization ?? null),
+          cpu: liveMetrics ? liveMetrics.cpuPercent : (matchingServer.metrics?.cpu?.usagePercent ?? (cr.metrics?.cpuUtilization ?? null)),
+          memory: liveMetrics ? liveMetrics.memoryPercent : (matchingServer.metrics?.memory?.usagePercent ?? null),
+          disk: liveMetrics
+            ? liveMetrics.diskPercent
+            : ((matchingServer.metrics?.disks?.find((d: any) => d.mount === '/') ||
+                matchingServer.metrics?.disks?.[0])?.usagePercent ??
+              (cr.metrics?.diskUtilization ?? null)),
           networkIn: matchingServer.metrics?.network?.[0]?.bytesReceived
             ? Math.round((matchingServer.metrics.network[0].bytesReceived / (1024 * 1024)) * 10) / 10
             : (cr.metrics?.networkIn ?? null),
           networkOut: matchingServer.metrics?.network?.[0]?.bytesSent
             ? Math.round((matchingServer.metrics.network[0].bytesSent / (1024 * 1024)) * 10) / 10
             : (cr.metrics?.networkOut ?? null),
-          metricSource: 'SSH Agent / In-Guest Telemetry (Verified Mapping)',
+          metricSource: liveMetrics
+            ? 'Live Guest OS Kernel Counters (/proc/stat, /proc/meminfo, statfs)'
+            : 'SSH Agent / In-Guest Telemetry (Verified Mapping)',
         },
 
         docker: {
@@ -202,6 +242,16 @@ export async function getUnifiedServerInventory(filter?: {
       });
     } else {
       // Cloud Discovered Only (No SSH credentials registered)
+      const isCurrentHost =
+        crName === 'vm01siva-mon' ||
+        crPublicIp === '4.240.105.247' ||
+        crPrivateIp === '172.16.0.4';
+
+      let liveMetrics = null;
+      if (isCurrentHost) {
+        liveMetrics = getLiveGuestOSMetrics();
+      }
+
       unifiedList.push({
         id: cr._id.toString(),
         resourceId: cr.resourceId,
@@ -228,14 +278,16 @@ export async function getUnifiedServerInventory(filter?: {
         lastSyncedAt: cr.lastSyncedAt,
 
         metrics: {
-          cpu: cr.metrics?.cpuUtilization ?? null,
-          memory: cr.metrics?.memoryUtilization ?? null,
-          disk: cr.metrics?.diskUtilization ?? null,
+          cpu: liveMetrics ? liveMetrics.cpuPercent : (cr.metrics?.cpuUtilization ?? null),
+          memory: liveMetrics ? liveMetrics.memoryPercent : (cr.metrics?.memoryUtilization ?? null),
+          disk: liveMetrics ? liveMetrics.diskPercent : (cr.metrics?.diskUtilization ?? null),
           networkIn: cr.metrics?.networkIn ?? null,
           networkOut: cr.metrics?.networkOut ?? null,
-          metricSource: cr.metrics?.memoryUtilization !== null && cr.metrics?.memoryUtilization !== undefined
+          metricSource: liveMetrics
+            ? 'Live Guest OS Kernel Counters (/proc/stat, /proc/meminfo, statfs)'
+            : (cr.metrics?.memoryUtilization !== null && cr.metrics?.memoryUtilization !== undefined
             ? 'In-Guest Telemetry'
-            : (cr.provider === 'azure' ? 'Azure Monitor (Microsoft.Insights Platform Only)' : 'AWS CloudWatch Platform Only'),
+            : (cr.provider === 'azure' ? 'Azure Monitor (Microsoft.Insights Platform Only)' : 'AWS CloudWatch Platform Only')),
         },
 
         docker: {
@@ -278,6 +330,14 @@ export async function getUnifiedServerInventory(filter?: {
       continue;
     }
 
+    const isCurrentHost =
+      (s.name || '').toLowerCase().trim() === 'vm01siva-mon' ||
+      normalizeIp(s.host) === '4.240.105.247';
+    let liveMetrics = null;
+    if (isCurrentHost) {
+      liveMetrics = getLiveGuestOSMetrics();
+    }
+
     unifiedList.push({
       id: s._id.toString(),
       resourceId: `srv-${s._id.toString()}`,
@@ -300,18 +360,21 @@ export async function getUnifiedServerInventory(filter?: {
       lastSyncedAt: s.lastConnectedAt,
 
       metrics: {
-        cpu: s.metrics?.cpu?.usagePercent ?? null,
-        memory: s.metrics?.memory?.usagePercent ?? null,
-        disk:
-          (s.metrics?.disks?.find((d: any) => d.mount === '/') ||
-            s.metrics?.disks?.[0])?.usagePercent ?? null,
+        cpu: liveMetrics ? liveMetrics.cpuPercent : (s.metrics?.cpu?.usagePercent ?? null),
+        memory: liveMetrics ? liveMetrics.memoryPercent : (s.metrics?.memory?.usagePercent ?? null),
+        disk: liveMetrics
+          ? liveMetrics.diskPercent
+          : ((s.metrics?.disks?.find((d: any) => d.mount === '/') ||
+              s.metrics?.disks?.[0])?.usagePercent ?? null),
         networkIn: s.metrics?.network?.[0]?.bytesReceived
           ? Math.round((s.metrics.network[0].bytesReceived / (1024 * 1024)) * 10) / 10
           : null,
         networkOut: s.metrics?.network?.[0]?.bytesSent
           ? Math.round((s.metrics.network[0].bytesSent / (1024 * 1024)) * 10) / 10
           : null,
-        metricSource: 'Direct SSH Telemetry',
+        metricSource: liveMetrics
+          ? 'Live Guest OS Kernel Counters (/proc/stat, /proc/meminfo, statfs)'
+          : 'Direct SSH Telemetry',
       },
 
       docker: {

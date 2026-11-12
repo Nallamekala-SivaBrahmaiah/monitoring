@@ -189,7 +189,7 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-20 bg-[#0B1120]/95 backdrop-blur-md border-b border-[#1E293B] px-4 lg:px-7 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <header className="sticky top-0 z-50 bg-[#0B1120] border-b border-[#1E293B] px-4 lg:px-7 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-md">
       {/* Title & Mobile Toggle */}
       <div className="flex items-center gap-3">
         <button

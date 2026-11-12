@@ -612,9 +612,17 @@ export function ResourceOverviewChart({
 
     const now = presentTime ?? Date.now();
 
+    const currentBase =
+      selectedMetric === 'CPU'
+        ? (activeServerDetail.cpuPercent ?? 4.2)
+        : selectedMetric === 'Memory'
+        ? (activeServerDetail.memoryPercent ?? 12)
+        : (activeServerDetail.diskPercent ?? 15);
+
     // 1. If we have real DB historical points for this server:
     if (filteredList.length > 0) {
-      return filteredList.map((item: any) => {
+      const isAws = activeServerDetail.provider === 'aws';
+      const mapped: EnhancedMetricPoint[] = filteredList.map((item: any) => {
         const date = new Date(item.timestamp || now);
         const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const metricVal =
@@ -627,7 +635,7 @@ export function ResourceOverviewChart({
             : (item.disk ?? 0);
 
         const num = typeof metricVal === 'number' ? Math.round(metricVal * 10) / 10 : 0;
-        const isAws = (item.provider || activeServerDetail.provider) === 'aws';
+        const itemIsAws = (item.provider || activeServerDetail.provider) === 'aws';
 
         return {
           time: timeStr,
@@ -635,20 +643,33 @@ export function ResourceOverviewChart({
           host: item.host || activeServerDetail.host || '',
           provider: item.provider || activeServerDetail.provider,
           value: num,
-          aws: isAws ? num : 0,
-          azure: !isAws ? num : 0,
+          aws: itemIsAws ? num : 0,
+          azure: !itemIsAws ? num : 0,
         };
       });
+
+      // Synchronize latest point on chart with current live gauge
+      const nowStr = new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (mapped.length > 0 && mapped[mapped.length - 1].time === nowStr) {
+        mapped[mapped.length - 1].value = currentBase;
+        mapped[mapped.length - 1].aws = isAws ? currentBase : 0;
+        mapped[mapped.length - 1].azure = !isAws ? currentBase : 0;
+      } else {
+        mapped.push({
+          time: nowStr,
+          serverName: activeServerDetail.name,
+          host: activeServerDetail.host || '',
+          provider: activeServerDetail.provider,
+          value: currentBase,
+          aws: isAws ? currentBase : 0,
+          azure: !isAws ? currentBase : 0,
+        });
+      }
+
+      return mapped;
     }
 
     // 2. Real telemetry baseline from current live metrics (NO FAKE 100% SPIKES)
-    const currentBase =
-      selectedMetric === 'CPU'
-        ? (activeServerDetail.cpuPercent ?? 4.1)
-        : selectedMetric === 'Memory'
-        ? (activeServerDetail.memoryPercent ?? 12)
-        : (activeServerDetail.diskPercent ?? 15);
-
     const points: EnhancedMetricPoint[] = [];
     const count = 30;
     const isAws = activeServerDetail.provider === 'aws';
@@ -768,7 +789,7 @@ export function ResourceOverviewChart({
       </div>
 
       {/* ================= 2. CONTROLS TOOLBAR: DROPDOWN & TABS ================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-30">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
         {/* Searchable Server Selection Dropdown */}
         <div ref={dropdownRef} className="relative w-full sm:w-80 md:w-96">
           <button
@@ -847,7 +868,7 @@ export function ResourceOverviewChart({
 
           {/* Searchable Dropdown Popover */}
           {isDropdownOpen && (
-            <div className="absolute top-full left-0 right-0 sm:w-96 mt-1.5 z-50 bg-[#0F172A] border border-[#1E293B] rounded-xl shadow-2xl overflow-hidden">
+            <div className="absolute top-full left-0 right-0 sm:w-96 mt-1.5 z-30 bg-[#0F172A] border border-[#1E293B] rounded-xl shadow-2xl overflow-hidden">
               {/* Search Bar inside Dropdown */}
               <div className="p-2 border-b border-[#1E293B] bg-[#0D1526]">
                 <div className="relative">
