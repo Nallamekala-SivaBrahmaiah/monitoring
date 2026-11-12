@@ -707,7 +707,7 @@ export function ResourceOverviewChart({
   }, [data, filteredList, selectedMetric, activeServerDetail, presentTime]);
 
   return (
-    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col gap-4 relative">
+    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col justify-between h-full gap-4 relative">
       {/* ================= 1. STANDARDIZED HEADER (AWS & AZURE IDENTICAL) ================= */}
       <div className="flex items-center justify-between gap-2.5 pb-3 border-b border-[#1E293B]/70 min-w-0">
         {/* LEFT: Title & Badges in a single un-wrapped line on desktop */}

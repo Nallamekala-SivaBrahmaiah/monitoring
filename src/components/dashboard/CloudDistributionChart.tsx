@@ -157,9 +157,9 @@ export function CloudDistributionChart({}: CloudDistributionChartProps) {
   const azureStroke = total > 0 ? (azurePct / 100) * circumference : 0;
 
   return (
-    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between h-auto min-h-full relative overflow-hidden group hover:border-blue-500/40 transition-all">
+    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between h-full relative overflow-hidden group hover:border-blue-500/40 transition-all">
       {/* 1. Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-[#1E293B]/70">
+      <div className="flex items-center justify-between pb-3 border-b border-[#1E293B]/70 shrink-0">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
             <PieIcon className="w-3.5 h-3.5" />
@@ -179,7 +179,7 @@ export function CloudDistributionChart({}: CloudDistributionChartProps) {
 
       {/* 2. Content Body: If empty state, display clean empty state */}
       {total === 0 ? (
-        <div className="py-8 text-center space-y-2 flex flex-col items-center justify-center">
+        <div className="py-8 text-center space-y-2 flex flex-col items-center justify-center flex-1">
           <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-500">
             <ServerIcon className="w-5 h-5" />
           </div>
@@ -195,7 +195,7 @@ export function CloudDistributionChart({}: CloudDistributionChartProps) {
           </Link>
         </div>
       ) : (
-        <div className="py-3.5 space-y-4">
+        <div className="py-3 flex-1 flex flex-col justify-between space-y-3">
           {/* Top Section: Donut Chart Centered */}
           <div className="flex items-center justify-center">
             <div className="relative w-32 h-32 flex items-center justify-center select-none">
@@ -331,7 +331,7 @@ export function CloudDistributionChart({}: CloudDistributionChartProps) {
 
       {/* 3. Actual Hardware Resource Summary Footer */}
       {total > 0 && (
-        <div className="pt-2.5 border-t border-[#1E293B]/70 grid grid-cols-2 gap-2 text-center text-[10px]">
+        <div className="pt-2.5 border-t border-[#1E293B]/70 grid grid-cols-2 gap-2 text-center text-[10px] shrink-0 mt-auto">
           <div className="p-1.5 rounded-md bg-[#0D1526] border border-[#1E293B] flex items-center justify-center gap-1.5">
             <Cpu className="w-3.5 h-3.5 text-blue-400" />
             <span className="text-slate-400">Total vCPUs:</span>

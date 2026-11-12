@@ -32,6 +32,7 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
   const { cloudProvider, filteredEC2Instances, filteredAzureVMs, customServers, selectedRegion } = useMonitoring();
   const [filter, setFilter] = useState<'all' | 'healthy' | 'warning' | 'critical'>('all');
   const [hoveredNode, setHoveredNode] = useState<ActualServerNode | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   // 1. Build the list of ONLY ACTUAL REGISTERED SERVERS (1 cell = 1 actual server)
   const actualServers: ActualServerNode[] = useMemo(() => {
@@ -193,10 +194,20 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
   // Names of stopped/offline instances
   const stoppedServers = actualServers.filter((s) => s.powerState === 'Stopped' || s.statusCategory === 'critical');
 
+  // Active node to show in the telemetry inspector: hoveredNode || selectedNode || first server
+  const activeNode = useMemo(() => {
+    if (hoveredNode) return hoveredNode;
+    if (selectedNodeId) {
+      const found = actualServers.find((s) => s.id === selectedNodeId);
+      if (found) return found;
+    }
+    return actualServers[0] || null;
+  }, [hoveredNode, selectedNodeId, actualServers]);
+
   return (
-    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between h-auto min-h-full relative overflow-hidden group hover:border-emerald-500/40 transition-all">
+    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between h-full relative overflow-hidden group hover:border-emerald-500/40 transition-all">
       {/* 1. Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-[#1E293B]/70">
+      <div className="flex items-center justify-between pb-3 border-b border-[#1E293B]/70 shrink-0">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
             <Zap className="w-3.5 h-3.5" />
@@ -221,7 +232,7 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
 
       {/* 2. Empty State (if 0 servers) */}
       {total === 0 ? (
-        <div className="py-8 text-center space-y-2 flex flex-col items-center justify-center">
+        <div className="py-8 text-center space-y-2 flex flex-col items-center justify-center flex-1">
           <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-500">
             <ServerIcon className="w-5 h-5" />
           </div>
@@ -237,13 +248,13 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
           </Link>
         </div>
       ) : (
-        <div className="py-3.5 space-y-3.5">
+        <div className="py-3 flex-1 flex flex-col justify-between space-y-3">
           {/* 3. Status Filter Buttons (Actual Counts Only) */}
-          <div className="flex items-center justify-between gap-1.5 text-[10px]">
+          <div className="flex items-center justify-between gap-1.5 text-[10px] shrink-0">
             <button
               type="button"
               onClick={() => setFilter('all')}
-              className={`flex-1 py-1.5 px-2 rounded-lg font-semibold transition-all border ${
+              className={`flex-1 py-1.5 px-2 rounded-lg font-semibold transition-all border cursor-pointer ${
                 filter === 'all'
                   ? 'bg-slate-700/80 text-white border-slate-500 shadow-sm'
                   : 'bg-[#0D1526] text-slate-400 border-[#1E293B] hover:text-white'
@@ -255,7 +266,7 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
             <button
               type="button"
               onClick={() => setFilter('healthy')}
-              className={`flex-1 py-1.5 px-2 rounded-lg font-semibold transition-all border ${
+              className={`flex-1 py-1.5 px-2 rounded-lg font-semibold transition-all border cursor-pointer ${
                 filter === 'healthy'
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm'
                   : 'bg-[#0D1526] text-slate-400 border-[#1E293B] hover:text-emerald-400'
@@ -267,7 +278,7 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
             <button
               type="button"
               onClick={() => setFilter('warning')}
-              className={`flex-1 py-1.5 px-2 rounded-lg font-semibold transition-all border ${
+              className={`flex-1 py-1.5 px-2 rounded-lg font-semibold transition-all border cursor-pointer ${
                 filter === 'warning'
                   ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
                   : 'bg-[#0D1526] text-slate-400 border-[#1E293B] hover:text-amber-400'
@@ -279,7 +290,7 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
             <button
               type="button"
               onClick={() => setFilter('critical')}
-              className={`flex-1 py-1.5 px-2 rounded-lg font-semibold transition-all border ${
+              className={`flex-1 py-1.5 px-2 rounded-lg font-semibold transition-all border cursor-pointer ${
                 filter === 'critical'
                   ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm'
                   : 'bg-[#0D1526] text-slate-400 border-[#1E293B] hover:text-rose-400'
@@ -290,18 +301,18 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
           </div>
 
           {/* 4. DYNAMIC HEATMAP MATRIX (1 cell = 1 actual server, moves down when content expands) */}
-          <div className="bg-[#0D1526] p-3 rounded-xl border border-[#1E293B] space-y-2">
-            <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+          <div className="bg-[#0D1526] p-3 rounded-xl border border-[#1E293B] space-y-2.5 flex-1 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono shrink-0">
               <span className="font-semibold text-slate-300">
-                Heatmap ({displayedServers.length} {displayedServers.length === 1 ? 'Node' : 'Nodes'}):
+                Heatmap Matrix ({displayedServers.length} {displayedServers.length === 1 ? 'Node' : 'Nodes'}):
               </span>
-              <span className="text-slate-500 text-[10px]">Click node for details</span>
+              <span className="text-slate-500 text-[10px]">Hover or click node</span>
             </div>
 
             {/* Responsive Heatmap Grid: Cells wrap naturally, no extra rows, no fake cells */}
             <div className="flex flex-wrap gap-2.5 items-center">
               {displayedServers.map((node) => {
-                const isHovered = hoveredNode?.id === node.id;
+                const isInspected = activeNode?.id === node.id;
 
                 let cellColor = 'bg-emerald-500 border-emerald-400/50 shadow-[0_0_8px_rgba(16,185,129,0.5)]';
                 if (node.statusCategory === 'warning') {
@@ -315,19 +326,14 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
                 return (
                   <div
                     key={node.id}
-                    onClick={() => router.push(node.detailUrl)}
+                    onClick={() => {
+                      setSelectedNodeId(node.id);
+                    }}
                     onMouseEnter={() => setHoveredNode(node)}
                     onMouseLeave={() => setHoveredNode(null)}
-                    title={`${node.name} (${node.provider.toUpperCase()})
-Status: ${node.powerState}
-Region: ${node.region}
-IP: ${node.ip}
-CPU: ${node.cpuPercent}%
-RAM: ${node.memoryPercent}%
-Disk: ${node.diskPercent}%
-Updated: ${node.lastConnected}`}
+                    title={`${node.name} (${node.provider.toUpperCase()})\nStatus: ${node.powerState}\nRegion: ${node.region}\nIP: ${node.ip}\nCPU: ${node.cpuPercent}%\nRAM: ${node.memoryPercent}%\nDisk: ${node.diskPercent}%\nUpdated: ${node.lastConnected}`}
                     className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg border ${cellColor} flex flex-col items-center justify-center cursor-pointer transition-all duration-200 transform ${
-                      isHovered ? 'scale-115 ring-2 ring-white z-20 shadow-xl' : 'hover:scale-105'
+                      isInspected ? 'ring-2 ring-white scale-105 z-10 shadow-xl' : 'hover:scale-105 opacity-90 hover:opacity-100'
                     }`}
                   >
                     <span className="text-[10px] font-black text-white font-mono leading-none truncate max-w-[32px] px-0.5">
@@ -341,66 +347,66 @@ Updated: ${node.lastConnected}`}
               })}
             </div>
 
-            {/* Interactive Telemetry Card on Hover */}
-            {hoveredNode && (
-              <div className="mt-2.5 p-2.5 rounded-lg bg-[#111A2E] border border-blue-500/40 text-xs space-y-1.5 animate-in fade-in duration-150">
+            {/* Interactive Telemetry Card (always displays the active/inspected node, smoothly updates on hover or click) */}
+            {activeNode && (
+              <div className="p-2.5 rounded-lg bg-[#111A2E] border border-blue-500/30 text-xs space-y-1.5 transition-all">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-bold text-white">
-                    {hoveredNode.provider === 'aws' ? (
-                      <AwsLogo className="w-3.5 h-2.5 text-[#FF9900]" />
+                  <div className="flex items-center gap-1.5 font-bold text-white min-w-0">
+                    {activeNode.provider === 'aws' ? (
+                      <AwsLogo className="w-3.5 h-2.5 text-[#FF9900] shrink-0" />
                     ) : (
-                      <AzureLogo className="w-3 h-3 text-[#0089D6]" />
+                      <AzureLogo className="w-3 h-3 text-[#0089D6] shrink-0" />
                     )}
-                    <span className="truncate max-w-[140px]">{hoveredNode.name}</span>
+                    <span className="truncate max-w-[130px]">{activeNode.name}</span>
                   </div>
 
                   <span
-                    className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
-                      hoveredNode.statusCategory === 'healthy'
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${
+                      activeNode.statusCategory === 'healthy'
                         ? 'bg-emerald-500/20 text-emerald-400'
-                        : hoveredNode.statusCategory === 'warning'
+                        : activeNode.statusCategory === 'warning'
                         ? 'bg-amber-500/20 text-amber-400'
                         : 'bg-rose-500/20 text-rose-400'
                     }`}
                   >
-                    {hoveredNode.powerState}
+                    {activeNode.powerState}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300 font-mono">
-                  <div>
-                    <span className="text-slate-500">IP:</span> {hoveredNode.ip}
+                  <div className="truncate">
+                    <span className="text-slate-500">IP:</span> {activeNode.ip}
                   </div>
-                  <div>
-                    <span className="text-slate-500">Region:</span> {hoveredNode.region}
+                  <div className="truncate">
+                    <span className="text-slate-500">Region:</span> {activeNode.region}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-1 pt-1 border-t border-[#1E293B] text-[10px] font-mono text-center">
-                  <div className="p-1 rounded bg-[#0D1526]">
+                  <div className="p-1 rounded bg-[#080D1A] border border-[#1E293B]/60">
                     <span className="text-slate-500 block text-[9px]">CPU</span>
-                    <strong className="text-white">{hoveredNode.cpuPercent}%</strong>
+                    <strong className="text-white">{activeNode.cpuPercent}%</strong>
                   </div>
-                  <div className="p-1 rounded bg-[#0D1526]">
+                  <div className="p-1 rounded bg-[#080D1A] border border-[#1E293B]/60">
                     <span className="text-slate-500 block text-[9px]">RAM</span>
-                    <strong className="text-white">{hoveredNode.memoryPercent}%</strong>
+                    <strong className="text-white">{activeNode.memoryPercent}%</strong>
                   </div>
-                  <div className="p-1 rounded bg-[#0D1526]">
+                  <div className="p-1 rounded bg-[#080D1A] border border-[#1E293B]/60">
                     <span className="text-slate-500 block text-[9px]">Disk</span>
-                    <strong className="text-white">{hoveredNode.diskPercent}%</strong>
+                    <strong className="text-white">{activeNode.diskPercent}%</strong>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between text-[9px] text-slate-400 pt-0.5">
                   <span className="flex items-center gap-1">
-                    <Clock className="w-2.5 h-2.5" />
-                    <span>Collected: {hoveredNode.lastConnected}</span>
+                    <Clock className="w-2.5 h-2.5 text-slate-500" />
+                    <span>Telemetry: {activeNode.lastConnected}</span>
                   </span>
                   <Link
-                    href={hoveredNode.detailUrl}
-                    className="text-blue-400 hover:underline flex items-center gap-0.5"
+                    href={activeNode.detailUrl}
+                    className="text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-0.5"
                   >
-                    <span>View Server</span>
+                    <span>Inspect</span>
                     <ExternalLink className="w-2.5 h-2.5" />
                   </Link>
                 </div>
@@ -412,7 +418,7 @@ Updated: ${node.lastConnected}`}
 
       {/* 5. Bottom Alert Footer Strip */}
       {total > 0 && (
-        <div className="pt-2.5 border-t border-[#1E293B]/70 flex items-center justify-between text-[10px]">
+        <div className="pt-2.5 border-t border-[#1E293B]/70 flex items-center justify-between text-[10px] shrink-0 mt-auto">
           {criticalCount > 0 ? (
             <div className="text-rose-400 flex items-center gap-1.5 font-semibold min-w-0">
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
