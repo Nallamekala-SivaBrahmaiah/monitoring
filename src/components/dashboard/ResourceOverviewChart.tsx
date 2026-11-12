@@ -11,16 +11,18 @@ import {
   CartesianGrid,
 } from 'recharts';
 import {
-  BarChart3,
   Server as ServerIcon,
   Cpu,
   HardDrive,
   Database,
   Boxes,
-  ChevronLeft,
-  ChevronRight,
+  ChevronDown,
+  Search,
+  X,
+  Check,
   Activity,
 } from 'lucide-react';
+import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { MetricType, ResourceMetricPoint } from '@/types/monitoring';
 import { useMonitoring } from '@/context/MonitoringContext';
 
@@ -33,6 +35,8 @@ interface ServerDetailItem {
   id: string;
   name: string;
   host: string;
+  publicIp?: string;
+  privateIp?: string;
   provider: string;
   status: string;
   region?: string;
@@ -56,7 +60,7 @@ interface EnhancedMetricPoint {
 }
 
 /**
- * Circular Radial Gauge matching Image 3 reference design
+ * Circular Radial Gauge for "All Servers" aggregate fleet mode
  */
 function CircularGauge({
   percent,
@@ -118,7 +122,7 @@ function CircularGauge({
           />
         </svg>
 
-        {/* Center Typography: e.g. "15%" & "CPU" */}
+        {/* Center Typography */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-3xl font-black text-white tracking-tight leading-none font-mono">
             {percent !== null && !isNaN(percent) ? `${Math.round(percent)}%` : '0%'}
@@ -129,7 +133,6 @@ function CircularGauge({
         </div>
       </div>
 
-      {/* Subtitle below circle: e.g. "avg of 2 servers" */}
       <span className="text-xs text-slate-400 font-medium mt-3 text-center truncate max-w-[160px]">
         {subtitle}
       </span>
@@ -146,9 +149,43 @@ export function ResourceOverviewChart({
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>(initialMetric);
   const [rawList, setRawList] = useState<any[]>([]);
-  const [selectedServer, setSelectedServer] = useState<string>('all');
+  // Requirement: Do not automatically select a server when the dashboard loads.
+  const [selectedServer, setSelectedServer] = useState<string | null>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [dropdownSearch, setDropdownSearch] = useState('');
   const [loading, setLoading] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Close dropdown on click outside or escape key
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  // Auto-focus search input when dropdown opens
+  useEffect(() => {
+    if (isDropdownOpen) {
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    } else {
+      setDropdownSearch('');
+    }
+  }, [isDropdownOpen]);
 
   // 1. Compile unified list of registered servers with live telemetry
   const allServers: ServerDetailItem[] = useMemo(() => {
@@ -160,8 +197,12 @@ export function ResourceOverviewChart({
     for (const s of customServers) {
       const name = s.name || 'Server';
       const host = s.host || '';
+      const pubIp = (s as any).publicIp || s.host || '';
+      const privIp = (s as any).privateIp || '';
+
       seenNames.add(name.toLowerCase());
       if (host) seenHosts.add(host);
+      if (pubIp) seenHosts.add(pubIp);
 
       const disksArr = Array.isArray(s.metrics?.disks)
         ? s.metrics.disks
@@ -230,7 +271,9 @@ export function ResourceOverviewChart({
       list.push({
         id: s._id || name,
         name,
-        host,
+        host: host || pubIp,
+        publicIp: pubIp,
+        privateIp: privIp,
         provider: s.cloudProvider || 'azure',
         status: s.status || 'Online',
         region: s.region,
@@ -256,6 +299,8 @@ export function ResourceOverviewChart({
         id: vm.id || vm.vmId,
         name,
         host,
+        publicIp: vm.publicIp || '',
+        privateIp: vm.privateIp || '',
         provider: 'azure',
         status: vm.powerState || 'Running',
         region: vm.region,
@@ -281,6 +326,8 @@ export function ResourceOverviewChart({
         id: ec2.id || ec2.instanceId,
         name,
         host,
+        publicIp: ec2.publicIp || '',
+        privateIp: ec2.privateIp || '',
         provider: 'aws',
         status: ec2.status || 'Running',
         region: ec2.region,
@@ -304,14 +351,29 @@ export function ResourceOverviewChart({
     return list;
   }, [customServers, filteredAzureVMs, filteredEC2Instances, cloudProvider]);
 
-  // Ensure selectedServer is valid
+  // Search filtered dropdown list
+  const filteredDropdownServers = useMemo(() => {
+    if (!dropdownSearch.trim()) return allServers;
+    const q = dropdownSearch.toLowerCase().trim();
+    return allServers.filter((s) => {
+      const nameMatch = s.name.toLowerCase().includes(q);
+      const hostMatch = s.host ? s.host.toLowerCase().includes(q) : false;
+      const pubMatch = s.publicIp ? s.publicIp.toLowerCase().includes(q) : false;
+      const privMatch = s.privateIp ? s.privateIp.toLowerCase().includes(q) : false;
+      const providerMatch = s.provider.toLowerCase().includes(q);
+      const regionMatch = s.region ? s.region.toLowerCase().includes(q) : false;
+      return nameMatch || hostMatch || pubMatch || privMatch || providerMatch || regionMatch;
+    });
+  }, [allServers, dropdownSearch]);
+
+  // Ensure selectedServer is valid if servers change
   useEffect(() => {
-    if (selectedServer !== 'all' && !allServers.some((s) => s.name === selectedServer)) {
-      setSelectedServer('all');
+    if (selectedServer && selectedServer !== 'all' && allServers.length > 0 && !allServers.some((s) => s.name === selectedServer)) {
+      setSelectedServer(null);
     }
   }, [allServers, selectedServer]);
 
-  // Aggregate metrics for "All Servers" circular gauges mode (Image 3)
+  // Aggregate metrics for "All Servers" circular gauges mode
   const aggregateMetrics = useMemo(() => {
     if (allServers.length === 0) {
       return { cpu: 15, memory: 26, disk: 25, network: 11 };
@@ -351,11 +413,15 @@ export function ResourceOverviewChart({
 
   // Selected server details
   const activeServerDetail = useMemo(() => {
-    if (selectedServer === 'all') return null;
+    if (!selectedServer || selectedServer === 'all') return null;
     return allServers.find((s) => s.name === selectedServer) || null;
   }, [selectedServer, allServers]);
 
-  // Live present timestamp updating continuously so graph displays current timing
+  const isOnline = activeServerDetail
+    ? activeServerDetail.status === 'Online' || (activeServerDetail.status || '').toLowerCase().includes('run')
+    : false;
+
+  // Live present timestamp updating continuously
   const [presentTime, setPresentTime] = useState<number | null>(null);
 
   useEffect(() => {
@@ -366,8 +432,10 @@ export function ResourceOverviewChart({
     return () => clearInterval(interval);
   }, [lastRefreshedAt]);
 
+  // Fetch telemetry from backend
   useEffect(() => {
     if (data) return;
+    if (!selectedServer || selectedServer === 'all') return;
     let isMounted = true;
 
     async function loadTelemetry() {
@@ -375,7 +443,7 @@ export function ResourceOverviewChart({
       const timeoutId = setTimeout(() => controller.abort(), 6000);
       try {
         setLoading(true);
-        const serverParam = selectedServer !== 'all' ? `&server=${encodeURIComponent(selectedServer)}` : '';
+        const serverParam = `&server=${encodeURIComponent(selectedServer as string)}`;
         const res = await fetch(
           `/api/dashboard/metrics?provider=${cloudProvider}&metric=${selectedMetric}${serverParam}`,
           { signal: controller.signal }
@@ -402,11 +470,12 @@ export function ResourceOverviewChart({
     };
   }, [cloudProvider, selectedMetric, selectedServer, lastRefreshedAt, data]);
 
-  // Only CPU, Memory, Disk as requested (Network removed)
+  // Compact segmented tabs: CPU, Memory, Disk
   const metricTabs: MetricType[] = ['CPU', 'Memory', 'Disk'];
 
   // Filter raw time-series data
   const filteredList = useMemo(() => {
+    if (!selectedServer || selectedServer === 'all') return [];
     let list = rawList;
 
     list = list.filter((item: any) => {
@@ -416,11 +485,9 @@ export function ResourceOverviewChart({
       return true;
     });
 
-    if (selectedServer !== 'all') {
-      list = list.filter(
-        (item: any) => (item.serverName || item.resourceName) === selectedServer
-      );
-    }
+    list = list.filter(
+      (item: any) => (item.serverName || item.resourceName) === selectedServer
+    );
 
     return [...list].sort(
       (a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
@@ -429,24 +496,24 @@ export function ResourceOverviewChart({
 
   // Transform raw telemetry points into Recharts data
   const chartData: EnhancedMetricPoint[] = useMemo(() => {
+    if (!activeServerDetail) return [];
+
     if (data) {
       const fallback = data[selectedMetric] || data['CPU'] || [];
       return fallback.map((p) => ({
         time: p.time,
-        serverName: activeServerDetail?.name || 'vm01',
-        host: activeServerDetail?.host || '',
-        provider: 'azure',
+        serverName: activeServerDetail.name,
+        host: activeServerDetail.host || '',
+        provider: activeServerDetail.provider,
         value: p.azure || p.aws || 0,
         aws: p.aws || 0,
         azure: p.azure || 0,
       }));
     }
 
-    // Live present timing: ensure graph strictly displays present timestamps
-    const now = presentTime ?? 1730550000000;
+    const now = presentTime ?? Date.now();
 
-    // Require dense real-time points (at least 20 points in last 45 minutes) to use DB rows;
-    // otherwise synthesize the live heartbeat telemetry ending at the present moment
+    // Check if dense recent points exist
     const isDenseRecentList =
       filteredList.length >= 20 &&
       filteredList.every((item: any) => {
@@ -470,13 +537,12 @@ export function ResourceOverviewChart({
 
         const num = typeof metricVal === 'number' ? Math.round(metricVal) : 0;
         const isAws = item.provider === 'aws';
-        const sName = item.serverName || item.resourceName || activeServerDetail?.name || 'vm01';
 
         return {
           time: timeStr,
-          serverName: sName,
-          host: item.host || activeServerDetail?.host || '',
-          provider: item.provider || 'azure',
+          serverName: activeServerDetail.name,
+          host: item.host || activeServerDetail.host || '',
+          provider: item.provider || activeServerDetail.provider,
           value: num,
           aws: isAws ? num : 0,
           azure: !isAws ? num : 0,
@@ -485,62 +551,51 @@ export function ResourceOverviewChart({
     }
 
     const currentBase =
-      activeServerDetail
-        ? selectedMetric === 'CPU'
-          ? (activeServerDetail.cpuPercent ?? 13)
-          : selectedMetric === 'Memory'
-          ? (activeServerDetail.memoryPercent ?? 10)
-          : (activeServerDetail.diskPercent ?? 14)
-        : 13;
+      selectedMetric === 'CPU'
+        ? (activeServerDetail.cpuPercent ?? 13)
+        : selectedMetric === 'Memory'
+        ? (activeServerDetail.memoryPercent ?? 10)
+        : (activeServerDetail.diskPercent ?? 14);
 
     const points: EnhancedMetricPoint[] = [];
-    const count = 35; // 35 minutes leading up to present minute
+    const count = 35;
     for (let i = count; i >= 0; i--) {
-      // 1-minute steps ending at current present moment
       const t = new Date(now - i * 60 * 1000);
       const timeStr = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       let val = currentBase;
 
       if (i === 0) {
-        // Exact live metric at present minute
         val = currentBase;
       } else if (i >= 10 && i <= 15) {
-        // Peak telemetry workload spike (reaching 90-100% just like reference)
         if (i === 15) val = Math.min(100, Math.round(currentBase * 3.5 + 25));
         else if (i >= 11 && i <= 14) val = 100;
         else val = Math.min(100, Math.round(currentBase * 2.5 + 15));
       } else {
-        // Heartbeat pulse waveform (rhythmic P-Q-R-S-T peaks and troughs every 5-6 minutes)
         const cycle = (count - i) % 6;
         if (cycle === 0) {
           val = currentBase + 1;
         } else if (cycle === 1) {
-          // P-wave slight rise
           val = currentBase + 4;
         } else if (cycle === 2) {
-          // Q-wave small dip
           val = Math.max(3, currentBase - 3);
         } else if (cycle === 3) {
-          // R-wave sharp heartbeat spike
           val = currentBase + 18 + ((count - i) % 3 === 0 ? 6 : 0);
         } else if (cycle === 4) {
-          // S-wave rebound dip
           val = Math.max(3, currentBase - 4);
         } else if (cycle === 5) {
-          // T-wave rounded recovery
           val = currentBase + 5;
         }
       }
 
       val = Math.max(2, Math.min(100, Math.round(val)));
-      const isAws = activeServerDetail?.provider === 'aws';
+      const isAws = activeServerDetail.provider === 'aws';
 
       points.push({
         time: timeStr,
-        serverName: activeServerDetail?.name || 'vm01',
-        host: activeServerDetail?.host || '',
-        provider: activeServerDetail?.provider || 'azure',
+        serverName: activeServerDetail.name,
+        host: activeServerDetail.host || '',
+        provider: activeServerDetail.provider,
         value: val,
         aws: isAws ? val : 0,
         azure: isAws ? 0 : val,
@@ -549,209 +604,394 @@ export function ResourceOverviewChart({
     return points;
   }, [data, filteredList, selectedMetric, activeServerDetail, presentTime]);
 
-  const showAws = cloudProvider === 'all' || cloudProvider === 'aws';
-  const showAzure = cloudProvider === 'all' || cloudProvider === 'azure';
-
-  const scrollLeft = () => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: -200, behavior: 'smooth' });
-    }
-  };
-
-  const scrollRight = () => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: 200, behavior: 'smooth' });
-    }
-  };
+  const showAws = !activeServerDetail || activeServerDetail.provider === 'aws';
+  const showAzure = !activeServerDetail || activeServerDetail.provider === 'azure';
 
   return (
-    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col gap-4">
+    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col gap-4 relative">
       {/* ================= 1. HEADER ================= */}
-      {selectedServer === 'all' ? (
-        /* Image 3 Header: Clean Resource Overview on Left, All Servers Badge on Right */
-        <div className="flex items-center justify-between pb-1">
-          <div className="flex items-center gap-2.5">
-            <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-              Resource Overview
-            </h3>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[#1E293B]/70">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="p-1.5 rounded-lg bg-teal-500/10 text-teal-400 border border-teal-500/20 shrink-0">
+            <Activity className="w-4 h-4" />
           </div>
-          <span className="text-xs text-slate-400 font-semibold tracking-wide">
-            All servers ({allServers.length})
-          </span>
-        </div>
-      ) : (
-        /* Image 2 Header: Server selected with green badge, OS telemetry subtitle, legend, and metric tabs */
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-md bg-teal-500/10 text-teal-400">
-              <Activity className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-white">Resource Overview</h3>
-                {activeServerDetail && (
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>{activeServerDetail.name}</span>
-                    {activeServerDetail.host && (
-                      <span className="text-emerald-300 font-mono">({activeServerDetail.host})</span>
-                    )}
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] text-slate-400">
-                Live guest OS telemetry & hardware usage for connected server inventory
-              </span>
-            </div>
-          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-base font-bold text-white tracking-tight">Resource Overview</h3>
 
-          <div className="flex items-center gap-3">
-            {/* Legend */}
-            <div className="flex items-center gap-2.5 text-xs">
-              {showAws && (
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#FF9900]" />
-                  <span className="text-slate-300 font-medium">AWS</span>
-                </div>
-              )}
-              {showAzure && (
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#0089D6]" />
-                  <span className="text-slate-300 font-medium">
-                    {activeServerDetail ? `${activeServerDetail.name} (Azure)` : 'Azure'}
-                  </span>
-                </div>
-              )}
-            </div>
+            {activeServerDetail ? (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* Selected Server Name Badge */}
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                  <ServerIcon className="w-3 h-3 text-blue-400" />
+                  <span>{activeServerDetail.name}</span>
+                </span>
 
-            {/* Metric Switcher Tabs */}
-            <div className="flex items-center p-0.5 bg-[#0D1526] border border-[#1E293B] rounded-lg">
-              {metricTabs.map((metric) => (
-                <button
-                  key={metric}
-                  onClick={() => setSelectedMetric(metric)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                    selectedMetric === metric
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
+                {/* Cloud Provider Badge */}
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                    activeServerDetail.provider === 'aws'
+                      ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                      : activeServerDetail.provider === 'azure'
+                      ? 'bg-[#0089D6]/15 text-[#5EA0EF] border-[#0089D6]/30'
+                      : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
                   }`}
                 >
-                  {metric}
-                </button>
-              ))}
-            </div>
+                  {activeServerDetail.provider === 'aws' ? (
+                    <AwsLogo className="w-3 h-3" />
+                  ) : activeServerDetail.provider === 'azure' ? (
+                    <AzureLogo className="w-3 h-3" />
+                  ) : null}
+                  <span>{activeServerDetail.provider}</span>
+                </span>
+
+                {/* Server Status Badge */}
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                    isOnline
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                    }`}
+                  />
+                  <span>{isOnline ? 'Online' : activeServerDetail.status || 'Offline'}</span>
+                </span>
+              </div>
+            ) : selectedServer === 'all' ? (
+              <span className="text-xs text-slate-400 font-medium">
+                Fleet Aggregate • {allServers.length} servers
+              </span>
+            ) : null}
           </div>
         </div>
-      )}
 
-      {/* ================= 2. SERVER SWITCHER PILLS BAR ================= */}
-      <div className="relative group/scroll flex items-center">
-        {allServers.length > 3 && (
+        <div className="text-[11px] text-slate-400 flex items-center gap-2">
+          {activeServerDetail ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 font-medium hidden sm:inline">IP:</span>
+              <span className="text-emerald-400 font-mono text-xs font-semibold bg-[#0D1526] px-2 py-0.5 rounded border border-[#1E293B]">
+                {activeServerDetail.publicIp || activeServerDetail.privateIp || activeServerDetail.host || 'N/A'}
+              </span>
+            </div>
+          ) : (
+            <span className="text-slate-400">Live guest OS telemetry & hardware usage</span>
+          )}
+        </div>
+      </div>
+
+      {/* ================= 2. CONTROLS TOOLBAR: DROPDOWN & TABS ================= */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-30">
+        {/* Searchable Server Selection Dropdown */}
+        <div ref={dropdownRef} className="relative w-full sm:w-80 md:w-96">
           <button
-            onClick={scrollLeft}
-            aria-label="Scroll servers left"
-            className="p-1 rounded-md bg-[#0D1526] border border-[#1E293B] text-slate-400 hover:text-white mr-1.5 shadow-sm transition-colors cursor-pointer"
+            type="button"
+            onClick={() => setIsDropdownOpen((prev) => !prev)}
+            className={`w-full bg-[#0D1526] hover:bg-[#131D33] border ${
+              isDropdownOpen ? 'border-blue-500 ring-1 ring-blue-500/40' : 'border-[#1E293B]'
+            } text-left px-3.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all shadow-sm cursor-pointer`}
           >
-            <ChevronLeft className="w-3.5 h-3.5" />
-          </button>
-        )}
-
-        <div
-          ref={scrollContainerRef}
-          className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none scroll-smooth flex-1"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
-          {/* All Servers Option Pill */}
-          <button
-            onClick={() => setSelectedServer('all')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all select-none cursor-pointer ${
-              selectedServer === 'all'
-                ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/25 border border-blue-500'
-                : 'bg-[#0D1526] text-slate-400 hover:text-white hover:bg-[#18233C] border border-[#1E293B]'
-            }`}
-          >
-            <ServerIcon className="w-3.5 h-3.5" />
-            <span>All Servers</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 font-bold">
-              {allServers.length}
-            </span>
-          </button>
-
-          {/* Individual Server Chips */}
-          {allServers.map((srv) => {
-            const isSelected = selectedServer === srv.name;
-            const isOnline =
-              srv.status === 'Online' || (srv.status || '').toLowerCase().includes('run');
-
-            return (
-              <button
-                key={srv.id || srv.name}
-                onClick={() => setSelectedServer(srv.name)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all select-none cursor-pointer ${
-                  isSelected
-                    ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white border border-cyan-400/40 shadow-md shadow-blue-500/20 font-semibold'
-                    : 'bg-[#0D1526] text-slate-300 hover:text-white hover:bg-[#18233C] border border-[#1E293B] font-medium'
-                }`}
-              >
+            {!selectedServer ? (
+              <div className="flex items-center gap-2 text-slate-400">
+                <ServerIcon className="w-4 h-4 text-blue-400 shrink-0" />
+                <span className="font-medium text-slate-300">Select a Server</span>
+              </div>
+            ) : selectedServer === 'all' ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <Boxes className="w-4 h-4 text-blue-400 shrink-0" />
+                <span className="font-semibold text-white truncate">All Servers (Fleet Overview)</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-400 font-mono shrink-0">
+                  {allServers.length}
+                </span>
+              </div>
+            ) : activeServerDetail ? (
+              <div className="flex items-center gap-2 min-w-0">
                 <span
-                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  className={`w-2 h-2 rounded-full shrink-0 ${
                     isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
                   }`}
                 />
-                <span className="truncate max-w-[120px]">{srv.name}</span>
-                {srv.host && (
-                  <span className="text-[10px] font-mono text-slate-400 truncate max-w-[100px]">
-                    {srv.host}
+                <span className="font-semibold text-white truncate max-w-[120px]">
+                  {activeServerDetail.name}
+                </span>
+                {(activeServerDetail.publicIp || activeServerDetail.privateIp || activeServerDetail.host) && (
+                  <span className="text-[11px] font-mono text-emerald-400 truncate max-w-[110px]">
+                    {activeServerDetail.publicIp || activeServerDetail.privateIp || activeServerDetail.host}
                   </span>
                 )}
                 <span
-                  className={`text-[9px] px-1.5 py-0.2 rounded uppercase font-bold tracking-wider ${
-                    srv.provider === 'aws'
-                      ? 'bg-[#FF9900]/20 text-[#FF9900]'
-                      : srv.provider === 'azure'
-                      ? 'bg-[#0089D6]/20 text-[#5EA0EF]'
-                      : 'bg-slate-800 text-slate-400'
+                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase shrink-0 ${
+                    activeServerDetail.provider === 'aws'
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      : activeServerDetail.provider === 'azure'
+                      ? 'bg-[#0089D6]/20 text-[#5EA0EF] border border-[#0089D6]/30'
+                      : 'bg-purple-500/20 text-purple-300'
                   }`}
                 >
-                  {srv.provider}
+                  {activeServerDetail.provider}
                 </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-slate-400">
+                <ServerIcon className="w-4 h-4 text-blue-400 shrink-0" />
+                <span className="font-medium text-slate-300">Select a Server</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+              {selectedServer && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedServer(null);
+                  }}
+                  className="p-0.5 text-slate-400 hover:text-white rounded hover:bg-slate-700/50"
+                  title="Clear Selection"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <ChevronDown
+                className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
+                  isDropdownOpen ? 'rotate-180 text-blue-400' : ''
+                }`}
+              />
+            </div>
+          </button>
+
+          {/* Searchable Dropdown Popover */}
+          {isDropdownOpen && (
+            <div className="absolute top-full left-0 right-0 sm:w-96 mt-1.5 z-50 bg-[#0F172A] border border-[#1E293B] rounded-xl shadow-2xl overflow-hidden">
+              {/* Search Bar inside Dropdown */}
+              <div className="p-2 border-b border-[#1E293B] bg-[#0D1526]">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={dropdownSearch}
+                    onChange={(e) => setDropdownSearch(e.target.value)}
+                    placeholder="Search by server name or IP..."
+                    className="w-full pl-8 pr-7 py-1.5 bg-[#111A2E] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                  {dropdownSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setDropdownSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Server Options List */}
+              <div className="max-h-72 overflow-y-auto divide-y divide-[#1E293B]/40">
+                {/* Optional "All Servers" overview selection */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedServer('all');
+                    setIsDropdownOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                    selectedServer === 'all'
+                      ? 'bg-blue-600/20 text-white'
+                      : 'hover:bg-[#1A2642] text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 rounded bg-blue-500/10 text-blue-400">
+                      <Boxes className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-white">All Servers (Fleet Overview)</div>
+                      <div className="text-[10px] text-slate-400">Aggregated cluster metrics across all clouds</div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-mono font-semibold">
+                    {allServers.length} servers
+                  </span>
+                </button>
+
+                {/* Section Divider */}
+                <div className="px-3 py-1 bg-[#090E17] text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                  <span>Registered Cloud Servers</span>
+                  <span>{filteredDropdownServers.length} found</span>
+                </div>
+
+                {filteredDropdownServers.length > 0 ? (
+                  filteredDropdownServers.map((srv) => {
+                    const isSelected = selectedServer === srv.name;
+                    const srvOnline =
+                      srv.status === 'Online' || (srv.status || '').toLowerCase().includes('run');
+                    const ip = srv.publicIp || srv.privateIp || srv.host;
+
+                    return (
+                      <button
+                        key={srv.id || srv.name}
+                        type="button"
+                        onClick={() => {
+                          setSelectedServer(srv.name);
+                          setIsDropdownOpen(false);
+                        }}
+                        className={`w-full px-3 py-2.5 text-left flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-blue-900/40 to-blue-800/20 text-white border-l-2 border-blue-500'
+                            : 'hover:bg-[#1A2642] text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {/* Cloud Logo */}
+                          <div className="shrink-0">
+                            {srv.provider === 'aws' ? (
+                              <div className="p-1 rounded bg-amber-500/10 border border-amber-500/20">
+                                <AwsLogo className="w-3.5 h-3.5" />
+                              </div>
+                            ) : srv.provider === 'azure' ? (
+                              <div className="p-1 rounded bg-[#0089D6]/10 border border-[#0089D6]/20">
+                                <AzureLogo className="w-3.5 h-3.5" />
+                              </div>
+                            ) : (
+                              <div className="p-1 rounded bg-purple-500/10 border border-purple-500/20">
+                                <ServerIcon className="w-3.5 h-3.5 text-purple-400" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-white truncate max-w-[140px]">
+                                {srv.name}
+                              </span>
+                              <span
+                                className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                                  srv.provider === 'aws'
+                                    ? 'bg-amber-500/20 text-amber-400'
+                                    : srv.provider === 'azure'
+                                    ? 'bg-[#0089D6]/20 text-[#5EA0EF]'
+                                    : 'bg-purple-500/20 text-purple-300'
+                                }`}
+                              >
+                                {srv.provider}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {ip && (
+                                <span className="text-[10px] font-mono text-emerald-400">
+                                  {ip}
+                                </span>
+                              )}
+                              {srv.region && (
+                                <span className="text-[10px] text-slate-500">
+                                  • {srv.region}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          <span
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              srvOnline
+                                ? 'bg-emerald-500/15 text-emerald-400'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                srvOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                              }`}
+                            />
+                            <span>{srvOnline ? 'Online' : 'Stopped'}</span>
+                          </span>
+                          {isSelected && <Check className="w-4 h-4 text-blue-400" />}
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="py-6 px-4 text-center space-y-2">
+                    <p className="text-xs text-slate-400">No servers match &quot;{dropdownSearch}&quot;</p>
+                    <button
+                      type="button"
+                      onClick={() => setDropdownSearch('')}
+                      className="text-[11px] text-blue-400 hover:underline cursor-pointer"
+                    >
+                      Clear search
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Compact Segmented Tabs: CPU, Memory, Disk */}
+        <div className="inline-flex items-center p-0.5 bg-[#0D1526] border border-[#1E293B] rounded-lg shrink-0 self-start sm:self-auto">
+          {metricTabs.map((metric) => {
+            const isActive = selectedMetric === metric;
+            return (
+              <button
+                key={metric}
+                type="button"
+                onClick={() => setSelectedMetric(metric)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer whitespace-nowrap ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
+                }`}
+              >
+                {metric}
               </button>
             );
           })}
         </div>
-
-        {allServers.length > 3 && (
-          <button
-            onClick={scrollRight}
-            aria-label="Scroll servers right"
-            className="p-1 rounded-md bg-[#0D1526] border border-[#1E293B] text-slate-400 hover:text-white ml-1.5 shadow-sm transition-colors cursor-pointer"
-          >
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        )}
       </div>
 
-      {/* ================= 3. MAIN CONTENT: GAUGES vs SERVER TELEMETRY ================= */}
-      {selectedServer === 'all' ? (
-        /* 3 Circular Progress Gauges: CPU, MEMORY, DISK (Network removed) */
+      {/* ================= 3. MAIN CONTENT: EMPTY STATE vs GAUGES vs SERVER TELEMETRY ================= */}
+      {!selectedServer ? (
+        /* Empty State: No Server Selected */
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center rounded-xl bg-[#0D1526]/50 border border-dashed border-[#1E293B] my-1">
+          <div className="w-14 h-14 rounded-2xl bg-[#0D1526] border border-[#1E293B] flex items-center justify-center text-blue-400 mb-3.5 shadow-inner">
+            <ServerIcon className="w-7 h-7" />
+          </div>
+          <h4 className="text-sm sm:text-base font-semibold text-white mb-1.5">
+            Select a server to view real-time resource metrics
+          </h4>
+          <p className="text-xs text-slate-400 max-w-md mb-5 leading-relaxed">
+            Choose an AWS EC2 instance or Azure Virtual Machine from the dropdown above to view real-time CPU, RAM, disk usage, and historical telemetry charts.
+          </p>
+          <button
+            type="button"
+            onClick={() => setIsDropdownOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+          >
+            <ServerIcon className="w-4 h-4" />
+            <span>Select a Server</span>
+            <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+          </button>
+        </div>
+      ) : selectedServer === 'all' ? (
+        /* All Servers Overview: 3 Circular Progress Gauges (CPU, MEMORY, DISK) */
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 py-6 items-center justify-items-center">
-          {/* Gauge 1: CPU (Cyan) */}
           <CircularGauge
             percent={aggregateMetrics.cpu}
             label="CPU"
             subtitle={`avg of ${allServers.length} servers`}
             color="#00C5FF"
           />
-
-          {/* Gauge 2: MEMORY (Purple) */}
           <CircularGauge
             percent={aggregateMetrics.memory}
             label="MEMORY"
             subtitle={`avg of ${allServers.length} servers`}
             color="#8B5CF6"
           />
-
-          {/* Gauge 3: DISK (Orange) */}
           <CircularGauge
             percent={aggregateMetrics.disk}
             label="DISK"
@@ -760,7 +1000,7 @@ export function ResourceOverviewChart({
           />
         </div>
       ) : (
-        /* 3 Server Stat Cards: CPU, RAM, DISK (Containers removed) + Live Telemetry AreaChart */
+        /* Specific Server Selected: 3 Metric Cards + Recharts Historical Telemetry AreaChart */
         <>
           {activeServerDetail && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -844,8 +1084,8 @@ export function ResourceOverviewChart({
             </div>
           )}
 
-          {/* Recharts Area/Line Chart */}
-          <div className="w-full h-56 min-h-[220px] mt-2">
+          {/* Recharts Area Chart */}
+          <div className="w-full h-56 min-h-[220px] overflow-hidden rounded-lg">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={chartData}
