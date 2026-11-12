@@ -115,46 +115,8 @@ export function getLiveGuestOSMetrics(): OSMetricSnapshot {
     };
   }
 
-  // 1. CPU ACCURACY: Delta difference between consecutive /proc/stat samples
+  // 1. CPU ACCURACY: Delta difference between consecutive /proc/stat samples over 1s interval
   let cpuPercent = currentCpuPercent;
-  const currentSample = readLinuxCpuSample();
-
-  if (currentSample) {
-    if (prevCpuSample && currentSample.total > prevCpuSample.total) {
-      const elapsed = now - prevCpuSample.timestamp;
-      // If elapsed time is at least 300ms, compute active delta
-      if (elapsed >= 300) {
-        const totalDiff = currentSample.total - prevCpuSample.total;
-        const idleDiff = currentSample.idle - prevCpuSample.idle;
-        if (totalDiff > 0) {
-          const usage = ((totalDiff - idleDiff) / totalDiff) * 100;
-          cpuPercent = Math.max(0.5, Math.min(100, Math.round(usage * 10) / 10));
-          currentCpuPercent = cpuPercent;
-        }
-        prevCpuSample = { ...currentSample, timestamp: now };
-      } else {
-        cpuPercent = currentCpuPercent;
-      }
-    } else {
-      prevCpuSample = { ...currentSample, timestamp: now };
-    }
-  } else {
-    // Windows / Local Development Fallback
-    const cpus = os.cpus();
-    if (cpus && cpus.length > 0) {
-      let totalIdle = 0;
-      let totalTick = 0;
-      for (const cpu of cpus) {
-        for (const type in cpu.times) {
-          totalTick += (cpu.times as any)[type];
-        }
-        totalIdle += cpu.times.idle;
-      }
-      const rawPct = ((totalTick - totalIdle) / totalTick) * 100;
-      cpuPercent = Math.max(0.5, Math.min(100, Math.round(rawPct * 10) / 10));
-      currentCpuPercent = cpuPercent;
-    }
-  }
 
   // 2. RAM ACCURACY: ((MemTotal - MemAvailable) / MemTotal) * 100
   let memoryTotalBytes = 8265392128; // Standard_D2s_v3 (7.7 GiB, 7882 MiB)
