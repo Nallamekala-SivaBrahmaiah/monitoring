@@ -8,6 +8,7 @@ import {
   ChevronRight,
   TrendingUp,
   ArrowUpDown,
+  ExternalLink,
   Trash2,
   KeyRound,
   Terminal,
@@ -354,38 +355,36 @@ export function AzureVMsTable({
                   onClick={() => router.push(`/dashboard/azure-vms/${vm.vmId}`)}
                   className="hover:bg-[#162238]/60 cursor-pointer transition-colors group"
                 >
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 rounded bg-[#0089D6]/20 flex items-center justify-center text-[#0089D6] flex-shrink-0">
-                        <AzureVmIcon className="w-3 h-3" />
+                  <td className="py-3.5 px-4 whitespace-nowrap">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-6 h-6 rounded-lg bg-[#0089D6]/20 border border-[#0089D6]/30 flex items-center justify-center text-[#0089D6] shrink-0">
+                        <AzureVmIcon className="w-3.5 h-3.5" />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-semibold text-white group-hover:underline">
-                            {vm.name}
-                          </span>
-                          {(vm as any).isSSHConnected ? (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
-                              SSH Verified
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenSSHModal(vm);
-                              }}
-                              className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 font-mono flex items-center gap-1 transition-colors cursor-pointer"
-                              title="Connect SSH (PPK / PEM / Password) for in-guest CPU, RAM, Disk, Docker & K8s telemetry"
-                            >
-                              <KeyRound className="w-2.5 h-2.5" />
-                              <span>Connect SSH</span>
-                            </button>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-slate-400 font-mono block">
-                          {vm.publicIp && vm.publicIp !== '-' ? vm.publicIp : vm.privateIp}
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-white group-hover:text-blue-400 transition-colors">
+                          {vm.name}
                         </span>
+                        {(vm as any).isSSHConnected ? (
+                          <span
+                            className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-semibold"
+                            title="SSH Telemetry Active & Verified"
+                          >
+                            SSH ✓
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenSSHModal(vm);
+                            }}
+                            className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 font-mono flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Connect SSH (PPK / PEM / Password)"
+                          >
+                            <KeyRound className="w-2.5 h-2.5" />
+                            <span>Connect SSH</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -488,85 +487,85 @@ export function AzureVMsTable({
                   </td>
 
                   <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1.5">
-                      {/* 1. Real Azure Cloud Power Actions (Start & Stop) */}
-                      <div className="inline-flex rounded-lg border border-[#1E293B] bg-[#0D1526] p-0.5 shadow-sm shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => handlePowerAction(vm.vmId, 'start')}
-                          disabled={isRunning || powerActionLoadingId === vm.vmId}
-                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
-                            isRunning
-                              ? 'text-slate-500 cursor-not-allowed opacity-40'
-                              : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
-                          }`}
-                          title={isRunning ? 'Azure VM is already running' : 'Start VM in Azure'}
-                        >
-                          <Play
-                            className={`w-3 h-3 fill-current ${
-                              powerActionLoadingId === vm.vmId ? 'animate-spin' : ''
-                            }`}
-                          />
-                          <span>Start</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handlePowerAction(vm.vmId, 'stop')}
-                          disabled={!isRunning || powerActionLoadingId === vm.vmId}
-                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
-                            !isRunning
-                              ? 'text-slate-500 cursor-not-allowed opacity-40'
-                              : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
-                          }`}
-                          title={!isRunning ? 'Azure VM is currently stopped' : 'Stop / Deallocate VM in Azure'}
-                        >
-                          <Power
-                            className={`w-3 h-3 ${
-                              powerActionLoadingId === vm.vmId ? 'animate-spin' : ''
-                            }`}
-                          />
-                          <span>Stop</span>
-                        </button>
-                      </div>
-
-                      {/* 2. Login button (on the LEFT side of the key icon) */}
+                    <div className="inline-flex items-center gap-1 bg-[#0D1526] p-1 rounded-xl border border-[#1E293B] shadow-sm">
+                      {/* 1. Terminal / SSH Login */}
                       <button
                         type="button"
                         onClick={() => handleOpenTerminal(vm)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-md transition-all shadow-sm shrink-0 cursor-pointer whitespace-nowrap"
-                        title="Login into Server (Real Interactive SSH Terminal)"
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 rounded-lg transition-all shadow-sm cursor-pointer"
+                        title="Open Interactive SSH Terminal"
                       >
                         <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Login</span>
+                        <span>SSH</span>
                       </button>
 
-                      {/* 2. Key icon on the RIGHT: strictly for SSH Credentials configuration (ConnectSSHModal) */}
+                      {/* 2. Real Cloud Power Actions (Start & Stop) */}
+                      {isRunning ? (
+                        <button
+                          type="button"
+                          onClick={() => handlePowerAction(vm.vmId, 'stop')}
+                          disabled={powerActionLoadingId === vm.vmId}
+                          className="p-1.5 text-rose-400 hover:text-white hover:bg-rose-500/25 border border-transparent hover:border-rose-500/40 rounded-lg transition-all cursor-pointer disabled:opacity-40"
+                          title="Stop / Deallocate Virtual Machine"
+                        >
+                          <Power
+                            className={`w-3.5 h-3.5 ${
+                              powerActionLoadingId === vm.vmId ? 'animate-spin' : ''
+                            }`}
+                          />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handlePowerAction(vm.vmId, 'start')}
+                          disabled={powerActionLoadingId === vm.vmId}
+                          className="p-1.5 text-emerald-400 hover:text-white hover:bg-emerald-500/25 border border-transparent hover:border-emerald-500/40 rounded-lg transition-all cursor-pointer disabled:opacity-40"
+                          title="Start Virtual Machine"
+                        >
+                          <Play
+                            className={`w-3.5 h-3.5 fill-current ${
+                              powerActionLoadingId === vm.vmId ? 'animate-spin' : ''
+                            }`}
+                          />
+                        </button>
+                      )}
+
+                      {/* 3. SSH Key / Credentials Configuration */}
                       <button
                         type="button"
                         onClick={() => handleOpenSSHModal(vm)}
-                        className="p-1 text-slate-400 hover:text-amber-400 rounded hover:bg-[#18233C] transition-colors shrink-0 cursor-pointer"
-                        title="Configure / Reconfigure SSH Credentials"
+                        className="p-1.5 text-amber-400 hover:text-white hover:bg-amber-500/20 border border-transparent hover:border-amber-500/30 rounded-lg transition-all cursor-pointer"
+                        title="Configure SSH Credentials (PPK / PEM / Password)"
                       >
                         <KeyRound className="w-3.5 h-3.5" />
                       </button>
+
+                      {/* 4. View Details */}
                       <Link
                         href={`/dashboard/azure-vms/${vm.vmId}`}
-                        className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-[#0089D6] hover:text-white text-slate-300 rounded border border-[#1E293B] transition-colors"
+                        className="p-1.5 text-blue-400 hover:text-white hover:bg-blue-500/20 border border-transparent hover:border-blue-500/30 rounded-lg transition-all"
+                        title="View Virtual Machine Details"
                       >
-                        View
+                        <ExternalLink className="w-3.5 h-3.5" />
                       </Link>
+
+                      {/* 5. Metrics Chart */}
                       <button
+                        type="button"
                         onClick={() => router.push(`/dashboard/azure-vms/${vm.vmId}?tab=metrics`)}
-                        className="p-1 text-slate-400 hover:text-cyan-400 rounded hover:bg-[#18233C]"
-                        title="View Metrics"
+                        className="p-1.5 text-cyan-400 hover:text-white hover:bg-cyan-500/20 border border-transparent hover:border-cyan-500/30 rounded-lg transition-all cursor-pointer"
+                        title="View Telemetry & Metrics"
                       >
                         <TrendingUp className="w-3.5 h-3.5" />
                       </button>
+
+                      {/* 6. Remove / Delete VM */}
                       <button
+                        type="button"
                         onClick={() => handleDeleteVM(vm.id || vm.vmId, vm.name)}
                         disabled={deletingId === (vm.id || vm.vmId)}
-                        className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors disabled:opacity-50"
-                        title="Remove VM"
+                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 rounded-lg transition-all cursor-pointer disabled:opacity-40"
+                        title="Remove Virtual Machine"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

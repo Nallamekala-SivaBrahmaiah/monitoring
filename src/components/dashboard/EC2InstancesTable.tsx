@@ -468,14 +468,17 @@ export function EC2InstancesTable({
                   </td>
 
                   {/* Name */}
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-semibold text-white">
+                  <td className="py-3 px-4 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-white group-hover:text-amber-400 transition-colors">
                         {inst.name}
                       </span>
                       {isSSH ? (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
-                          SSH Verified
+                        <span
+                          className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-semibold"
+                          title="SSH Telemetry Active & Verified"
+                        >
+                          SSH ✓
                         </span>
                       ) : (
                         <button
@@ -484,8 +487,8 @@ export function EC2InstancesTable({
                             e.stopPropagation();
                             handleOpenSSHModal(inst);
                           }}
-                          className="text-[9px] px-1.5 py-0.5 rounded bg-[#FF9900]/15 hover:bg-[#FF9900]/25 text-[#FF9900] border border-[#FF9900]/30 font-mono flex items-center gap-1 transition-colors"
-                          title="Connect SSH (PPK / PEM / Password) for real in-guest telemetry"
+                          className="text-[9px] px-1.5 py-0.2 rounded bg-[#FF9900]/15 hover:bg-[#FF9900]/25 text-[#FF9900] border border-[#FF9900]/30 font-mono flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Connect SSH (PPK / PEM / Password)"
                         >
                           <KeyRound className="w-2.5 h-2.5" />
                           <span>Connect SSH</span>
@@ -585,99 +588,97 @@ export function EC2InstancesTable({
                   </td>
 
                   {/* Actions */}
-                  <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1.5">
-                      {/* 1. Real Cloud Power Actions (Start & Stop) */}
-                      <div className="inline-flex rounded-lg border border-[#1E293B] bg-[#0D1526] p-0.5 shadow-sm shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => handlePowerAction(inst.instanceId, 'start')}
-                          disabled={isRunning || powerActionLoadingId === inst.instanceId}
-                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
-                            isRunning
-                              ? 'text-slate-500 cursor-not-allowed opacity-40'
-                              : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
-                          }`}
-                          title={isRunning ? 'EC2 instance is already running' : 'Start EC2 Instance in AWS'}
-                        >
-                          <Play
-                            className={`w-3 h-3 fill-current ${
-                              powerActionLoadingId === inst.instanceId ? 'animate-spin' : ''
-                            }`}
-                          />
-                          <span>Start</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handlePowerAction(inst.instanceId, 'stop')}
-                          disabled={!isRunning || powerActionLoadingId === inst.instanceId}
-                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
-                            !isRunning
-                              ? 'text-slate-500 cursor-not-allowed opacity-40'
-                              : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
-                          }`}
-                          title={!isRunning ? 'EC2 instance is currently stopped' : 'Stop EC2 Instance in AWS'}
-                        >
-                          <Power
-                            className={`w-3 h-3 ${
-                              powerActionLoadingId === inst.instanceId ? 'animate-spin' : ''
-                            }`}
-                          />
-                          <span>Stop</span>
-                        </button>
-                      </div>
-
+                  <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <div className="inline-flex items-center gap-1 bg-[#0D1526] p-1 rounded-xl border border-[#1E293B] shadow-sm">
+                      {/* 1. Terminal / SSH Login */}
                       {isSSH ? (
-                        <>
-                          {/* Login: Real Interactive SSH Terminal */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenTerminal(inst)}
-                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-md transition-all shadow-sm shrink-0 cursor-pointer whitespace-nowrap"
-                            title="Login into EC2 Instance (Interactive SSH Terminal)"
-                          >
-                            <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Login</span>
-                          </button>
-
-                          {/* Reconfigure SSH credentials */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenSSHModal(inst)}
-                            className="p-1 text-slate-400 hover:text-amber-400 rounded hover:bg-[#18233C] transition-colors shrink-0 cursor-pointer"
-                            title="Reconfigure SSH Credentials"
-                          >
-                            <KeyRound className="w-3.5 h-3.5" />
-                          </button>
-                        </>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenTerminal(inst)}
+                          className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 rounded-lg transition-all shadow-sm cursor-pointer"
+                          title="Open Interactive SSH Terminal"
+                        >
+                          <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>SSH</span>
+                        </button>
                       ) : (
                         <button
                           type="button"
                           onClick={() => handleOpenSSHModal(inst)}
-                          className="px-2 py-1 text-xs font-semibold bg-[#FF9900] hover:bg-[#FF9900]/85 text-black font-bold rounded border border-[#FF9900]/60 transition-colors flex items-center gap-1 shadow-sm shrink-0"
-                          title="Connect SSH (PPK / PEM / Password) to view real CPU, RAM, Disk, Docker & K8s"
+                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold bg-[#FF9900]/20 hover:bg-[#FF9900]/30 text-[#FF9900] border border-[#FF9900]/30 rounded-lg transition-all cursor-pointer"
+                          title="Connect SSH Credentials"
                         >
-                          <KeyRound className="w-3 h-3 text-black" />
-                          <span>Connect SSH</span>
+                          <KeyRound className="w-3 h-3 text-[#FF9900]" />
+                          <span>SSH</span>
                         </button>
                       )}
+
+                      {/* 2. Real Cloud Power Actions (Start & Stop) */}
+                      {isRunning ? (
+                        <button
+                          type="button"
+                          onClick={() => handlePowerAction(inst.instanceId, 'stop')}
+                          disabled={powerActionLoadingId === inst.instanceId}
+                          className="p-1.5 text-rose-400 hover:text-white hover:bg-rose-500/25 border border-transparent hover:border-rose-500/40 rounded-lg transition-all cursor-pointer disabled:opacity-40"
+                          title="Stop EC2 Instance in AWS"
+                        >
+                          <Power
+                            className={`w-3.5 h-3.5 ${
+                              powerActionLoadingId === inst.instanceId ? 'animate-spin' : ''
+                            }`}
+                          />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handlePowerAction(inst.instanceId, 'start')}
+                          disabled={powerActionLoadingId === inst.instanceId}
+                          className="p-1.5 text-emerald-400 hover:text-white hover:bg-emerald-500/25 border border-transparent hover:border-emerald-500/40 rounded-lg transition-all cursor-pointer disabled:opacity-40"
+                          title="Start EC2 Instance in AWS"
+                        >
+                          <Play
+                            className={`w-3.5 h-3.5 fill-current ${
+                              powerActionLoadingId === inst.instanceId ? 'animate-spin' : ''
+                            }`}
+                          />
+                        </button>
+                      )}
+
+                      {/* 3. SSH Key / Credentials Configuration */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSSHModal(inst)}
+                        className="p-1.5 text-amber-400 hover:text-white hover:bg-amber-500/20 border border-transparent hover:border-amber-500/30 rounded-lg transition-all cursor-pointer"
+                        title="Configure SSH Credentials (PPK / PEM / Password)"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* 4. View Details */}
                       <Link
                         href={`/dashboard/ec2/${inst.instanceId}`}
-                        className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-blue-600 hover:text-white text-slate-300 rounded border border-[#1E293B] transition-colors"
+                        className="p-1.5 text-blue-400 hover:text-white hover:bg-blue-500/20 border border-transparent hover:border-blue-500/30 rounded-lg transition-all"
+                        title="View EC2 Instance Details"
                       >
-                        View
+                        <ExternalLink className="w-3.5 h-3.5" />
                       </Link>
+
+                      {/* 5. Metrics Chart */}
                       <button
+                        type="button"
                         onClick={() => router.push(`/dashboard/ec2/${inst.instanceId}?tab=metrics`)}
-                        className="p-1 text-slate-400 hover:text-blue-400 rounded hover:bg-[#18233C]"
-                        title="View Metrics"
+                        className="p-1.5 text-cyan-400 hover:text-white hover:bg-cyan-500/20 border border-transparent hover:border-cyan-500/30 rounded-lg transition-all cursor-pointer"
+                        title="View Telemetry & Metrics"
                       >
                         <TrendingUp className="w-3.5 h-3.5" />
                       </button>
+
+                      {/* 6. Remove / Delete EC2 */}
                       <button
+                        type="button"
                         onClick={() => handleDeleteEC2(inst.instanceId, inst.name)}
                         disabled={deletingId === inst.instanceId}
-                        className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 rounded-lg transition-all cursor-pointer disabled:opacity-40"
                         title="Remove EC2 Instance"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
