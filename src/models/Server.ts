@@ -284,7 +284,11 @@ const ServerSchema = new Schema<IServer>(
     agent: {
       installed: { type: Boolean, default: false },
       version: { type: String, default: '1.0.0' },
-      token: { type: String, required: true, index: true },
+      token: {
+        type: String,
+        default: () => 'agt_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
+        index: true,
+      },
       lastHeartbeat: { type: Date, default: null },
       status: {
         type: String,

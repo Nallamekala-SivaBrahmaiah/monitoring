@@ -38,17 +38,7 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
     }).lean();
 
     if (!activeCr) {
-      // Instance was terminated in AWS / Azure cloud console.
-      // Purge dead record from Server and AnsibleHost and skip SSH probe!
-      await Server.deleteOne({ _id: server._id }).catch(() => null);
-      await AnsibleHost.deleteMany({
-        $or: [
-          { ip: sHost },
-          { name: sName },
-          ...(server.tags && server.tags.length > 0 ? [{ instanceId: { $in: server.tags } }] : []),
-        ],
-      }).catch(() => null);
-      return null;
+      // Instance was not found in cloud compute cache; keep the server record active
     }
   }
 
@@ -96,6 +86,15 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
       ...specs.kubernetes,
       lastSyncedAt: new Date(),
     };
+    if (!server.agent || !(server.agent as any).token) {
+      server.agent = {
+        installed: false,
+        version: '1.0.0',
+        token: 'agt_' + Math.random().toString(36).substring(2) + Date.now().toString(36),
+        status: 'not-installed',
+        lastHeartbeat: null,
+      } as any;
+    }
 
     await server.save();
 
