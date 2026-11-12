@@ -4,7 +4,7 @@ import CloudResource from '@/models/CloudResource';
 import AnsibleHost from '@/models/AnsibleHost';
 import Metric from '@/models/Metric';
 import { decryptSecret } from './crypto';
-import { collectServerViaSSH } from './sshCollector';
+import { collectServerViaSSH, categorizeSSHError } from './sshCollector';
 import { evaluateResourceMetrics } from '@/lib/monitoring/alertEvaluationEngine';
 
 /**
@@ -215,8 +215,9 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
 
     return server;
   } catch (syncErr: any) {
-    server.status = 'Failed';
-    server.lastError = syncErr.message || 'Connection failed';
+    const cat = categorizeSSHError(syncErr);
+    server.status = cat.status as any;
+    server.lastError = cat.message || 'Connection failed';
     await server.save();
     throw syncErr;
   }

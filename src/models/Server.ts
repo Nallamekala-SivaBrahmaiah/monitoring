@@ -67,7 +67,7 @@ export interface IServer extends Document {
   cloudProvider: 'aws' | 'azure' | 'gcp' | 'on-premise' | 'other';
   region?: string;
   tags: string[];
-  status: 'Online' | 'Offline' | 'Connecting' | 'Failed' | 'Warning';
+  status: 'Online' | 'Offline' | 'Connecting' | 'Failed' | 'Warning' | 'Authentication Failed' | 'Server Unreachable' | 'Connection Timeout' | 'Metrics Unavailable';
   lastError: string | null;
   lastConnectedAt: Date | null;
   lastHeartbeatAt: Date | null;
@@ -163,7 +163,7 @@ const ServerSchema = new Schema<IServer>(
     tags: [{ type: String }],
     status: {
       type: String,
-      enum: ['Online', 'Offline', 'Connecting', 'Failed', 'Warning'],
+      enum: ['Online', 'Offline', 'Connecting', 'Failed', 'Warning', 'Authentication Failed', 'Server Unreachable', 'Connection Timeout', 'Metrics Unavailable'],
       default: 'Connecting',
       index: true,
     },

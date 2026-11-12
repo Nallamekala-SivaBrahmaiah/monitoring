@@ -189,9 +189,9 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-[#0B1120] border-b border-[#1E293B] px-4 lg:px-7 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-md">
+    <header className="sticky top-0 z-50 bg-[#0B1120] border-b border-[#1E293B] px-4 lg:px-7 py-3 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 shadow-md">
       {/* Title & Mobile Toggle */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 shrink-0">
         <button
           onClick={onOpenMobileSidebar}
           className="lg:hidden p-2 rounded-lg bg-[#111A2E] border border-[#1E293B] text-slate-300 hover:text-white"
@@ -199,28 +199,28 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
         >
           <Menu className="w-5 h-5" />
         </button>
-        <div>
-          <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+        <div className="shrink-0">
+          <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2 whitespace-nowrap">
             <span>Infrastructure Dashboard</span>
             {cloudProvider === 'aws' && (
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#FF9900]/20 text-[#FF9900] border border-[#FF9900]/30 font-semibold">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#FF9900]/20 text-[#FF9900] border border-[#FF9900]/30 font-semibold shrink-0">
                 AWS View
               </span>
             )}
             {cloudProvider === 'azure' && (
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#0089D6]/20 text-[#5EA0EF] border border-[#0089D6]/30 font-semibold">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#0089D6]/20 text-[#5EA0EF] border border-[#0089D6]/30 font-semibold shrink-0">
                 Azure View
               </span>
             )}
           </h2>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-slate-400 whitespace-nowrap">
             Real-time monitoring across AWS & Azure
           </p>
         </div>
       </div>
 
       {/* Filter and Status Controls */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 justify-start xl:justify-end">
         {/* Manual Refresh Button */}
         <button
           onClick={triggerRefresh}

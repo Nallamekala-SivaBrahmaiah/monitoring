@@ -111,6 +111,40 @@ export interface SSHConnectionParams {
 }
 
 /**
+ * Categorize raw SSH errors into standard status strings
+ */
+export function categorizeSSHError(err: any): { status: string; message: string } {
+  const raw = (err?.message || String(err || '')).toLowerCase();
+  if (
+    raw.includes('authentication') ||
+    raw.includes('auth failed') ||
+    raw.includes('all configured authentication methods failed') ||
+    raw.includes('privatekey') ||
+    raw.includes('permission denied (publickey') ||
+    raw.includes('password rejected')
+  ) {
+    return { status: 'Authentication Failed', message: 'Authentication Failed' };
+  }
+  if (
+    raw.includes('timed out') ||
+    raw.includes('timeout') ||
+    raw.includes('etimedout')
+  ) {
+    return { status: 'Connection Timeout', message: 'Connection Timeout' };
+  }
+  if (
+    raw.includes('econnrefused') ||
+    raw.includes('enotfound') ||
+    raw.includes('enetunreach') ||
+    raw.includes('ehostunreach') ||
+    raw.includes('no route to host')
+  ) {
+    return { status: 'Server Unreachable', message: 'Server Unreachable' };
+  }
+  return { status: 'Metrics Unavailable', message: err?.message || 'Metrics Unavailable' };
+}
+
+/**
  * Format uptime in seconds to human readable string (e.g. "12d 4h 32m")
  */
 function formatUptime(seconds: number): string {
@@ -171,8 +205,10 @@ echo "===SECTION:CPUINFO==="
 cat /proc/cpuinfo 2>/dev/null | grep -E '^(processor|model name|cpu MHz)'
 echo "===SECTION:LOADAVG==="
 cat /proc/loadavg 2>/dev/null
-echo "===SECTION:STAT==="
+echo "===SECTION:STAT1==="
 head -n 1 /proc/stat 2>/dev/null
+echo "===SECTION:MEMINFO_RAW==="
+cat /proc/meminfo 2>/dev/null
 echo "===SECTION:MEMINFO==="
 free -b 2>/dev/null
 echo "===SECTION:DF==="
@@ -216,6 +252,9 @@ echo "===SECTION:K8S_VER==="
 kubectl version --client -o json 2>/dev/null || sudo -n kubectl version --client -o json 2>/dev/null || echo "K8S_NOT_INSTALLED"
 echo "===SECTION:K8S_PODS==="
 kubectl get pods -A -o json 2>/dev/null || sudo -n kubectl get pods -A -o json 2>/dev/null || echo "K8S_PODS_ERR"
+sleep 1
+echo "===SECTION:STAT2==="
+head -n 1 /proc/stat 2>/dev/null
 echo "===SECTION:DONE==="
       `;
 
@@ -338,17 +377,67 @@ function parseProbeOutput(output: string, hostFingerprint: string | null): Colle
     load15 = parseFloat(lParts[2]) || 0;
   }
 
-  // Approximate current CPU percentage from load average relative to cores
-  let cpuUsagePercent = Math.min(100, Math.round((load1 / Math.max(1, cpuCores)) * 100));
+  // 4b. CPU Usage via two consecutive /proc/stat samples: (1 - (idleDiff / totalDiff)) * 100
+  let cpuUsagePercent = 0;
+  if (sections.STAT1 && sections.STAT2) {
+    const parseStatLine = (line: string) => {
+      const parts = line.replace(/^cpu\s+/, '').trim().split(/\s+/).map(Number);
+      const user = parts[0] || 0;
+      const nice = parts[1] || 0;
+      const system = parts[2] || 0;
+      const idle = parts[3] || 0;
+      const iowait = parts[4] || 0;
+      const irq = parts[5] || 0;
+      const softirq = parts[6] || 0;
+      const steal = parts[7] || 0;
+      const total = user + nice + system + idle + iowait + irq + softirq + steal;
+      const idleTotal = idle + iowait;
+      return { total, idle: idleTotal };
+    };
 
-  // 5. Memory (free -b)
+    const s1 = parseStatLine(sections.STAT1);
+    const s2 = parseStatLine(sections.STAT2);
+    const totalDiff = s2.total - s1.total;
+    const idleDiff = s2.idle - s1.idle;
+
+    if (totalDiff > 0) {
+      const calculated = ((totalDiff - idleDiff) / totalDiff) * 100;
+      cpuUsagePercent = Math.max(0, Math.min(100, Math.round(calculated * 10) / 10));
+    }
+  }
+
+  // Fallback to load average relative to cores only if /proc/stat was completely unavailable
+  if (cpuUsagePercent === 0 && sections.LOADAVG) {
+    cpuUsagePercent = Math.min(100, Math.round((load1 / Math.max(1, cpuCores)) * 100));
+  }
+
+  // 5. Memory (/proc/meminfo and free -b)
   let totalMem = 0;
   let usedMem = 0;
   let availMem = 0;
   let swapTotal = 0;
   let swapUsed = 0;
 
-  if (sections.MEMINFO) {
+  if (sections.MEMINFO_RAW) {
+    const totalMatch = sections.MEMINFO_RAW.match(/MemTotal:\s+(\d+)\s+kB/i);
+    const availMatch = sections.MEMINFO_RAW.match(/MemAvailable:\s+(\d+)\s+kB/i);
+    const swapTotalMatch = sections.MEMINFO_RAW.match(/SwapTotal:\s+(\d+)\s+kB/i);
+    const swapFreeMatch = sections.MEMINFO_RAW.match(/SwapFree:\s+(\d+)\s+kB/i);
+
+    if (totalMatch && availMatch) {
+      totalMem = parseInt(totalMatch[1], 10) * 1024;
+      availMem = parseInt(availMatch[1], 10) * 1024;
+      usedMem = Math.max(0, totalMem - availMem);
+    }
+    if (swapTotalMatch && swapFreeMatch) {
+      swapTotal = parseInt(swapTotalMatch[1], 10) * 1024;
+      const swapFree = parseInt(swapFreeMatch[1], 10) * 1024;
+      swapUsed = Math.max(0, swapTotal - swapFree);
+    }
+  }
+
+  // Fallback to free -b if /proc/meminfo was missing
+  if (totalMem === 0 && sections.MEMINFO) {
     const lines = sections.MEMINFO.split('\n');
     for (const line of lines) {
       if (line.startsWith('Mem:')) {
@@ -364,6 +453,7 @@ function parseProbeOutput(output: string, hostFingerprint: string | null): Colle
     }
   }
 
+  // RAM Usage % = ((Total RAM - Available RAM) / Total RAM) * 100
   const memUsagePercent = totalMem > 0 ? Math.min(100, Math.round(((totalMem - availMem) / totalMem) * 100)) : 0;
 
   // 6. Disks (df -B1 -P)
@@ -379,8 +469,8 @@ function parseProbeOutput(output: string, hostFingerprint: string | null): Colle
         const total = parseInt(p[1], 10) || 0;
         const used = parseInt(p[2], 10) || 0;
         const available = parseInt(p[3], 10) || 0;
-        const percentStr = p[4].replace('%', '');
-        const usagePercent = parseInt(percentStr, 10) || 0;
+        // Calculate disk usage % as (used / total) * 100 to match OS df exactly
+        const usagePercent = total > 0 ? Math.round((used / total) * 100) : 0;
         const mount = p[5];
 
         if (total > 0 && mount.startsWith('/')) {
