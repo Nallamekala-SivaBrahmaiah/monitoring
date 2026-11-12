@@ -35,6 +35,7 @@ export interface OSMetricSnapshot {
 
 // In-memory previous /proc/stat sample for exact delta calculation
 let prevCpuSample: { total: number; idle: number; timestamp: number } | null = null;
+let currentCpuPercent = 4.2;
 let lastCalculatedSnapshot: OSMetricSnapshot | null = null;
 let lastSnapshotTime = 0;
 
@@ -66,15 +67,32 @@ function readLinuxCpuSample(): { total: number; idle: number } | null {
 }
 
 /**
- * Synchronous delay of ms milliseconds using Atomics.wait
+ * Continuous 1-second background kernel CPU sampler (matches top -d 1)
  */
-function syncSleep(ms: number) {
-  try {
-    const sab = new SharedArrayBuffer(4);
-    const int32 = new Int32Array(sab);
-    Atomics.wait(int32, 0, 0, ms);
-  } catch {
-    // fallback
+function sampleLinuxCpu() {
+  const current = readLinuxCpuSample();
+  if (current && prevCpuSample && current.total > prevCpuSample.total) {
+    const totalDiff = current.total - prevCpuSample.total;
+    const idleDiff = current.idle - prevCpuSample.idle;
+    if (totalDiff > 0) {
+      const usage = ((totalDiff - idleDiff) / totalDiff) * 100;
+      currentCpuPercent = Math.max(0.5, Math.min(100, Math.round(usage * 10) / 10));
+    }
+  }
+  if (current) {
+    prevCpuSample = { ...current, timestamp: Date.now() };
+  }
+}
+
+// Initialize continuous background OS kernel sampler (every 1000ms)
+if (typeof process !== 'undefined') {
+  const first = readLinuxCpuSample();
+  if (first) {
+    prevCpuSample = { ...first, timestamp: Date.now() };
+  }
+  if (typeof setInterval !== 'undefined') {
+    const timer = setInterval(sampleLinuxCpu, 1000);
+    if (timer.unref) timer.unref();
   }
 }
 
@@ -88,46 +106,38 @@ function syncSleep(ms: number) {
 export function getLiveGuestOSMetrics(): OSMetricSnapshot {
   const now = Date.now();
 
-  // Rate limit calculation to once per 500ms to preserve delta accuracy across rapid queries
+  // Rate limit snapshot object creation to once per 500ms
   if (lastCalculatedSnapshot && now - lastSnapshotTime < 500) {
     return {
       ...lastCalculatedSnapshot,
+      cpuPercent: currentCpuPercent,
       timestamp: new Date().toISOString(),
     };
   }
 
   // 1. CPU ACCURACY: Delta difference between consecutive /proc/stat samples
-  let cpuPercent = 4.2;
-  const initialSample = readLinuxCpuSample();
+  let cpuPercent = currentCpuPercent;
+  const currentSample = readLinuxCpuSample();
 
-  if (initialSample) {
-    let sample1 = prevCpuSample;
-    let sample2: { total: number; idle: number; timestamp: number } = {
-      ...initialSample,
-      timestamp: now,
-    };
-
-    // If no previous sample or previous sample is older than 5 seconds, sample over 100ms
-    if (!sample1 || now - sample1.timestamp > 5000) {
-      syncSleep(100);
-      const secondSample = readLinuxCpuSample();
-      if (secondSample) {
-        sample1 = { ...initialSample, timestamp: now };
-        sample2 = { ...secondSample, timestamp: Date.now() };
+  if (currentSample) {
+    if (prevCpuSample && currentSample.total > prevCpuSample.total) {
+      const elapsed = now - prevCpuSample.timestamp;
+      // If elapsed time is at least 300ms, compute active delta
+      if (elapsed >= 300) {
+        const totalDiff = currentSample.total - prevCpuSample.total;
+        const idleDiff = currentSample.idle - prevCpuSample.idle;
+        if (totalDiff > 0) {
+          const usage = ((totalDiff - idleDiff) / totalDiff) * 100;
+          cpuPercent = Math.max(0.5, Math.min(100, Math.round(usage * 10) / 10));
+          currentCpuPercent = cpuPercent;
+        }
+        prevCpuSample = { ...currentSample, timestamp: now };
+      } else {
+        cpuPercent = currentCpuPercent;
       }
+    } else {
+      prevCpuSample = { ...currentSample, timestamp: now };
     }
-
-    if (sample1 && sample2 && sample2.total > sample1.total) {
-      const totalDiff = sample2.total - sample1.total;
-      const idleDiff = sample2.idle - sample1.idle;
-
-      if (totalDiff > 0) {
-        const usage = ((totalDiff - idleDiff) / totalDiff) * 100;
-        // Keep CPU percentage accurately rounded to 1 decimal place
-        cpuPercent = Math.max(0.5, Math.min(100, Math.round(usage * 10) / 10));
-      }
-    }
-    prevCpuSample = sample2;
   } else {
     // Windows / Local Development Fallback
     const cpus = os.cpus();
@@ -142,6 +152,7 @@ export function getLiveGuestOSMetrics(): OSMetricSnapshot {
       }
       const rawPct = ((totalTick - totalIdle) / totalTick) * 100;
       cpuPercent = Math.max(0.5, Math.min(100, Math.round(rawPct * 10) / 10));
+      currentCpuPercent = cpuPercent;
     }
   }
 

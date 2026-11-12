@@ -44,7 +44,7 @@ function getOSCpuPercent() {
       const idleDiff = s2.idle - s1.idle;
       const pct = Math.round(((totalDiff - idleDiff) / totalDiff) * 1000) / 10;
       resolve(Math.max(0.5, Math.min(100, pct)));
-    }, 250);
+    }, 1000);
   });
 }
 
@@ -131,6 +131,13 @@ async function run() {
   const memDiff = Math.abs(osMem.pct - appMem);
   const diskDiff = Math.abs(osDisk.pct - appDisk);
 
+  const appDiskUsedGB = targetServer?.metrics?.disks?.[0]?.usedBytes
+    ? Math.round((targetServer.metrics.disks[0].usedBytes / (1024 ** 3)) * 10) / 10
+    : osDisk.usedGB;
+  const appDiskTotalGB = targetServer?.metrics?.disks?.[0]?.totalBytes
+    ? Math.round((targetServer.metrics.disks[0].totalBytes / (1024 ** 3)) * 10) / 10
+    : osDisk.totalGB;
+
   console.log('\n========================================================================================');
   console.log('                     OS METRICS ACCURACY VERIFICATION REPORT                            ');
   console.log('========================================================================================\n');
@@ -138,8 +145,8 @@ async function run() {
   console.log('| Server | Metric | OS Value | Dashboard Value | Difference | Status |');
   console.log('|---|---|---|---|---|---|');
   console.log(`| vm01siva-mon | CPU Usage | ${osCpu}% | ${appCpu}% | ${cpuDiff.toFixed(1)}% | ${cpuDiff <= 1.0 ? 'MATCHED (100%)' : 'MISMATCH'} |`);
-  console.log(`| vm01siva-mon | RAM Usage | ${osMem.pct}% (${osMem.usedGB} / ${osMem.totalGB} GB) | ${appMem}% (${osMem.usedGB} / ${osMem.totalGB} GB) | ${memDiff.toFixed(1)}% | ${memDiff === 0 ? 'MATCHED (100%)' : 'MISMATCH'} |`);
-  console.log(`| vm01siva-mon | Disk Usage | ${osDisk.pct}% (${osDisk.usedGB} / ${osDisk.totalGB} GB) | ${appDisk}% (${osDisk.usedGB} / ${osDisk.totalGB} GB) | ${diskDiff.toFixed(1)}% | ${diskDiff === 0 ? 'MATCHED (100%)' : 'MISMATCH'} |`);
+  console.log(`| vm01siva-mon | RAM Usage | ${osMem.pct}% (${osMem.usedGB.toFixed(1)} / ${osMem.totalGB.toFixed(1)} GB) | ${appMem}% (${osMem.usedGB.toFixed(1)} / ${osMem.totalGB.toFixed(1)} GB) | ${memDiff.toFixed(1)}% | ${memDiff === 0 ? 'MATCHED (100%)' : 'MISMATCH'} |`);
+  console.log(`| vm01siva-mon | Disk Usage | ${osDisk.pct}% (${osDisk.usedGB.toFixed(1)} / ${osDisk.totalGB.toFixed(1)} GB) | ${appDisk}% (${appDiskUsedGB.toFixed(1)} / ${appDiskTotalGB.toFixed(1)} GB) | ${diskDiff.toFixed(1)}% | ${diskDiff === 0 ? 'MATCHED (100%)' : 'MISMATCH'} |`);
 
   console.log('\nConsistency Check:');
   console.log(`- Resource Overview Header: CPU=${appCpu}%, RAM=${appMem}%, Disk=${appDisk}%`);
