@@ -513,9 +513,7 @@ export function EC2InstancesTable({
 
                   {/* CPU Usage */}
                   <td className="py-3 px-4">
-                    {!isRunning ? (
-                      <span className="text-slate-500 text-xs italic">Stopped</span>
-                    ) : cpuVal !== null ? (
+                    {cpuVal !== null ? (
                       <div className="flex items-center gap-2">
                         <span className="w-9 font-semibold text-slate-200">
                           {cpuVal}%
@@ -530,15 +528,13 @@ export function EC2InstancesTable({
                         </div>
                       </div>
                     ) : (
-                      <span className="text-slate-500 text-xs italic">Metrics Unavailable</span>
+                      <span className="text-slate-500 text-xs italic">Unavailable</span>
                     )}
                   </td>
 
                   {/* Memory */}
                   <td className="py-3 px-4">
-                    {!isRunning ? (
-                      <span className="text-slate-500 text-xs italic">Stopped</span>
-                    ) : memVal !== null ? (
+                    {memVal !== null ? (
                       <div className="flex items-center gap-2">
                         <span className="w-9 font-semibold text-slate-200">
                           {memVal}%
@@ -553,18 +549,16 @@ export function EC2InstancesTable({
                     ) : (
                       <span
                         className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60"
-                        title="RAM utilization requires CloudWatch Agent (CWAgent) publishing mem_used_percent"
+                        title="Guest OS memory requires Amazon CloudWatch Agent or direct SSH connection"
                       >
-                        Agent Not Installed
+                        Unavailable
                       </span>
                     )}
                   </td>
 
                   {/* Disk */}
                   <td className="py-3 px-4">
-                    {!isRunning ? (
-                      <span className="text-slate-500 text-xs italic">Stopped</span>
-                    ) : diskVal !== null ? (
+                    {diskVal !== null ? (
                       <div className="flex items-center gap-2">
                         <span className="w-9 font-semibold text-slate-200">
                           {diskVal}%
@@ -577,12 +571,7 @@ export function EC2InstancesTable({
                         </div>
                       </div>
                     ) : (
-                      <span
-                        className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60"
-                        title="Disk utilization requires CloudWatch Agent (CWAgent) publishing disk_used_percent"
-                      >
-                        Agent Not Installed
-                      </span>
+                      <span className="text-slate-500 text-xs italic">Unavailable</span>
                     )}
                   </td>
 

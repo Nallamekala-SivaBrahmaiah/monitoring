@@ -1,6 +1,6 @@
 import { EC2Client, DescribeInstancesCommand, DescribeRegionsCommand } from '@aws-sdk/client-ec2';
 import { AWSCredentials } from './credentials';
-import { batchFetchEC2Metrics, fetchEC2Metrics } from './metrics';
+import { fetchEC2Metrics } from './metrics';
 
 export interface DiscoveredEC2Instance {
   resourceId: string;
@@ -22,17 +22,7 @@ export interface DiscoveredEC2Instance {
     diskUtilization: number | null;
     networkIn: number | null;
     networkOut: number | null;
-    networkInMB?: number | null;
-    networkOutMB?: number | null;
-    cwAgentInstalled?: boolean;
-    cwAgentStatus?: 'Installed & Active' | 'Agent Not Installed';
     lastUpdated: Date;
-    historicalMetrics?: {
-      cpu: Array<{ timestamp: string; value: number }>;
-      memory: Array<{ timestamp: string; value: number }>;
-      network: Array<{ timestamp: string; inMB: number; outMB: number }>;
-      disk: Array<{ timestamp: string; value: number }>;
-    };
   };
 }
 
@@ -238,58 +228,18 @@ export async function discoverEC2InstancesInRegion(
       nextToken = response.NextToken;
     } while (nextToken);
 
-    // Batch query real CloudWatch metrics for running instances in this region
-    const runningIds = instances
-      .filter((i) => i.status === 'Running')
-      .map((i) => i.resourceId);
-
-    if (runningIds.length > 0) {
-      try {
-        const metricsMap = await batchFetchEC2Metrics(runningIds, region, creds);
-        for (const inst of instances) {
-          if (inst.status === 'Running') {
-            const m = metricsMap.get(inst.resourceId);
-            if (m) {
-              inst.metrics.cpuUtilization = m.cpuUtilization;
-              inst.metrics.memoryUtilization = m.memoryUtilization;
-              inst.metrics.diskUtilization = m.diskUtilization;
-              inst.metrics.networkIn = m.networkIn;
-              inst.metrics.networkOut = m.networkOut;
-              inst.metrics.networkInMB = m.networkInMB;
-              inst.metrics.networkOutMB = m.networkOutMB;
-              inst.metrics.cwAgentInstalled = m.cwAgentInstalled;
-              inst.metrics.cwAgentStatus = m.cwAgentStatus;
-              inst.metrics.historicalMetrics = m.historicalMetrics;
-              if (m.lastUpdated) inst.metrics.lastUpdated = m.lastUpdated;
-            }
-          } else {
-            // Stopped instances must NEVER show running metrics
-            inst.metrics.cpuUtilization = null;
-            inst.metrics.memoryUtilization = null;
-            inst.metrics.diskUtilization = null;
-            inst.metrics.networkIn = null;
-            inst.metrics.networkOut = null;
-            inst.metrics.networkInMB = null;
-            inst.metrics.networkOutMB = null;
-            inst.metrics.cwAgentInstalled = false;
-            inst.metrics.cwAgentStatus = 'Agent Not Installed';
-          }
-        }
-      } catch (err: any) {
-        console.warn(`[AWS EC2] CloudWatch batch query note in ${region}: ${err.message || err}`);
-      }
-    } else {
-      for (const inst of instances) {
-        inst.metrics.cpuUtilization = null;
-        inst.metrics.memoryUtilization = null;
-        inst.metrics.diskUtilization = null;
-        inst.metrics.networkIn = null;
-        inst.metrics.networkOut = null;
-        inst.metrics.networkInMB = null;
-        inst.metrics.networkOutMB = null;
-        inst.metrics.cwAgentInstalled = false;
-        inst.metrics.cwAgentStatus = 'Agent Not Installed';
-      }
+    // Fetch CloudWatch metrics in parallel with rapid timeout so instance inventory is never blocked
+    if (instances.length > 0) {
+      await Promise.allSettled(
+        instances.map(async (item) => {
+          try {
+            const m = await fetchEC2Metrics(item.resourceId, region, creds);
+            if (m.cpuUtilization !== null) item.metrics.cpuUtilization = m.cpuUtilization;
+            if (m.networkIn !== null) item.metrics.networkIn = m.networkIn;
+            if (m.networkOut !== null) item.metrics.networkOut = m.networkOut;
+          } catch {}
+        })
+      );
     }
 
     return {
