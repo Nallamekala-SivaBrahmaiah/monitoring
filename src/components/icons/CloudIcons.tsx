@@ -633,3 +633,79 @@ export function SettingsIcon({ className = 'w-5 h-5' }: { className?: string }) 
     </svg>
   );
 }
+
+export function NotificationsIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <defs>
+        <linearGradient id="notifFeedGrad_sb" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#3B82F6" />
+          <stop offset="100%" stopColor="#6366F1" />
+        </linearGradient>
+      </defs>
+      <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#notifFeedGrad_sb)" />
+      {/* Bell silhouette */}
+      <path
+        d="M12 6a3 3 0 00-3 3v2.5L7.5 14h9L15 11.5V9a3 3 0 00-3-3z"
+        fill="#FFFFFF"
+      />
+      <path
+        d="M10.2 15.5a1.8 1.8 0 003.6 0"
+        stroke="#FFFFFF"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      {/* Pulse beacon dot */}
+      <circle cx="17.5" cy="6.5" r="2.2" fill="#EF4444" stroke="#FFFFFF" strokeWidth="0.8" />
+    </svg>
+  );
+}
+
+export function MonitoringOverviewIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <defs>
+        <linearGradient id="monGrad_sb" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#059669" />
+          <stop offset="100%" stopColor="#0D9488" />
+        </linearGradient>
+      </defs>
+      <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#monGrad_sb)" />
+      {/* Pulse Heartbeat / Health line */}
+      <path
+        d="M4.5 12h3l1.8-4 2.8 8 2.2-5.5 1.5 2.5 3.7-.8"
+        stroke="#FFFFFF"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="9.3" cy="8" r="1.2" fill="#34D399" />
+    </svg>
+  );
+}
+
+export function LogsIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <defs>
+        <linearGradient id="logsGrad_sb" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#4F46E5" />
+          <stop offset="100%" stopColor="#3730A3" />
+        </linearGradient>
+      </defs>
+      <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#logsGrad_sb)" />
+      {/* Terminal prompt symbol */}
+      <path
+        d="M6 8l3 2.5-3 2.5"
+        stroke="#FFFFFF"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Console line cursor */}
+      <line x1="11" y1="13" x2="15" y2="13" stroke="#A5B4FC" strokeWidth="1.5" strokeLinecap="round" />
+      {/* Additional log entries */}
+      <line x1="6" y1="16.5" x2="17.5" y2="16.5" stroke="#FFFFFF" strokeOpacity="0.75" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}

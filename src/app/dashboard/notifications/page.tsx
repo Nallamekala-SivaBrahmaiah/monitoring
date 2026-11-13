@@ -12,9 +12,20 @@ import {
   X,
   Users,
   Info,
+  Bell,
+  Radio,
+  ExternalLink,
+  CheckCheck,
+  Search,
+  Filter,
+  ArrowLeft,
+  Mail,
+  Shield,
+  Layers,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
+import { NotificationsIcon, NotificationChannelsIcon, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 
 interface DevOpsRecipientItem {
   id: string;
@@ -31,6 +42,24 @@ interface SmtpStatus {
   port: number;
   secure: boolean;
   error?: string | null;
+}
+
+interface InAppNotification {
+  id: string;
+  alertId?: string;
+  title: string;
+  message: string;
+  severity: 'critical' | 'warning' | 'info';
+  provider?: string;
+  resourceName?: string;
+  resourceId?: string;
+  metricName?: string;
+  value?: number;
+  threshold?: number;
+  read: boolean;
+  link?: string;
+  emailDeliveryStatus?: string;
+  createdAt: string;
 }
 
 // Iconic multi-color Gmail "M" Logo SVG
@@ -50,7 +79,25 @@ function GmailLogo({ className = 'w-6 h-6' }: { className?: string }) {
   );
 }
 
-export default function NotificationChannelsPage() {
+export default function NotificationsPage({
+  defaultTab = 'feed',
+}: {
+  defaultTab?: 'feed' | 'channels';
+}) {
+  const [activeTab, setActiveTab] = useState<'feed' | 'channels'>(defaultTab);
+
+  // Synchronize defaultTab if prop changes
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
+
+  // Feed states
+  const [feedNotifications, setFeedNotifications] = useState<InAppNotification[]>([]);
+  const [loadingFeed, setLoadingFeed] = useState(false);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [feedSearch, setFeedSearch] = useState('');
+  const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'warning' | 'unread'>('all');
+
   // SMTP status
   const [smtpStatus, setSmtpStatus] = useState<SmtpStatus>({
     status: 'Connected',
@@ -77,6 +124,23 @@ export default function NotificationChannelsPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastError, setToastError] = useState<string | null>(null);
 
+  // Fetch Feed notifications
+  const fetchFeed = useCallback(async () => {
+    setLoadingFeed(true);
+    try {
+      const res = await fetch('/api/notifications?limit=100');
+      if (res.ok) {
+        const data = await res.json();
+        setFeedNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+      }
+    } catch (err) {
+      console.error('Failed to fetch notifications feed:', err);
+    } finally {
+      setLoadingFeed(false);
+    }
+  }, []);
+
   // Fetch SMTP status
   const fetchSmtpStatus = useCallback(async () => {
     try {
@@ -92,9 +156,7 @@ export default function NotificationChannelsPage() {
           error: data.error,
         });
       }
-    } catch {
-      // fallback Connected
-    }
+    } catch {}
   }, []);
 
   // Fetch DevOps recipients
@@ -113,16 +175,60 @@ export default function NotificationChannelsPage() {
   }, []);
 
   useEffect(() => {
+    fetchFeed();
     fetchSmtpStatus();
     fetchRecipients();
 
-    // Auto-refresh recipients periodically
     const interval = setInterval(() => {
+      fetchFeed();
       fetchRecipients();
     }, 15000);
 
     return () => clearInterval(interval);
-  }, [fetchSmtpStatus, fetchRecipients]);
+  }, [fetchFeed, fetchSmtpStatus, fetchRecipients]);
+
+  // Feed Actions: Mark Single Read
+  const handleMarkAsRead = async (id: string) => {
+    setFeedNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+    setUnreadCount((c) => Math.max(0, c - 1));
+
+    try {
+      await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, read: true }),
+      });
+    } catch {}
+  };
+
+  // Feed Actions: Mark All Read
+  const handleMarkAllRead = async () => {
+    setFeedNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setUnreadCount(0);
+
+    try {
+      await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ markAll: true }),
+      });
+      setToastMessage('All notifications marked as read.');
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch {}
+  };
+
+  // Feed Actions: Clear All
+  const handleClearAllFeed = async () => {
+    setFeedNotifications([]);
+    setUnreadCount(0);
+    try {
+      await fetch('/api/notifications?clearAll=true', { method: 'DELETE' });
+      setToastMessage('Notification history cleared.');
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch {}
+  };
 
   // Toggle individual recipient enabled status
   const handleToggleRecipientStatus = async (id: string, currentStatus: boolean) => {
@@ -193,7 +299,6 @@ export default function NotificationChannelsPage() {
   // Delete recipient
   const handleDeleteRecipient = async (id: string, email: string) => {
     setRecipients((prev) => prev.filter((r) => r.id !== id));
-
     try {
       await fetch(`/api/notifications/devops-recipients?id=${id}`, {
         method: 'DELETE',
@@ -276,7 +381,6 @@ export default function NotificationChannelsPage() {
     }
   };
 
-  // Date formatting: DD-MM-YYYY hh:mm AM/PM
   const formatDateTime = (dateInput: string | Date | undefined) => {
     if (!dateInput) return '02-11-2026 09:15 AM';
     try {
@@ -300,6 +404,22 @@ export default function NotificationChannelsPage() {
   const enabledCount = recipients.filter((r) => r.enabled).length;
   const disabledCount = recipients.filter((r) => !r.enabled).length;
 
+  // Filter feed items
+  const filteredFeed = feedNotifications.filter((n) => {
+    if (feedSearch) {
+      const s = feedSearch.toLowerCase();
+      const match =
+        n.title?.toLowerCase().includes(s) ||
+        n.message?.toLowerCase().includes(s) ||
+        n.resourceName?.toLowerCase().includes(s);
+      if (!match) return false;
+    }
+    if (severityFilter === 'unread') return !n.read;
+    if (severityFilter === 'critical') return n.severity === 'critical';
+    if (severityFilter === 'warning') return n.severity === 'warning';
+    return true;
+  });
+
   return (
     <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col relative pb-20">
       <Sidebar />
@@ -307,200 +427,459 @@ export default function NotificationChannelsPage() {
         <Header />
 
         <main className="p-4 lg:p-7 space-y-6 max-w-7xl mx-auto w-full">
-          {/* Header Title & Subtitle matching Mockup */}
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">
-              Notification Channels
-            </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Manage DevOps recipients and view alert delivery status
-            </p>
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <Link href="/" className="hover:text-blue-400 flex items-center gap-1 transition-colors">
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Dashboard</span>
+            </Link>
+            <span>/</span>
+            <span className="text-white font-medium">
+              {activeTab === 'feed' ? 'Notifications' : 'Notification Channels'}
+            </span>
           </div>
 
-          {/* CARD 1: Gmail SMTP Configuration */}
-          <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-[#0D1526] border border-[#1E293B] flex items-center justify-center shadow-inner shrink-0 p-2.5">
-                <GmailLogo className="w-7 h-7" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-white tracking-tight">
-                  Gmail SMTP Configuration
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Configured and connected to send alerts
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
-              {/* Connected Badge */}
-              <div className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>{smtpStatus.status}</span>
-              </div>
-
-              {/* Test Email Button */}
-              <button
-                onClick={handleSendSingleTestEmail}
-                disabled={testingSingle}
-                className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
-              >
-                {testingSingle ? (
-                  <RotateCw className="w-3.5 h-3.5 animate-spin" />
+          {/* Main Title & Dual Tab Switcher */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1 border-b border-[#1E293B]">
+            <div>
+              <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2.5">
+                {activeTab === 'feed' ? (
+                  <>
+                    <NotificationsIcon className="w-7 h-7" />
+                    <span>In-App Notifications</span>
+                  </>
                 ) : (
-                  <Send className="w-3.5 h-3.5" />
+                  <>
+                    <NotificationChannelsIcon className="w-7 h-7" />
+                    <span>Notification Channels</span>
+                  </>
                 )}
-                <span>Test Email</span>
+              </h1>
+              <p className="text-xs text-slate-400 mt-1">
+                {activeTab === 'feed'
+                  ? 'Real-time alert events, telemetry violations, and system activity feed'
+                  : 'Manage Gmail SMTP connectivity, alert delivery channels, and DevOps engineer distribution list'}
+              </p>
+            </div>
+
+            {/* Tab Pills */}
+            <div className="flex items-center bg-[#111A2E] p-1 rounded-xl border border-[#1E293B] shadow-sm self-start sm:self-auto">
+              <button
+                onClick={() => setActiveTab('feed')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                  activeTab === 'feed'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>Notifications Feed</span>
+                {unreadCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500 text-white font-bold">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('channels')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                  activeTab === 'channels'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>Channels &amp; DevOps</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                  {recipients.length}
+                </span>
               </button>
             </div>
           </div>
 
-          {/* CARD 2: DevOps Engineer Email Recipients */}
-          <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-6 shadow-sm space-y-5">
-            {/* Header with "+ Add DevOps Engineer" on right */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className="w-11 h-11 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shadow-sm shrink-0">
-                  <Users className="w-5 h-5" />
+          {/* TAB 1: NOTIFICATIONS FEED */}
+          {activeTab === 'feed' && (
+            <div className="space-y-4">
+              {/* Feed Controls */}
+              <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+                <div className="relative flex-1 min-w-[240px]">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search notifications by title, resource name, or threshold..."
+                    value={feedSearch}
+                    onChange={(e) => setFeedSearch(e.target.value)}
+                    className="w-full bg-[#0D1526] border border-[#1E293B] text-slate-200 text-xs rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:border-blue-500 placeholder:text-slate-500"
+                  />
                 </div>
-                <div>
-                  <h2 className="text-base font-bold text-white tracking-tight">
-                    DevOps Engineer Email Recipients
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Add and manage DevOps engineers who will receive infrastructure alerts
-                  </p>
+
+                {/* Filter buttons */}
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-slate-400 text-[11px]">Filter:</span>
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'unread', label: `Unread (${unreadCount})` },
+                    { id: 'critical', label: 'Critical' },
+                    { id: 'warning', label: 'Warning' },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setSeverityFilter(f.id as any)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        severityFilter === f.id
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-[#0D1526] text-slate-400 hover:text-white border border-[#1E293B]'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleMarkAllRead}
+                    disabled={unreadCount === 0}
+                    className="px-3 py-1.5 rounded-lg bg-[#0D1526] hover:bg-[#18233C] border border-[#1E293B] text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
+                  >
+                    <CheckCheck className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Mark all read</span>
+                  </button>
+
+                  <button
+                    onClick={handleClearAllFeed}
+                    disabled={feedNotifications.length === 0}
+                    className="px-3 py-1.5 rounded-lg bg-[#0D1526] hover:bg-rose-500/20 border border-[#1E293B] text-slate-400 hover:text-rose-400 text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear</span>
+                  </button>
+
+                  <button
+                    onClick={fetchFeed}
+                    disabled={loadingFeed}
+                    className="p-1.5 rounded-lg bg-[#0D1526] hover:bg-[#18233C] border border-[#1E293B] text-slate-300 hover:text-white transition-all"
+                    title="Refresh feed"
+                  >
+                    <RotateCw className={`w-3.5 h-3.5 ${loadingFeed ? 'animate-spin text-blue-400' : ''}`} />
+                  </button>
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  setAddError('');
-                  setIsAddModalOpen(true);
-                }}
-                className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all shadow-sm flex items-center gap-1.5 self-start sm:self-auto shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add DevOps Engineer</span>
-              </button>
-            </div>
+              {/* Notification Items List */}
+              <div className="space-y-2.5">
+                {loadingFeed && feedNotifications.length === 0 ? (
+                  <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-12 text-center text-slate-400 text-xs">
+                    <RotateCw className="w-5 h-5 animate-spin mx-auto mb-2 text-blue-400" />
+                    <span>Loading in-app notifications...</span>
+                  </div>
+                ) : filteredFeed.length === 0 ? (
+                  <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-12 text-center text-slate-500 space-y-2">
+                    <Bell className="w-8 h-8 mx-auto text-slate-600" />
+                    <p className="text-sm font-semibold text-slate-400">No notifications found</p>
+                    <p className="text-xs text-slate-500">
+                      All systems operating within acceptable threshold limits.
+                    </p>
+                  </div>
+                ) : (
+                  filteredFeed.map((item) => {
+                    const isCritical = item.severity === 'critical';
+                    const isWarning = item.severity === 'warning';
 
-            {/* Recipients Table */}
-            <div className="overflow-x-auto rounded-xl border border-[#1E293B] bg-[#0D1526]/40">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-[#1E293B] text-[11px] font-semibold text-slate-400 uppercase tracking-wider bg-[#111A2E]/60">
-                    <th className="py-3.5 px-4 w-12 text-slate-400">#</th>
-                    <th className="py-3.5 px-4">Email Address</th>
-                    <th className="py-3.5 px-4">Role</th>
-                    <th className="py-3.5 px-4">Status</th>
-                    <th className="py-3.5 px-4">Added On</th>
-                    <th className="py-3.5 px-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#1E293B]/70 text-xs">
-                  {loadingRecipients ? (
-                    <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-500">
-                        <RotateCw className="w-4 h-4 animate-spin inline-block mr-2" />
-                        Loading DevOps recipients...
-                      </td>
-                    </tr>
-                  ) : recipients.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-500">
-                        No DevOps engineer recipients added yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    recipients.map((rec, index) => (
-                      <tr
-                        key={rec.id}
-                        className="hover:bg-[#18233C]/40 transition-colors group"
+                    return (
+                      <div
+                        key={item.id}
+                        className={`p-4 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                          item.read
+                            ? 'bg-[#111A2E]/70 border-[#1E293B] opacity-80 hover:opacity-100'
+                            : isCritical
+                            ? 'bg-[#1A1828] border-rose-500/40 shadow-sm'
+                            : 'bg-[#121E36] border-blue-500/40 shadow-sm'
+                        }`}
                       >
-                        <td className="py-3.5 px-4 font-bold text-slate-300">
-                          {index + 1}
-                        </td>
-                        <td className="py-3.5 px-4 font-mono text-slate-200 hover:underline cursor-pointer">
-                          {rec.email}
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-300 font-medium">
-                          {rec.role || 'DevOps Engineer'}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-2.5">
-                            <label className="relative inline-flex items-center cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={rec.enabled}
-                                onChange={() => handleToggleRecipientStatus(rec.id, rec.enabled)}
-                                className="sr-only peer"
-                              />
-                              <div className="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
-                            </label>
-                            <span
-                              className={`text-xs font-semibold ${
-                                rec.enabled ? 'text-emerald-400' : 'text-slate-400'
-                              }`}
-                            >
-                              {rec.enabled ? 'Enabled' : 'Disabled'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
-                          {formatDateTime(rec.addedOn)}
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <button
-                            onClick={() => handleDeleteRecipient(rec.id, rec.email)}
-                            title="Remove recipient"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        <div className="flex items-start gap-3.5 min-w-0">
+                          {/* Severity Indicator Icon */}
+                          <div
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                              isCritical
+                                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                : isWarning
+                                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                            }`}
                           >
-                            <Trash2 className="w-4 h-4 text-rose-500/90 hover:text-rose-400" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                            <AlertTriangle className="w-4 h-4" />
+                          </div>
 
-            {/* Bottom Bar: Summary counts on left & Send Test Email to All on right */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
-              <div className="flex items-center gap-2 text-xs text-slate-300">
-                <span className="p-1 rounded-full bg-blue-500/20 text-blue-400">
-                  <Info className="w-3.5 h-3.5" />
-                </span>
-                <span>
-                  Total Recipients: <strong className="text-white">{recipients.length}</strong>
-                </span>
-                <span className="text-slate-600">|</span>
-                <span>
-                  Enabled: <strong className="text-emerald-400">{enabledCount}</strong>
-                </span>
-                <span className="text-slate-600">|</span>
-                <span>
-                  Disabled: <strong className="text-slate-400">{disabledCount}</strong>
-                </span>
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span
+                                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                  isCritical
+                                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                    : isWarning
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                    : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                }`}
+                              >
+                                {item.severity}
+                              </span>
+
+                              {item.provider && (
+                                <span className="text-[10px] font-semibold text-slate-300 px-2 py-0.5 rounded bg-[#0D1526] border border-[#1E293B]">
+                                  {item.provider.toUpperCase()}
+                                </span>
+                              )}
+
+                              {item.resourceName && (
+                                <span className="text-xs font-semibold text-white font-mono">
+                                  {item.resourceName}
+                                </span>
+                              )}
+
+                              {!item.read && (
+                                <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                              )}
+                            </div>
+
+                            <p className="text-xs text-slate-200 font-medium leading-relaxed">
+                              {item.message}
+                            </p>
+
+                            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                              <span>{formatDateTime(item.createdAt)}</span>
+                              {item.emailDeliveryStatus && (
+                                <>
+                                  <span className="text-slate-600">•</span>
+                                  <span className="text-emerald-400 flex items-center gap-1 font-medium">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>{item.emailDeliveryStatus}</span>
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions on right */}
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          {item.link && (
+                            <Link
+                              href={item.link}
+                              className="px-2.5 py-1 text-xs font-medium text-blue-400 hover:text-white hover:bg-blue-600/20 rounded-lg transition-colors flex items-center gap-1"
+                            >
+                              <span>View Alert</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </Link>
+                          )}
+
+                          {!item.read && (
+                            <button
+                              onClick={() => handleMarkAsRead(item.id)}
+                              className="px-2.5 py-1 text-xs font-semibold bg-[#0D1526] hover:bg-[#18233C] border border-[#1E293B] text-slate-300 hover:text-white rounded-lg transition-all"
+                            >
+                              Mark Read
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: NOTIFICATION CHANNELS & DEVOPS RECIPIENTS */}
+          {activeTab === 'channels' && (
+            <div className="space-y-6">
+              {/* CARD 1: Gmail SMTP Configuration */}
+              <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-[#0D1526] border border-[#1E293B] flex items-center justify-center shadow-inner shrink-0 p-2.5">
+                    <GmailLogo className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white tracking-tight">
+                      Gmail SMTP Configuration
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Configured and connected to send alerts
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+                  {/* Connected Badge */}
+                  <div className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{smtpStatus.status}</span>
+                  </div>
+
+                  {/* Test Email Button */}
+                  <button
+                    onClick={handleSendSingleTestEmail}
+                    disabled={testingSingle}
+                    className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {testingSingle ? (
+                      <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                    <span>Test Email</span>
+                  </button>
+                </div>
               </div>
 
-              <button
-                onClick={handleSendTestEmailToAll}
-                disabled={testingAll || enabledCount === 0}
-                className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {testingAll ? (
-                  <RotateCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Send className="w-3.5 h-3.5" />
-                )}
-                <span>Send Test Email to All</span>
-              </button>
-            </div>
-          </div>
+              {/* CARD 2: DevOps Engineer Email Recipients */}
+              <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-6 shadow-sm space-y-5">
+                {/* Header with "+ Add DevOps Engineer" on right */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shadow-sm shrink-0">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-white tracking-tight">
+                        DevOps Engineer Email Recipients
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Add and manage DevOps engineers who will receive infrastructure alerts
+                      </p>
+                    </div>
+                  </div>
 
+                  <button
+                    onClick={() => {
+                      setAddError('');
+                      setIsAddModalOpen(true);
+                    }}
+                    className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all shadow-sm flex items-center gap-1.5 self-start sm:self-auto shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add DevOps Engineer</span>
+                  </button>
+                </div>
+
+                {/* Recipients Table */}
+                <div className="overflow-x-auto rounded-xl border border-[#1E293B] bg-[#0D1526]/40">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-[#1E293B] text-[11px] font-semibold text-slate-400 uppercase tracking-wider bg-[#111A2E]/60">
+                        <th className="py-3.5 px-4 w-12 text-slate-400">#</th>
+                        <th className="py-3.5 px-4">Email Address</th>
+                        <th className="py-3.5 px-4">Role</th>
+                        <th className="py-3.5 px-4">Status</th>
+                        <th className="py-3.5 px-4">Added On</th>
+                        <th className="py-3.5 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#1E293B]/70 text-xs">
+                      {loadingRecipients ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-500">
+                            <RotateCw className="w-4 h-4 animate-spin inline-block mr-2" />
+                            Loading DevOps recipients...
+                          </td>
+                        </tr>
+                      ) : recipients.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-500">
+                            No DevOps engineer recipients added yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        recipients.map((rec, index) => (
+                          <tr
+                            key={rec.id}
+                            className="hover:bg-[#18233C]/40 transition-colors group"
+                          >
+                            <td className="py-3.5 px-4 font-bold text-slate-300">
+                              {index + 1}
+                            </td>
+                            <td className="py-3.5 px-4 font-mono text-slate-200 hover:underline cursor-pointer">
+                              {rec.email}
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-300 font-medium">
+                              {rec.role || 'DevOps Engineer'}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={rec.enabled}
+                                    onChange={() => handleToggleRecipientStatus(rec.id, rec.enabled)}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+                                </label>
+                                <span
+                                  className={`text-xs font-semibold ${
+                                    rec.enabled ? 'text-emerald-400' : 'text-slate-400'
+                                  }`}
+                                >
+                                  {rec.enabled ? 'Enabled' : 'Disabled'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
+                              {formatDateTime(rec.addedOn)}
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                onClick={() => handleDeleteRecipient(rec.id, rec.email)}
+                                title="Remove recipient"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4 text-rose-500/90 hover:text-rose-400" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Bottom Bar: Summary counts on left & Send Test Email to All on right */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+                  <div className="flex items-center gap-2 text-xs text-slate-300">
+                    <span className="p-1 rounded-full bg-blue-500/20 text-blue-400">
+                      <Info className="w-3.5 h-3.5" />
+                    </span>
+                    <span>
+                      Total Recipients: <strong className="text-white">{recipients.length}</strong>
+                    </span>
+                    <span className="text-slate-600">|</span>
+                    <span>
+                      Enabled: <strong className="text-emerald-400">{enabledCount}</strong>
+                    </span>
+                    <span className="text-slate-600">|</span>
+                    <span>
+                      Disabled: <strong className="text-slate-400">{disabledCount}</strong>
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={handleSendTestEmailToAll}
+                    disabled={testingAll || enabledCount === 0}
+                    className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {testingAll ? (
+                      <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                    <span>Send Test Email to All</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
@@ -584,7 +963,7 @@ export default function NotificationChannelsPage() {
         </div>
       )}
 
-      {/* FLOATING GREEN TOAST BANNER (Exact Match from Mockup) */}
+      {/* FLOATING GREEN TOAST BANNER */}
       {toastMessage && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-xl px-4">
           <div className="bg-[#0D2818] border border-emerald-500/80 rounded-xl px-4 py-3 shadow-2xl flex items-center justify-between gap-3 text-white animate-in slide-in-from-bottom duration-200">
