@@ -28,9 +28,6 @@ import {
   MetricsExplorerIcon,
   AlertsIcon,
   NotificationChannelsIcon,
-  NotificationsIcon,
-  MonitoringOverviewIcon,
-  LogsIcon,
   SettingsIcon,
 } from '@/components/icons/CloudIcons';
 import { useMonitoring } from '@/context/MonitoringContext';
@@ -39,18 +36,6 @@ interface SidebarProps {
   activeAlertsCount?: number;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
-}
-
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  badge?: number | string;
-}
-
-interface NavSection {
-  title: string;
-  items: NavItem[];
 }
 
 export function Sidebar({
@@ -89,71 +74,38 @@ export function Sidebar({
       ? activeAlertsCount
       : filteredAlerts.filter((a) => a.status === 'active').length;
 
-  // Reorganized menu items into logical groups with exact display priority
-  const navSections: NavSection[] = [
+  const navItems: Array<{
+    label: string;
+    href: string;
+    icon: any;
+    badge?: number | string;
+  }> = [
+    { label: 'Dashboard', href: '/', icon: DashboardIcon },
+    { label: 'Cloud Accounts', href: '/dashboard/cloud-accounts', icon: CloudAccountsIcon },
+    { label: 'Regions', href: '/dashboard/regions', icon: RegionsIcon },
+    { label: 'Servers', href: '/dashboard/servers', icon: ServersFleetIcon },
+    { label: 'EC2 Instances', href: '/dashboard/ec2', icon: AwsEc2Logo },
+    { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AzureVmLogo },
+    { label: 'Server Scheduling', href: '/dashboard/schedules', icon: SchedulingIcon },
+    { label: 'Maven', href: '/dashboard/maven', icon: MavenLogo },
+    { label: 'Ansible', href: '/dashboard/ansible', icon: AnsibleLogo },
+    { label: 'Nginx', href: '/dashboard/nginx', icon: NginxLogo },
+    { label: 'Docker Containers', href: '/dashboard/docker', icon: DockerLogo },
+    { label: 'Kubernetes', href: '/dashboard/kubernetes', icon: KubernetesLogo },
+    { label: 'Metrics Explorer', href: '/dashboard/metrics', icon: MetricsExplorerIcon },
     {
-      title: 'Main Dashboard',
-      items: [
-        { label: 'Dashboard', href: '/', icon: DashboardIcon },
-        {
-          label: 'Notifications',
-          href: '/dashboard/notifications',
-          icon: NotificationsIcon,
-          badge: unreadNotifCount,
-        },
-        {
-          label: 'Notification Channels',
-          href: '/dashboard/notification-channels',
-          icon: NotificationChannelsIcon,
-        },
-      ],
+      label: 'Alerts',
+      href: '/dashboard/alerts',
+      icon: AlertsIcon,
+      badge: alertBadgeCount,
     },
     {
-      title: 'Cloud Infrastructure',
-      items: [
-        { label: 'Cloud Accounts', href: '/dashboard/cloud-accounts', icon: CloudAccountsIcon },
-        { label: 'Regions', href: '/dashboard/regions', icon: RegionsIcon },
-        { label: 'Servers', href: '/dashboard/servers', icon: ServersFleetIcon },
-        { label: 'EC2 Instances', href: '/dashboard/ec2', icon: AwsEc2Logo },
-        { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AzureVmLogo },
-      ],
+      label: 'Notification Channels',
+      href: '/dashboard/notifications',
+      icon: NotificationChannelsIcon,
+      badge: unreadNotifCount,
     },
-    {
-      title: 'Automation & Deployment',
-      items: [
-        { label: 'Server Scheduling', href: '/dashboard/schedules', icon: SchedulingIcon },
-        { label: 'Maven', href: '/dashboard/maven', icon: MavenLogo },
-        { label: 'Ansible', href: '/dashboard/ansible', icon: AnsibleLogo },
-        { label: 'Nginx', href: '/dashboard/nginx', icon: NginxLogo },
-      ],
-    },
-    {
-      title: 'Container & Kubernetes',
-      items: [
-        { label: 'Docker Containers', href: '/dashboard/docker', icon: DockerLogo },
-        { label: 'Kubernetes', href: '/dashboard/kubernetes', icon: KubernetesLogo },
-      ],
-    },
-    {
-      title: 'Monitoring & Observability',
-      items: [
-        { label: 'Monitoring', href: '/dashboard/monitoring', icon: MonitoringOverviewIcon },
-        {
-          label: 'Alerts',
-          href: '/dashboard/alerts',
-          icon: AlertsIcon,
-          badge: alertBadgeCount,
-        },
-        { label: 'Logs', href: '/dashboard/logs', icon: LogsIcon },
-        { label: 'Metrics', href: '/dashboard/metrics', icon: MetricsExplorerIcon },
-      ],
-    },
-    {
-      title: 'System',
-      items: [
-        { label: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
-      ],
-    },
+    { label: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
   ];
 
   const handleLogout = async () => {
@@ -164,20 +116,10 @@ export function Sidebar({
     window.location.href = '/login';
   };
 
-  const isItemActive = (href: string) => {
-    if (href === '/') {
-      return pathname === '/' || pathname === '/dashboard';
-    }
-    if (pathname === href) {
-      return true;
-    }
-    return pathname.startsWith(href + '/');
-  };
-
   const sidebarContent = (
     <div className="flex flex-col h-full bg-[#111A2E] border-r border-[#1E293B] text-slate-300 w-64 select-none">
       {/* Brand Header */}
-      <div className="p-4 sm:p-5 flex items-center justify-between border-b border-[#1E293B]/70 shrink-0">
+      <div className="p-5 flex items-center justify-between border-b border-[#1E293B]/70">
         <Link href="/" className="flex items-center gap-3 group">
           <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#081226] border border-cyan-500/40 shadow-lg shadow-cyan-500/20 group-hover:scale-105 group-hover:border-cyan-400 transition-all">
             <MultiCloudBrandLogo className="w-7 h-7" />
@@ -203,69 +145,58 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Grouped Navigation List with Natural Vertical Scrolling */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 min-h-0 [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
-        {navSections.map((section) => (
-          <div key={section.title} className="space-y-1">
-            {/* Section Category Title */}
-            <div className="px-3 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400/90 flex items-center justify-between">
-              <span>{section.title}</span>
-            </div>
+      {/* Navigation List */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive =
+            pathname === item.href ||
+            (item.href !== '/' && pathname.startsWith(item.href));
 
-            {/* Section Items */}
-            <div className="space-y-0.5">
-              {section.items.map((item) => {
-                const Icon = item.icon;
-                const active = isItemActive(item.href);
-
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    onClick={onCloseMobile}
-                    className={`group flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                      active
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-semibold'
-                        : 'text-slate-300 hover:text-white hover:bg-[#18233C]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div
-                        className={`w-5 h-5 flex items-center justify-center shrink-0 transition-transform ${
-                          active
-                            ? 'scale-105 drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]'
-                            : 'group-hover:scale-105 opacity-90 group-hover:opacity-100'
-                        }`}
-                      >
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <span className="truncate">{item.label}</span>
-                    </div>
-
-                    {item.badge !== undefined && (
-                      <span
-                        className={`flex items-center justify-center min-w-[20px] h-4.5 px-1.5 text-[10px] font-bold rounded-full shadow-sm ${
-                          typeof item.badge === 'string'
-                            ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white'
-                            : typeof item.badge === 'number' && item.badge > 0
-                            ? 'bg-rose-500 text-white'
-                            : 'hidden'
-                        }`}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+          return (
+            <Link
+              key={item.label}
+              href={item.href}
+              onClick={onCloseMobile}
+              className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                isActive
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-semibold'
+                  : 'text-slate-300 hover:text-white hover:bg-[#18233C]'
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className={`w-5 h-5 flex items-center justify-center shrink-0 transition-transform ${
+                    isActive
+                      ? 'scale-105 drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]'
+                      : 'group-hover:scale-105 opacity-90 group-hover:opacity-100'
+                  }`}
+                >
+                  <Icon className="w-5 h-5" />
+                </div>
+                <span className="truncate">{item.label}</span>
+              </div>
+              {item.badge !== undefined && (
+                <span
+                  className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold rounded-full shadow-sm ${
+                    typeof item.badge === 'string'
+                      ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white'
+                      : typeof item.badge === 'number' && item.badge > 0
+                      ? 'bg-rose-500 text-white'
+                      : 'hidden'
+                  }`}
+                >
+                  {item.badge}
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </div>
 
       {/* Multi-Cloud Support Quick Switcher Box */}
-      <div className="px-4 py-2.5 mx-3 mb-2 rounded-xl bg-[#0D1526]/80 border border-[#1E293B] shrink-0">
-        <div className="text-[11px] font-medium text-slate-400 text-center mb-1.5">
+      <div className="px-4 py-3 mx-3 mb-2 rounded-xl bg-[#0D1526]/80 border border-[#1E293B]">
+        <div className="text-[11px] font-medium text-slate-400 text-center mb-2">
           Multi-Cloud Support
         </div>
         <div className="flex items-center justify-around gap-2">
@@ -298,8 +229,8 @@ export function Sidebar({
       </div>
 
       {/* User Profile Footer */}
-      <div className="p-3 border-t border-[#1E293B] bg-[#0E1628]/60 relative shrink-0">
-        <div className="flex items-center justify-between px-2 py-0.5">
+      <div className="p-3 border-t border-[#1E293B] bg-[#0E1628]/60 relative">
+        <div className="flex items-center justify-between px-2 py-1">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow">
               S
@@ -353,7 +284,7 @@ export function Sidebar({
 
   return (
     <>
-      <aside className="hidden lg:flex fixed top-0 left-0 bottom-0 z-30 w-64 h-screen">
+      <aside className="hidden lg:flex fixed top-0 left-0 bottom-0 z-30 w-64">
         {sidebarContent}
       </aside>
 
@@ -363,7 +294,7 @@ export function Sidebar({
             className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             onClick={onCloseMobile}
           />
-          <div className="fixed top-0 bottom-0 left-0 w-64 h-screen z-50">
+          <div className="fixed top-0 bottom-0 left-0 w-64 z-50">
             {sidebarContent}
           </div>
         </div>
