@@ -28,17 +28,26 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
       status: { $nin: ['Terminated', 'terminated', 'shutting-down', 'deleted', 'Deleted'] },
       isDeleted: { $ne: true },
       $or: [
+        { resourceId: server.cloudResourceId },
+        { resourceId: server.instanceId },
+        { 'metadata.sshServerId': server._id.toString() },
+        { 'tags.sshServerId': server._id.toString() },
         { publicIp: sHost },
         { privateIp: sHost },
         { name: sName },
         { resourceId: sName },
-        { 'metadata.sshServerId': server._id.toString() },
-        { 'tags.sshServerId': server._id.toString() },
       ],
     }).lean();
 
-    if (!activeCr) {
-      // Instance was not found in cloud compute cache; keep the server record active
+    // Dynamically adopt updated dynamic public IP from CloudResource if IP changed
+    if (activeCr && activeCr.publicIp && activeCr.publicIp !== '-' && activeCr.publicIp !== server.host) {
+      server.host = activeCr.publicIp;
+      server.publicIp = activeCr.publicIp;
+      if (activeCr.resourceId && activeCr.resourceId.startsWith('i-')) {
+        server.cloudResourceId = activeCr.resourceId;
+        server.instanceId = activeCr.resourceId;
+      }
+      await server.save();
     }
   }
 

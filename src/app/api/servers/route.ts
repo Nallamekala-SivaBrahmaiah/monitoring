@@ -55,10 +55,20 @@ export async function GET(request: NextRequest) {
       query.cloudProvider = { $nin: ['on-premise'] };
     }
 
-    const servers = await Server.find(query)
-      .select('-encryptedAuthSecret -authSecretIv -authSecretTag')
+    const rawServers = await Server.find(query)
       .sort({ createdAt: -1 })
       .lean();
+
+    const servers = rawServers.map((s: any) => {
+      const hasSavedKey = Boolean(s.encryptedAuthSecret);
+      delete s.encryptedAuthSecret;
+      delete s.authSecretIv;
+      delete s.authSecretTag;
+      return {
+        ...s,
+        hasSavedKey,
+      };
+    });
 
     // Cross-reconcile server status with live cloud compute resource status
     const cloudResources = (await CloudResource.find({
@@ -124,6 +134,28 @@ export async function GET(request: NextRequest) {
         const pubIp = cr?.publicIp && cr.publicIp !== '-' ? cr.publicIp : (!isPrivate && hostIp ? hostIp : undefined);
         const privIp = cr?.privateIp && cr.privateIp !== '-' ? cr.privateIp : (isPrivate ? hostIp : undefined);
 
+        // Dynamically update MongoDB Server host if AWS EC2 assigned a new dynamic Public IP
+        const isAwsServer = s.cloudProvider?.toLowerCase() === 'aws' || cr?.provider === 'aws';
+        if (isAwsServer && cr?.publicIp && cr.publicIp !== '-' && cr.publicIp !== s.host) {
+          s.host = cr.publicIp;
+          s.publicIp = cr.publicIp;
+          if (cr.resourceId && cr.resourceId.startsWith('i-')) {
+            s.cloudResourceId = cr.resourceId;
+            s.instanceId = cr.resourceId;
+          }
+          await Server.updateOne(
+            { _id: s._id },
+            {
+              $set: {
+                host: cr.publicIp,
+                publicIp: cr.publicIp,
+                cloudResourceId: cr.resourceId,
+                instanceId: cr.resourceId,
+              },
+            }
+          ).catch(() => null);
+        }
+
         const isCurrentVmHost = sName === 'vm01siva-mon' || sHost === '4.240.105.247';
         let sHardware = s.hardware;
         let sMetrics = s.metrics;
@@ -181,14 +213,17 @@ export async function GET(request: NextRequest) {
 
         return {
           ...s,
+          host: s.host,
           hardware: sHardware,
           metrics: sMetrics,
           status: effectiveStatus,
           lastError: effectiveStatus === 'Online' ? null : s.lastError,
           cloudPowerState: cloudStatus || (effectiveStatus === 'Online' ? 'Running' : 'Stopped'),
           cloudResourceId: (cr?.resourceId || s.cloudResourceId || s.resourceId || s._id.toString()) as string,
+          instanceId: (cr?.resourceId || s.instanceId || s.cloudResourceId || '') as string,
           publicIp: pubIp,
           privateIp: privIp,
+          hasSavedKey: Boolean(s.hasSavedKey),
         };
       })
     );
@@ -414,6 +449,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const {
+      id,
+      instanceId,
+      cloudResourceId,
       name,
       host,
       port = 22,
@@ -436,13 +474,62 @@ export async function POST(request: NextRequest) {
     if (!username || typeof username !== 'string') {
       return NextResponse.json({ error: 'SSH username is required' }, { status: 400 });
     }
-    if (!authSecret || typeof authSecret !== 'string') {
-      return NextResponse.json({ error: 'SSH private key or password is required' }, { status: 400 });
+
+    const parsedPort = parseInt(port, 10) || 22;
+    const resolvedInstanceId = (instanceId || cloudResourceId || (name?.startsWith('i-') ? name : '')).trim();
+
+    // Check if updating an existing server
+    let existing: any = null;
+    if (id) {
+      existing = await Server.findById(id);
+    }
+    if (!existing && resolvedInstanceId) {
+      existing = await Server.findOne({
+        $or: [
+          { cloudResourceId: resolvedInstanceId },
+          { instanceId: resolvedInstanceId },
+          { name: resolvedInstanceId },
+        ],
+      });
+    }
+    if (!existing && name) {
+      existing = await Server.findOne({
+        name: name.trim(),
+        ...(cloudProvider ? { cloudProvider } : {}),
+      });
+    }
+    if (!existing) {
+      existing = await Server.findOne({ host: host.trim(), port: parsedPort });
     }
 
-    let secretToUse = authSecret;
+    let secretToUse = (authSecret || '').trim();
+
+    // If authSecret was omitted, reuse the existing saved PEM/PPK key (AES-256-GCM decrypted on backend only)
+    if (!secretToUse) {
+      if (existing && existing.encryptedAuthSecret) {
+        try {
+          const { decryptSecret } = await import('@/lib/serverMonitoring/crypto');
+          secretToUse = decryptSecret({
+            encrypted: existing.encryptedAuthSecret,
+            iv: existing.authSecretIv,
+            tag: existing.authSecretTag,
+          });
+        } catch (decryptErr: any) {
+          return NextResponse.json(
+            { error: `Failed to decrypt existing saved SSH key: ${decryptErr.message}` },
+            { status: 422 }
+          );
+        }
+      } else {
+        return NextResponse.json(
+          { error: 'SSH private key or password is required' },
+          { status: 400 }
+        );
+      }
+    }
+
     if (authMethod === 'privateKey') {
-      const converted = convertPPKToOpenSSH(authSecret);
+      const converted = convertPPKToOpenSSH(secretToUse);
       if (!converted.success) {
         return NextResponse.json({ error: converted.error }, { status: 400 });
       }
@@ -450,11 +537,6 @@ export async function POST(request: NextRequest) {
         secretToUse = converted.pemKey;
       }
     }
-
-    const parsedPort = parseInt(port, 10) || 22;
-
-    // Check if host+port already exists
-    const existing = await Server.findOne({ host: host.trim(), port: parsedPort });
 
     // 2. Initial SSH Verification & Discovery
     let initialSpecs;
@@ -537,11 +619,20 @@ export async function POST(request: NextRequest) {
     let serverDoc: any;
     if (existing) {
       existing.name = name.trim();
+      existing.host = host.trim();
+      existing.publicIp = host.trim();
+      existing.port = parsedPort;
       existing.username = username.trim();
       existing.authMethod = authMethod;
-      existing.encryptedAuthSecret = encrypted.encrypted;
-      existing.authSecretIv = encrypted.iv;
-      existing.authSecretTag = encrypted.tag;
+      if (authSecret) {
+        existing.encryptedAuthSecret = encrypted.encrypted;
+        existing.authSecretIv = encrypted.iv;
+        existing.authSecretTag = encrypted.tag;
+      }
+      if (resolvedInstanceId) {
+        existing.cloudResourceId = resolvedInstanceId;
+        existing.instanceId = resolvedInstanceId;
+      }
       existing.cloudProvider = cloudProvider || existing.cloudProvider;
       existing.region = region || existing.region;
       if (tags && Array.isArray(tags) && tags.length > 0) {
@@ -571,6 +662,9 @@ export async function POST(request: NextRequest) {
       serverDoc = await Server.create({
         name: name.trim(),
         host: host.trim(),
+        publicIp: host.trim(),
+        cloudResourceId: resolvedInstanceId || undefined,
+        instanceId: resolvedInstanceId || undefined,
         port: parsedPort,
         username: username.trim(),
         authMethod,
@@ -606,11 +700,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 5. Update matching CloudResource(s) (by IP or name)
+    // 5. Update matching CloudResource(s) (by IP, name, or instance ID)
     const hostTrim = host.trim();
     await CloudResource.updateMany(
       {
         $or: [
+          ...(resolvedInstanceId ? [{ resourceId: resolvedInstanceId }] : []),
+          ...(existing?.cloudResourceId ? [{ resourceId: existing.cloudResourceId }] : []),
+          { 'metadata.sshServerId': serverDoc._id.toString() },
+          { 'tags.sshServerId': serverDoc._id.toString() },
           { publicIp: hostTrim },
           { privateIp: hostTrim },
           { name: name.trim() },
@@ -619,14 +717,8 @@ export async function POST(request: NextRequest) {
       },
       {
         $set: {
-          metrics: {
-            cpuUtilization: initialSpecs.metrics.cpu.usagePercent,
-            memoryUtilization: initialSpecs.metrics.memory.usagePercent,
-            diskUtilization: initialSpecs.metrics.disks[0]?.usagePercent || 0,
-            networkIn: initialSpecs.metrics.network[0]?.bytesReceived || 0,
-            networkOut: initialSpecs.metrics.network[0]?.bytesSent || 0,
-            lastUpdated: new Date(),
-          },
+          publicIp: hostTrim,
+          host: hostTrim,
           status: isInitialOnline ? 'Running' : 'Stopped',
           'metadata.isSSHConnected': true,
           'metadata.sshServerId': serverDoc._id.toString(),

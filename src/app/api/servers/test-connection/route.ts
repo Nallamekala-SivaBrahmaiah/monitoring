@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import connectToDatabase from '@/lib/mongodb';
+import Server from '@/models/Server';
+import { decryptSecret } from '@/lib/serverMonitoring/crypto';
 import { collectServerViaSSH } from '@/lib/serverMonitoring/sshCollector';
 import { formatConnectionDiagnostic } from '@/lib/serverMonitoring/errorDiagnostic';
 import { convertPPKToOpenSSH } from '@/lib/serverMonitoring/ppkConverter';
@@ -6,30 +9,90 @@ import { convertPPKToOpenSSH } from '@/lib/serverMonitoring/ppkConverter';
 /**
  * POST /api/servers/test-connection
  * Tests SSH connectivity and credentials without saving to database.
- * Returns operating system and hardware discovery preview.
+ * Supports testing with existing saved AES-256-GCM encrypted keys or newly supplied keys.
  */
 export async function POST(request: NextRequest) {
   let hostStr = '';
   let portNum = 22;
-  let methodStr = 'password';
+  let methodStr = 'privateKey';
 
   try {
+    await connectToDatabase();
     const body = await request.json();
-    const { host, port = 22, username, authMethod = 'privateKey', authSecret } = body;
+    const {
+      host,
+      port = 22,
+      username,
+      authMethod = 'privateKey',
+      authSecret,
+      serverId,
+      instanceId,
+      name,
+    } = body;
+
     hostStr = host || '';
     portNum = parseInt(port, 10) || 22;
     methodStr = authMethod;
 
-    if (!host || !username || !authSecret) {
+    if (!hostStr) {
       return NextResponse.json(
-        { error: 'Host, username, and authentication secret are required for testing' },
+        { error: 'Server host or IP address is required for testing' },
         { status: 400 }
       );
     }
 
-    let secretToUse = authSecret;
-    if (authMethod === 'privateKey') {
-      const converted = convertPPKToOpenSSH(authSecret);
+    let secretToUse = (authSecret || '').trim();
+    let userToUse = (username || '').trim();
+
+    // If authSecret not provided, look for existing saved credentials in database
+    if (!secretToUse) {
+      let serverDoc: any = null;
+      if (serverId) {
+        serverDoc = await Server.findById(serverId);
+      }
+      if (!serverDoc && instanceId) {
+        serverDoc = await Server.findOne({
+          $or: [
+            { cloudResourceId: instanceId },
+            { instanceId: instanceId },
+            { name: instanceId },
+          ],
+        });
+      }
+      if (!serverDoc && name) {
+        serverDoc = await Server.findOne({ name });
+      }
+
+      if (serverDoc && serverDoc.encryptedAuthSecret) {
+        try {
+          secretToUse = decryptSecret({
+            encrypted: serverDoc.encryptedAuthSecret,
+            iv: serverDoc.authSecretIv,
+            tag: serverDoc.authSecretTag,
+          });
+          methodStr = serverDoc.authMethod || methodStr;
+          if (!userToUse) userToUse = serverDoc.username;
+        } catch (decryptErr: any) {
+          return NextResponse.json(
+            { error: `Failed to decrypt existing saved SSH key: ${decryptErr.message}` },
+            { status: 422 }
+          );
+        }
+      }
+    }
+
+    if (!secretToUse) {
+      return NextResponse.json(
+        { error: 'SSH private key or password is required. Please provide a key or select a configured server.' },
+        { status: 400 }
+      );
+    }
+    if (!userToUse) {
+      userToUse = 'ubuntu';
+    }
+
+    if (methodStr === 'privateKey') {
+      const converted = convertPPKToOpenSSH(secretToUse);
       if (!converted.success) {
         return NextResponse.json({ error: converted.error }, { status: 400 });
       }
@@ -39,12 +102,12 @@ export async function POST(request: NextRequest) {
     }
 
     const specs = await collectServerViaSSH({
-      host: host.trim(),
+      host: hostStr.trim(),
       port: portNum,
-      username: username.trim(),
-      authMethod,
+      username: userToUse.trim(),
+      authMethod: methodStr as any,
       authSecret: secretToUse,
-      timeoutMs: 10000,
+      timeoutMs: 12000,
     });
 
     return NextResponse.json({

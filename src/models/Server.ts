@@ -65,6 +65,11 @@ export interface IServer extends Document {
   authSecretTag: string;
   environment?: string;
   cloudProvider: 'aws' | 'azure' | 'gcp' | 'on-premise' | 'other';
+  cloudResourceId?: string;
+  instanceId?: string;
+  publicIp?: string;
+  privateIp?: string;
+  cloudPowerState?: string;
   region?: string;
   tags: string[];
   status: 'Online' | 'Offline' | 'Connecting' | 'Failed' | 'Warning' | 'Authentication Failed' | 'Server Unreachable' | 'Connection Timeout' | 'Metrics Unavailable';
@@ -159,6 +164,11 @@ const ServerSchema = new Schema<IServer>(
       default: 'other',
       index: true,
     },
+    cloudResourceId: { type: String, index: true, sparse: true },
+    instanceId: { type: String, index: true, sparse: true },
+    publicIp: { type: String, default: null },
+    privateIp: { type: String, default: null },
+    cloudPowerState: { type: String, default: null },
     region: { type: String, default: 'global' },
     tags: [{ type: String }],
     status: {

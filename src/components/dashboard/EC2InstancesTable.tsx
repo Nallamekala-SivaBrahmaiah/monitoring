@@ -127,11 +127,15 @@ export function EC2InstancesTable({
 
   const handleOpenSSHModal = (inst: EC2InstanceDetail) => {
     setSshTarget({
-      id: inst.id || inst.instanceId,
+      id: inst.sshServerId || inst.id || inst.instanceId,
       name: inst.name || inst.instanceId,
       host: inst.publicIp && inst.publicIp !== '-' ? inst.publicIp : inst.privateIp,
+      port: 22,
       cloudProvider: 'aws',
       region: inst.region,
+      cloudResourceId: inst.instanceId,
+      instanceId: inst.instanceId,
+      hasSavedKey: Boolean(inst.isSSHConnected || inst.sshServerId),
       os: inst.os || 'Linux',
     });
     setShowSSHModal(true);

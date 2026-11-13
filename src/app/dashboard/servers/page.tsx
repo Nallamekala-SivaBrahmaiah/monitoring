@@ -164,13 +164,19 @@ export default function ServersPage() {
   const [showSSHModal, setShowSSHModal] = useState<boolean>(false);
 
   const handleOpenSSHModal = (server: RegisteredServer) => {
+    const pubIp = server.publicIp || server.host;
+    const instanceId = server.cloudResourceId || (server as any).instanceId || (server.name?.startsWith('i-') ? server.name : undefined);
+
     setSshTarget({
       id: server._id,
       name: server.name,
-      host: server.host,
+      host: (pubIp && pubIp !== 'N/A' && pubIp !== '-') ? pubIp : server.host,
       port: server.port || 22,
       cloudProvider: server.cloudProvider,
       region: server.region,
+      cloudResourceId: instanceId,
+      instanceId: instanceId,
+      hasSavedKey: Boolean((server as any).hasSavedKey ?? (server.status === 'Online' || server.authMethod)),
       os: `${server.os?.name || 'Linux'} ${server.os?.version || ''}`.trim(),
     });
     setShowSSHModal(true);

@@ -226,6 +226,8 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
             const matchingServer = allRegisteredServers.find((s: any) => {
               const sId = s._id?.toString();
               if (existingSshId && sId && existingSshId === sId) return true;
+              if (s.cloudResourceId && s.cloudResourceId === inst.resourceId) return true;
+              if (s.instanceId && s.instanceId === inst.resourceId) return true;
               const sHost = (s.host || '').trim();
               const sName = (s.name || '').toLowerCase().trim();
               if (sHost && (sHost === instPublic || sHost === instPrivate)) return true;
@@ -234,6 +236,25 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
             });
 
             const isRunning = (inst.status || '').toLowerCase().includes('run');
+
+            // Dynamically synchronize updated AWS EC2 Public/Private IP to matching Server record
+            if (matchingServer) {
+              const updatedHost = instPublic || instPrivate || matchingServer.host;
+              await Server.updateOne(
+                { _id: matchingServer._id },
+                {
+                  $set: {
+                    host: updatedHost,
+                    publicIp: instPublic || null,
+                    privateIp: instPrivate || null,
+                    cloudResourceId: inst.resourceId,
+                    instanceId: inst.resourceId,
+                    cloudPowerState: isRunning ? 'Running' : 'Stopped',
+                    ...(isRunning ? {} : { status: 'Offline', lastError: 'Instance is stopped in AWS EC2' }),
+                  },
+                }
+              ).catch(() => null);
+            }
 
             // For AWS EC2: Use actual CloudWatch and CWAgent metrics
             const finalCpu = !isRunning ? null : inst.metrics.cpuUtilization;
