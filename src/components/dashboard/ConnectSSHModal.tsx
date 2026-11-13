@@ -66,18 +66,26 @@ export function ConnectSSHModal({
       setPort(target.port || 22);
 
       // Intelligent default username based on provider or existing target
-      if (target.username) {
-        setUsername(target.username);
-      } else if (target.cloudProvider === 'azure') {
+      const isAzure =
+        target.cloudProvider === 'azure' ||
+        target.name?.toLowerCase().includes('azure') ||
+        target.host?.startsWith('20.') ||
+        target.host?.startsWith('4.');
+
+      if (isAzure && (!target.username || target.username === 'ubuntu')) {
         setUsername('siva');
-      } else if (target.cloudProvider === 'aws') {
-        setUsername('ubuntu');
+      } else if (target.username) {
+        setUsername(target.username);
+      } else if (isAzure) {
+        setUsername('siva');
       } else {
         setUsername('ubuntu');
       }
 
       if (target.authMethod) {
         setAuthMethod(target.authMethod);
+      } else if (isAzure) {
+        setAuthMethod('password');
       } else {
         setAuthMethod('privateKey');
       }

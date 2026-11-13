@@ -90,7 +90,7 @@ export default function NginxDashboardPage() {
   // Search and view filters for All Servers view
   const [searchQuery, setSearchQuery] = useState('');
   const [cloudFilter, setCloudFilter] = useState<'all' | 'azure' | 'aws' | 'online'>('all');
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
 
   // Server-specific details state
   const [serverDetailsMap, setServerDetailsMap] = useState<Record<string, any>>({});
@@ -571,7 +571,7 @@ export default function NginxDashboardPage() {
                   }}
                   className="w-full appearance-none pl-10 pr-9 py-2 rounded-xl bg-[#0B1120] border border-slate-700/80 text-xs font-semibold text-white focus:outline-none focus:border-blue-500 shadow-inner transition cursor-pointer"
                 >
-                  <option value="">🖥️ All Servers Fleet ({servers.length})</option>
+                  <option value="">🖥️ Select a Server to Manage ({servers.length} Available)</option>
                   {servers.map((s) => (
                     <option key={s._id} value={s._id}>
                       {s.name} ({s.host}) - {s.cloudProvider?.toUpperCase()} {s.connectionStatus === 'Online' ? '🟢' : '⚪'}
@@ -820,7 +820,7 @@ export default function NginxDashboardPage() {
                           <th className="py-3 px-4">RAM</th>
                           <th className="py-3 px-4">Disk</th>
                           <th className="py-3 px-4">Uptime</th>
-                          <th className="py-3 px-4 text-right">Actions</th>
+                          <th className="py-3 px-4 text-right sticky right-0 bg-[#0D1526] z-10 shadow-[-10px_0_12px_-4px_rgba(0,0,0,0.5)]">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#1E293B]">
@@ -837,7 +837,8 @@ export default function NginxDashboardPage() {
                           return (
                             <tr
                               key={server._id}
-                              className="hover:bg-[#142038] transition-colors group cursor-default"
+                              onClick={() => handleSelectServer(server)}
+                              className="hover:bg-[#142038] transition-colors group cursor-pointer"
                             >
                               {/* 1. Server Name & ID */}
                               <td className="py-3.5 px-4">
@@ -1010,11 +1011,14 @@ export default function NginxDashboardPage() {
                               </td>
 
                               {/* 10. Actions */}
-                              <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                              <td className="py-3.5 px-4 text-right whitespace-nowrap sticky right-0 bg-[#111A2E] group-hover:bg-[#142038] z-10 shadow-[-10px_0_12px_-4px_rgba(0,0,0,0.5)] transition-colors">
                                 <div className="flex items-center justify-end gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => handleOpenTerminal(server)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenTerminal(server);
+                                    }}
                                     className="px-2.5 py-1.5 rounded-lg bg-[#0D1526] hover:bg-slate-800 text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer shrink-0"
                                     title="PuTTY Web Terminal"
                                   >
@@ -1024,7 +1028,10 @@ export default function NginxDashboardPage() {
 
                                   <button
                                     type="button"
-                                    onClick={() => handleTestSSH(server)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTestSSH(server);
+                                    }}
                                     disabled={testingSSHServerId === server._id}
                                     className="px-2.5 py-1.5 rounded-lg bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
                                     title="Test SSH Connectivity"
@@ -1035,11 +1042,13 @@ export default function NginxDashboardPage() {
 
                                   <button
                                     type="button"
-                                    onClick={() => handleSelectServer(server)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectServer(server);
+                                    }}
                                     className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer whitespace-nowrap"
                                   >
-                                    <NginxLogo className="w-3.5 h-3.5 text-white" />
-                                    <span>Manage Nginx</span>
+                                    <span>Select &amp; Manage Server</span>
                                     <ChevronRight className="w-3.5 h-3.5 text-blue-200" />
                                   </button>
                                 </div>
@@ -1052,8 +1061,8 @@ export default function NginxDashboardPage() {
                   </div>
                 </div>
               ) : (
-                /* CARDS VIEW: Completely Redesigned, Compact, No Clipping */
-                <div className="space-y-3.5">
+                /* CARDS VIEW: Stacked One-By-One Server Cards with Select & Manage */
+                <div className="space-y-4">
                   {filteredAllServers.map((server) => {
                     const isAzure = server.cloudProvider === 'azure';
                     const isAws = server.cloudProvider === 'aws';
@@ -1067,24 +1076,25 @@ export default function NginxDashboardPage() {
                     return (
                       <div
                         key={server._id}
-                        className="bg-[#111A2E] hover:bg-[#142038] border border-[#1E293B] hover:border-blue-500/40 rounded-2xl p-4 shadow-lg shadow-black/20 transition-all space-y-3.5"
+                        onClick={() => handleSelectServer(server)}
+                        className="bg-[#111A2E] hover:bg-[#142038] border border-[#1E293B] hover:border-blue-500/50 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all space-y-4 cursor-pointer group"
                       >
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                           {/* Left: Server Identity */}
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 rounded-xl bg-[#0D1526] border border-[#1E293B] flex items-center justify-center p-2 shrink-0">
+                          <div className="flex items-center gap-3.5 min-w-0">
+                            <div className="w-12 h-12 rounded-xl bg-[#0D1526] border border-[#1E293B] flex items-center justify-center p-2.5 shrink-0">
                               {isAzure ? (
-                                <AzureLogo className="w-5 h-5" />
+                                <AzureLogo className="w-7 h-7" />
                               ) : isAws ? (
-                                <AwsLogo className="w-5 h-5 text-amber-400" />
+                                <AwsLogo className="w-7 h-7 text-amber-400" />
                               ) : (
-                                <Server className="w-5 h-5 text-purple-400" />
+                                <Server className="w-7 h-7 text-purple-400" />
                               )}
                             </div>
 
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-bold text-white tracking-wide">
+                                <span className="text-base font-bold text-white tracking-wide group-hover:text-blue-400 transition-colors">
                                   {server.name}
                                 </span>
                                 <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
@@ -1111,9 +1121,9 @@ export default function NginxDashboardPage() {
                                 </span>
                               </div>
 
-                              <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap font-mono">
+                              <div className="flex items-center gap-4 text-xs text-slate-400 mt-1 flex-wrap font-mono">
                                 <span>
-                                  Host IP: <strong className="text-emerald-400">{server.host}</strong>
+                                  Host IP: <strong className="text-slate-200">{server.host}</strong>
                                 </span>
                                 {server.privateIp && (
                                   <span>
@@ -1125,7 +1135,10 @@ export default function NginxDashboardPage() {
                                     ID: <strong className="text-slate-300" title={server.instanceId}>{shortId}</strong>
                                     <button
                                       type="button"
-                                      onClick={() => handleCopy(server.instanceId!, 'Resource ID')}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCopy(server.instanceId!, 'Resource ID');
+                                      }}
                                       className="text-slate-500 hover:text-white transition-colors cursor-pointer"
                                       title="Copy Full ID"
                                     >
@@ -1141,11 +1154,14 @@ export default function NginxDashboardPage() {
                           </div>
 
                           {/* Right: Quick Action & Manage Button */}
-                          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
+                          <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
                             <button
                               type="button"
-                              onClick={() => handleOpenTerminal(server)}
-                              className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenTerminal(server);
+                              }}
+                              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5 cursor-pointer shrink-0"
                               title="PuTTY Web Terminal"
                             >
                               <Terminal className="w-3.5 h-3.5 text-blue-400" />
@@ -1154,9 +1170,12 @@ export default function NginxDashboardPage() {
 
                             <button
                               type="button"
-                              onClick={() => handleTestSSH(server)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleTestSSH(server);
+                              }}
                               disabled={testingSSHServerId === server._id}
-                              className="px-2.5 py-1.5 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                              className="px-3 py-2 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
                               title="Test SSH Connectivity"
                             >
                               <Activity className={`w-3.5 h-3.5 text-emerald-400 ${testingSSHServerId === server._id ? 'animate-spin' : ''}`} />
@@ -1165,26 +1184,28 @@ export default function NginxDashboardPage() {
 
                             <button
                               type="button"
-                              onClick={() => handleSelectServer(server)}
-                              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectServer(server);
+                              }}
+                              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition flex items-center gap-2 cursor-pointer shrink-0"
                             >
-                              <NginxLogo className="w-3.5 h-3.5 text-white" />
-                              <span>Manage Nginx</span>
-                              <ChevronRight className="w-3.5 h-3.5 text-blue-200" />
+                              <span>Select &amp; Manage Server</span>
+                              <ChevronRight className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
 
                         {/* Resource Meters Bar */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-[#1E293B]/70">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-[#1E293B]/70">
                           {/* CPU */}
-                          <div className="bg-[#0B1120]/70 border border-[#1E293B] rounded-xl p-2">
-                            <div className="flex items-center justify-between text-xs mb-1">
-                              <span className="flex items-center gap-1 text-slate-400 text-[11px]">
-                                <Cpu className="w-3 h-3 text-cyan-400" />
+                          <div className="bg-[#0B1120]/70 border border-[#1E293B] rounded-xl p-2.5">
+                            <div className="flex items-center justify-between text-xs mb-1.5">
+                              <span className="flex items-center gap-1.5 text-slate-400">
+                                <Cpu className="w-3.5 h-3.5 text-cyan-400" />
                                 CPU
                               </span>
-                              <span className="font-bold text-white font-mono text-[11px]">{cpuP}%</span>
+                              <span className="font-bold text-white font-mono">{cpuP}%</span>
                             </div>
                             <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                               <div
@@ -1197,13 +1218,13 @@ export default function NginxDashboardPage() {
                           </div>
 
                           {/* RAM */}
-                          <div className="bg-[#0B1120]/70 border border-[#1E293B] rounded-xl p-2">
-                            <div className="flex items-center justify-between text-xs mb-1">
-                              <span className="flex items-center gap-1 text-slate-400 text-[11px]">
-                                <Layers className="w-3 h-3 text-emerald-400" />
+                          <div className="bg-[#0B1120]/70 border border-[#1E293B] rounded-xl p-2.5">
+                            <div className="flex items-center justify-between text-xs mb-1.5">
+                              <span className="flex items-center gap-1.5 text-slate-400">
+                                <Layers className="w-3.5 h-3.5 text-emerald-400" />
                                 RAM
                               </span>
-                              <span className="font-bold text-white font-mono text-[11px]">{memP}%</span>
+                              <span className="font-bold text-white font-mono">{memP}%</span>
                             </div>
                             <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                               <div
@@ -1216,13 +1237,13 @@ export default function NginxDashboardPage() {
                           </div>
 
                           {/* Disk */}
-                          <div className="bg-[#0B1120]/70 border border-[#1E293B] rounded-xl p-2">
-                            <div className="flex items-center justify-between text-xs mb-1">
-                              <span className="flex items-center gap-1 text-slate-400 text-[11px]">
-                                <HardDrive className="w-3 h-3 text-purple-400" />
+                          <div className="bg-[#0B1120]/70 border border-[#1E293B] rounded-xl p-2.5">
+                            <div className="flex items-center justify-between text-xs mb-1.5">
+                              <span className="flex items-center gap-1.5 text-slate-400">
+                                <HardDrive className="w-3.5 h-3.5 text-purple-400" />
                                 Disk
                               </span>
-                              <span className="font-bold text-white font-mono text-[11px]">{diskP}%</span>
+                              <span className="font-bold text-white font-mono">{diskP}%</span>
                             </div>
                             <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                               <div
@@ -1235,12 +1256,12 @@ export default function NginxDashboardPage() {
                           </div>
 
                           {/* Uptime */}
-                          <div className="bg-[#0B1120]/70 border border-[#1E293B] rounded-xl p-2 flex items-center justify-between text-xs">
-                            <span className="flex items-center gap-1 text-slate-400 text-[11px]">
-                              <Activity className="w-3 h-3 text-amber-400" />
+                          <div className="bg-[#0B1120]/70 border border-[#1E293B] rounded-xl p-2.5 flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1.5 text-slate-400">
+                              <Activity className="w-3.5 h-3.5 text-amber-400" />
                               Uptime
                             </span>
-                            <span className="font-mono text-amber-300 font-semibold text-[11px] truncate max-w-[90px]">
+                            <span className="font-mono text-amber-300 font-semibold truncate max-w-[120px]">
                               {uptimeVal}
                             </span>
                           </div>

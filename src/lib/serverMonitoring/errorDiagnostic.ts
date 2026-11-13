@@ -12,9 +12,12 @@ export function formatConnectionDiagnostic(
 
   if (raw.includes('All configured authentication methods failed')) {
     if (authMethod === 'password') {
+      const isAzure = host.startsWith('20.') || host.startsWith('4.');
       return {
         message: 'Authentication failed: Remote server rejected password authentication.',
-        hint: 'Azure and AWS Linux virtual machines disable SSH password authentication by default. Recommended: Switch Authentication Method to "SSH Private Key" and paste your .pem key, or enable "PasswordAuthentication yes" in /etc/ssh/sshd_config on the server.',
+        hint: isAzure
+          ? 'Ensure the SSH Username is set to the correct admin user for this Azure VM (e.g., "siva" or "azureuser", not "ubuntu") and that the password is correct.'
+          : 'Azure and AWS Linux virtual machines disable SSH password authentication by default. Ensure the username is correct (e.g., "siva" on Azure, "ubuntu" on AWS) or switch to "SSH Private Key".',
       };
     }
     return {
