@@ -8,10 +8,6 @@ import {
   ChevronRight,
   TrendingUp,
   ArrowUpDown,
-  ExternalLink,
-  Eye,
-  Copy,
-  Check,
   Trash2,
   KeyRound,
   Terminal,
@@ -53,15 +49,7 @@ export function AzureVMsTable({
   const [showTerminalModal, setShowTerminalModal] = useState<boolean>(false);
   const [powerActionLoadingId, setPowerActionLoadingId] = useState<string | null>(null);
   const [powerFeedback, setPowerFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [copiedIp, setCopiedIp] = useState<string | null>(null);
   const pageSize = limit || 5;
-
-  const handleCopyIp = (ip: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(ip);
-    setCopiedIp(ip);
-    setTimeout(() => setCopiedIp(null), 2000);
-  };
 
   const handlePowerAction = async (vmId: string, action: 'start' | 'stop') => {
     try {
@@ -308,7 +296,7 @@ export function AzureVMsTable({
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs text-slate-300 border-collapse">
           <thead>
-            <tr className="border-b border-[#1E293B] bg-[#0E1628]/60 text-slate-400 font-medium text-xs">
+            <tr className="border-b border-[#1E293B] bg-[#0E1628]/60 text-slate-400 font-medium">
               <th
                 onClick={() => handleSort('name')}
                 className="py-3 px-4 cursor-pointer hover:text-white"
@@ -318,9 +306,37 @@ export function AzureVMsTable({
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
-              <th className="py-3 px-4">Resource &amp; Region</th>
-              <th className="py-3 px-4">Status</th>
-              <th className="py-3 px-4">Resource Usage</th>
+              <th className="py-3 px-4">Resource Group</th>
+              <th className="py-3 px-4">Region</th>
+              <th className="py-3 px-4">Size</th>
+              <th className="py-3 px-4">Power State</th>
+              <th
+                onClick={() => handleSort('cpuUsage')}
+                className="py-3 px-4 cursor-pointer hover:text-white"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>CPU Usage</span>
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('memoryUsage')}
+                className="py-3 px-4 cursor-pointer hover:text-white"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>Memory</span>
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('diskUsage')}
+                className="py-3 px-4 cursor-pointer hover:text-white"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>Disk</span>
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </th>
               <th className="py-3 px-4">Public IP</th>
               <th className="py-3 px-4 text-right">Actions</th>
             </tr>
@@ -331,7 +347,6 @@ export function AzureVMsTable({
               const cpuVal = vm.cpuUsage ?? (vm as any).cpuUtilization ?? null;
               const memVal = vm.memoryUsage ?? (vm as any).memoryUtilization ?? null;
               const diskVal = vm.diskUsage ?? (vm as any).diskUtilization ?? null;
-              const ipAddress = vm.publicIp && vm.publicIp !== '-' ? vm.publicIp : (vm.privateIp || '-');
 
               return (
                 <tr
@@ -339,203 +354,219 @@ export function AzureVMsTable({
                   onClick={() => router.push(`/dashboard/azure-vms/${vm.vmId}`)}
                   className="hover:bg-[#162238]/60 cursor-pointer transition-colors group"
                 >
-                  {/* 1. VM Name */}
-                  <td className="py-3.5 px-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-semibold text-white group-hover:text-blue-400 transition-colors">
-                        {vm.name}
-                      </span>
-                      {(vm as any).isSSHConnected ? (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-950/70 text-emerald-400 border border-emerald-500/40"
-                          title="SSH Telemetry Active &amp; Verified"
-                        >
-                          SSH ✓
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded bg-[#0089D6]/20 flex items-center justify-center text-[#0089D6] flex-shrink-0">
+                        <AzureVmIcon className="w-3 h-3" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-white group-hover:underline">
+                            {vm.name}
+                          </span>
+                          {(vm as any).isSSHConnected ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+                              SSH Verified
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenSSHModal(vm);
+                              }}
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 font-mono flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Connect SSH (PPK / PEM / Password) for in-guest CPU, RAM, Disk, Docker & K8s telemetry"
+                            >
+                              <KeyRound className="w-2.5 h-2.5" />
+                              <span>Connect SSH</span>
+                            </button>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono block">
+                          {vm.publicIp && vm.publicIp !== '-' ? vm.publicIp : vm.privateIp}
                         </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenSSHModal(vm);
-                          }}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-blue-950/70 hover:bg-blue-900/80 text-blue-400 border border-blue-500/40 transition-colors cursor-pointer"
-                          title="Connect SSH (PPK / PEM / Password)"
-                        >
-                          <KeyRound className="w-2.5 h-2.5" />
-                          <span>Connect SSH</span>
-                        </button>
-                      )}
+                      </div>
                     </div>
                   </td>
 
-                  {/* 2. Resource & Region */}
-                  <td className="py-3.5 px-4 whitespace-nowrap font-mono text-xs text-slate-400">
-                    <span className="text-slate-300 font-medium">{vm.resourceGroup || 'rg01'}</span>{' '}
-                    <span className="text-slate-400">({vm.region || 'centralindia'})</span>
+                  <td className="py-3 px-4 text-slate-400 font-mono">
+                    {vm.resourceGroup}
                   </td>
 
-                  {/* 3. Status */}
-                  <td className="py-3.5 px-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
+                  <td className="py-3 px-4 text-slate-400">{vm.region}</td>
+
+                  <td className="py-3 px-4 font-mono text-slate-300">
+                    {vm.vmSize}
+                  </td>
+
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-1.5">
                       <span
-                        className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                        className={`w-2 h-2 rounded-full ${
                           isRunning
-                            ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
-                            : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]'
+                            ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                            : 'bg-slate-500'
                         }`}
                       />
                       <span
-                        className={`font-semibold text-xs ${
-                          isRunning ? 'text-emerald-400' : 'text-slate-400'
-                        }`}
+                        className={isRunning ? 'text-emerald-400' : 'text-slate-400'}
                       >
-                        {isRunning ? 'Running' : vm.powerState || 'Stopped'}
+                        {isRunning ? 'Running' : vm.powerState}
                       </span>
                     </div>
                   </td>
 
-                  {/* 4. Resource Usage (Stacked CPU / Mem / Disk) */}
-                  <td className="py-3.5 px-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex flex-col gap-1 w-36 text-[10px] font-mono">
-                      {/* CPU */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-400 text-[10px] w-6">CPU</span>
-                        <div className="flex-1 h-1.5 bg-[#162238] rounded-full overflow-hidden">
+                  <td className="py-3 px-4">
+                    {cpuVal !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {cpuVal}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-cyan-400 rounded-full shadow-[0_0_6px_rgba(34,211,238,0.5)] transition-all duration-500"
-                            style={{ width: `${Math.min(100, Math.max(0, cpuVal || 0))}%` }}
+                            className={`h-full rounded-full ${getUsageColor(
+                              cpuVal
+                            )}`}
+                            style={{ width: `${Math.min(100, Math.max(0, cpuVal))}%` }}
                           />
                         </div>
-                        <span className="text-slate-200 font-semibold w-8 text-right">
-                          {cpuVal !== null ? `${cpuVal}%` : 'N/A'}
-                        </span>
                       </div>
-
-                      {/* Mem */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-400 text-[10px] w-6">Mem</span>
-                        <div className="flex-1 h-1.5 bg-[#162238] rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-cyan-400 rounded-full shadow-[0_0_6px_rgba(34,211,238,0.5)] transition-all duration-500"
-                            style={{ width: `${Math.min(100, Math.max(0, memVal || 0))}%` }}
-                          />
-                        </div>
-                        <span className="text-slate-200 font-semibold w-8 text-right">
-                          {memVal !== null ? `${memVal}%` : 'N/A'}
-                        </span>
-                      </div>
-
-                      {/* Disk */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-400 text-[10px] w-6">Disk</span>
-                        <div className="flex-1 h-1.5 bg-[#162238] rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-cyan-400 rounded-full shadow-[0_0_6px_rgba(34,211,238,0.5)] transition-all duration-500"
-                            style={{ width: `${Math.min(100, Math.max(0, diskVal || 0))}%` }}
-                          />
-                        </div>
-                        <span className="text-slate-200 font-semibold w-8 text-right">
-                          {diskVal !== null ? `${diskVal}%` : 'N/A'}
-                        </span>
-                      </div>
-                    </div>
+                    ) : (
+                      <span className="text-slate-500 text-xs italic">Unavailable</span>
+                    )}
                   </td>
 
-                  {/* 5. Public IP with Copy Icon */}
-                  <td className="py-3.5 px-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-slate-200 font-semibold text-xs">
-                        {ipAddress}
+                  <td className="py-3 px-4">
+                    {memVal !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {memVal}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-cyan-500"
+                            style={{ width: `${Math.min(100, Math.max(0, memVal))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800/80 text-slate-400 border border-slate-700/60"
+                        title="Guest OS memory requires Azure Monitor Agent (AMA) extension / Data Collection Rule"
+                      >
+                        N/A
                       </span>
-                      {ipAddress !== '-' && (
-                        <button
-                          type="button"
-                          onClick={(e) => handleCopyIp(ipAddress, e)}
-                          className="p-1 text-slate-400 hover:text-white transition-colors cursor-pointer rounded hover:bg-slate-800"
-                          title={copiedIp === ipAddress ? 'Copied!' : 'Copy IP Address'}
-                        >
-                          {copiedIp === ipAddress ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5 text-slate-400" />
-                          )}
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </td>
 
-                  {/* 6. Compact Icon Toolstrip Actions */}
-                  <td className="py-3.5 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                  <td className="py-3 px-4">
+                    {diskVal !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {diskVal}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-amber-500"
+                            style={{ width: `${Math.min(100, Math.max(0, diskVal))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800/80 text-slate-400 border border-slate-700/60"
+                        title="Guest OS disk space requires Azure Monitor Agent (AMA) extension / Data Collection Rule"
+                      >
+                        N/A
+                      </span>
+                    )}
+                  </td>
+
+                  <td className="py-3 px-4 font-mono text-emerald-400 whitespace-nowrap">
+                    {vm.publicIp || '-'}
+                  </td>
+
+                  <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
-                      {/* Button 1: >_ SSH in Vibrant Emerald */}
-                      <button
-                        type="button"
-                        onClick={() => handleOpenTerminal(vm)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-black bg-[#00FF9D] hover:bg-[#00E58D] text-[#0A1628] rounded-lg shadow-[0_0_14px_rgba(0,255,157,0.5)] transition-all cursor-pointer transform hover:scale-105 active:scale-95"
-                        title="Login into Server (Real Interactive SSH Terminal)"
-                      >
-                        <Terminal className="w-3.5 h-3.5 stroke-[2.5]" />
-                        <span>SSH</span>
-                      </button>
-
-                      {/* Button 2: Power (Stop / Start) in Deep Rose */}
-                      {isRunning ? (
-                        <button
-                          type="button"
-                          onClick={() => handlePowerAction(vm.vmId, 'stop')}
-                          disabled={powerActionLoadingId === vm.vmId}
-                          className="p-2 bg-[#3D1424] hover:bg-[#521B31] text-[#FF4D6D] border border-[#FF4D6D]/30 rounded-lg transition-all cursor-pointer transform hover:scale-105 active:scale-95 disabled:opacity-40"
-                          title="Stop / Deallocate Virtual Machine"
-                        >
-                          <Power
-                            className={`w-3.5 h-3.5 ${
-                              powerActionLoadingId === vm.vmId ? 'animate-spin' : ''
-                            }`}
-                          />
-                        </button>
-                      ) : (
+                      {/* 1. Real Azure Cloud Power Actions (Start & Stop) */}
+                      <div className="inline-flex rounded-lg border border-[#1E293B] bg-[#0D1526] p-0.5 shadow-sm shrink-0">
                         <button
                           type="button"
                           onClick={() => handlePowerAction(vm.vmId, 'start')}
-                          disabled={powerActionLoadingId === vm.vmId}
-                          className="p-2 bg-[#0D382B] hover:bg-[#134D3C] text-emerald-400 border border-emerald-500/30 rounded-lg transition-all cursor-pointer transform hover:scale-105 active:scale-95 disabled:opacity-40"
-                          title="Start Virtual Machine"
+                          disabled={isRunning || powerActionLoadingId === vm.vmId}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
+                            isRunning
+                              ? 'text-slate-500 cursor-not-allowed opacity-40'
+                              : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
+                          }`}
+                          title={isRunning ? 'Azure VM is already running' : 'Start VM in Azure'}
                         >
                           <Play
-                            className={`w-3.5 h-3.5 fill-current ${
+                            className={`w-3 h-3 fill-current ${
                               powerActionLoadingId === vm.vmId ? 'animate-spin' : ''
                             }`}
                           />
+                          <span>Start</span>
                         </button>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => handlePowerAction(vm.vmId, 'stop')}
+                          disabled={!isRunning || powerActionLoadingId === vm.vmId}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
+                            !isRunning
+                              ? 'text-slate-500 cursor-not-allowed opacity-40'
+                              : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
+                          }`}
+                          title={!isRunning ? 'Azure VM is currently stopped' : 'Stop / Deallocate VM in Azure'}
+                        >
+                          <Power
+                            className={`w-3 h-3 ${
+                              powerActionLoadingId === vm.vmId ? 'animate-spin' : ''
+                            }`}
+                          />
+                          <span>Stop</span>
+                        </button>
+                      </div>
 
-                      {/* Button 3: Key in Warm Amber */}
+                      {/* 2. Login button (on the LEFT side of the key icon) */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTerminal(vm)}
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-md transition-all shadow-sm shrink-0 cursor-pointer whitespace-nowrap"
+                        title="Login into Server (Real Interactive SSH Terminal)"
+                      >
+                        <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Login</span>
+                      </button>
+
+                      {/* 2. Key icon on the RIGHT: strictly for SSH Credentials configuration (ConnectSSHModal) */}
                       <button
                         type="button"
                         onClick={() => handleOpenSSHModal(vm)}
-                        className="p-2 bg-[#3D2C10] hover:bg-[#523B16] text-[#FFB703] border border-[#FFB703]/30 rounded-lg transition-all cursor-pointer transform hover:scale-105 active:scale-95"
-                        title="Configure SSH Credentials (PPK / PEM / Password)"
+                        className="p-1 text-slate-400 hover:text-amber-400 rounded hover:bg-[#18233C] transition-colors shrink-0 cursor-pointer"
+                        title="Configure / Reconfigure SSH Credentials"
                       >
                         <KeyRound className="w-3.5 h-3.5" />
                       </button>
-
-                      {/* Button 4: Eye in Deep Blue */}
                       <Link
                         href={`/dashboard/azure-vms/${vm.vmId}`}
-                        className="p-2 bg-[#0E294B] hover:bg-[#153B6C] text-[#38BDF8] border border-[#38BDF8]/30 rounded-lg transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center"
-                        title="View Virtual Machine Details"
+                        className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-[#0089D6] hover:text-white text-slate-300 rounded border border-[#1E293B] transition-colors"
                       >
-                        <Eye className="w-3.5 h-3.5" />
+                        View
                       </Link>
-
-                      {/* Button 5: Trash in Dark Charcoal */}
                       <button
-                        type="button"
+                        onClick={() => router.push(`/dashboard/azure-vms/${vm.vmId}?tab=metrics`)}
+                        className="p-1 text-slate-400 hover:text-cyan-400 rounded hover:bg-[#18233C]"
+                        title="View Metrics"
+                      >
+                        <TrendingUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
                         onClick={() => handleDeleteVM(vm.id || vm.vmId, vm.name)}
                         disabled={deletingId === (vm.id || vm.vmId)}
-                        className="p-2 bg-[#162032] hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 border border-[#1E293B] hover:border-rose-500/40 rounded-lg transition-all cursor-pointer transform hover:scale-105 active:scale-95 disabled:opacity-40"
-                        title="Remove Virtual Machine"
+                        className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+                        title="Remove VM"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

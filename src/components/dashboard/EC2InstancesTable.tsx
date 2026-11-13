@@ -10,9 +10,6 @@ import {
   TrendingUp,
   ArrowUpDown,
   ExternalLink,
-  Eye,
-  Copy,
-  Check,
   KeyRound,
   Terminal,
   Play,
@@ -63,15 +60,7 @@ export function EC2InstancesTable({
   const [powerFeedback, setPowerFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [copiedIp, setCopiedIp] = useState<string | null>(null);
   const pageSize = limit || 5;
-
-  const handleCopyIp = (ip: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(ip);
-    setCopiedIp(ip);
-    setTimeout(() => setCopiedIp(null), 2000);
-  };
 
   const handleDeleteEC2 = async (instanceId: string, name: string) => {
     if (!confirm(`Are you sure you want to remove EC2 instance "${name}" (${instanceId})?`)) return;
@@ -366,29 +355,64 @@ export function EC2InstancesTable({
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs text-slate-300 border-collapse">
           <thead>
-            <tr className="border-b border-[#1E293B] bg-[#0E1628]/60 text-slate-400 font-medium text-xs">
+            <tr className="border-b border-[#1E293B] bg-[#0E1628]/60 text-slate-400 font-medium">
               <th
-                onClick={() => handleSort('name')}
-                className="py-3.5 px-4 cursor-pointer hover:text-white"
+                onClick={() => handleSort('instanceId')}
+                className="py-3 px-4 cursor-pointer hover:text-white"
               >
                 <div className="flex items-center gap-1.5">
-                  <span>Instance Name</span>
+                  <span>Instance ID</span>
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
-              <th className="py-3.5 px-4">Resource &amp; Region</th>
+              <th
+                onClick={() => handleSort('name')}
+                className="py-3 px-4 cursor-pointer hover:text-white"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>Name</span>
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </th>
+              <th className="py-3 px-4">Region</th>
+              <th className="py-3 px-4">AZ</th>
               <th
                 onClick={() => handleSort('status')}
-                className="py-3.5 px-4 cursor-pointer hover:text-white"
+                className="py-3 px-4 cursor-pointer hover:text-white"
               >
                 <div className="flex items-center gap-1.5">
                   <span>Status</span>
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
-              <th className="py-3.5 px-4">Resource Usage</th>
-              <th className="py-3.5 px-4">Public IP</th>
-              <th className="py-3.5 px-4 text-right">Actions</th>
+              <th
+                onClick={() => handleSort('cpuUsage')}
+                className="py-3 px-4 cursor-pointer hover:text-white"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>CPU Usage</span>
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('memoryUsage')}
+                className="py-3 px-4 cursor-pointer hover:text-white"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>Memory</span>
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('diskUsage')}
+                className="py-3 px-4 cursor-pointer hover:text-white"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>Disk</span>
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </th>
+              <th className="py-3 px-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#1E293B]/60 font-medium">
@@ -425,26 +449,33 @@ export function EC2InstancesTable({
                 memVal !== null
               );
 
-              const ipAddress = inst.publicIp || inst.privateIp || '-';
-
               return (
                 <tr
                   key={inst.id}
                   onClick={() => router.push(`/dashboard/ec2/${inst.instanceId}`)}
                   className="hover:bg-[#162238]/60 cursor-pointer transition-colors group"
                 >
-                  {/* 1. Instance Name + SSH Pill */}
-                  <td className="py-3.5 px-4 whitespace-nowrap">
+                  {/* Instance ID */}
+                  <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-white text-sm group-hover:text-cyan-400 transition-colors">
-                        {inst.name || inst.instanceId}
+                      <div className="w-5 h-5 rounded bg-[#FF9900]/20 flex items-center justify-center text-[#FF9900] flex-shrink-0">
+                        <Ec2Icon className="w-3 h-3" />
+                      </div>
+                      <span className="font-mono text-blue-400 group-hover:underline">
+                        {inst.instanceId}
+                      </span>
+                    </div>
+                  </td>
+
+                  {/* Name */}
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-white">
+                        {inst.name}
                       </span>
                       {isSSH ? (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-950/70 text-emerald-400 border border-emerald-500/40"
-                          title="SSH Telemetry Active & Verified"
-                        >
-                          SSH ✓
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+                          SSH Verified
                         </span>
                       ) : (
                         <button
@@ -453,187 +484,200 @@ export function EC2InstancesTable({
                             e.stopPropagation();
                             handleOpenSSHModal(inst);
                           }}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-blue-950/70 hover:bg-blue-900/80 text-blue-400 border border-blue-500/40 transition-colors cursor-pointer"
-                          title="Connect SSH (PPK / PEM / Password)"
+                          className="text-[9px] px-1.5 py-0.5 rounded bg-[#FF9900]/15 hover:bg-[#FF9900]/25 text-[#FF9900] border border-[#FF9900]/30 font-mono flex items-center gap-1 transition-colors"
+                          title="Connect SSH (PPK / PEM / Password) for real in-guest telemetry"
                         >
                           <KeyRound className="w-2.5 h-2.5" />
                           <span>Connect SSH</span>
                         </button>
                       )}
                     </div>
-                    {inst.name && inst.name !== inst.instanceId && (
-                      <span className="text-[10px] font-mono text-slate-500 block">
-                        {inst.instanceId}
-                      </span>
-                    )}
                   </td>
 
-                  {/* 2. Resource & Region */}
-                  <td className="py-3.5 px-4 whitespace-nowrap font-mono text-xs text-slate-400">
-                    <span className="text-slate-300 font-medium">{inst.availabilityZone || 'az'}</span>{' '}
-                    <span className="text-slate-400">({inst.region})</span>
+                  {/* Region */}
+                  <td className="py-3 px-4 text-slate-400">{inst.region}</td>
+
+                  {/* AZ */}
+                  <td className="py-3 px-4 text-slate-400">
+                    {inst.availabilityZone}
                   </td>
 
-                  {/* 3. Status */}
-                  <td className="py-3.5 px-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
+                  {/* Status */}
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-1.5">
                       <span
-                        className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                        className={`w-2 h-2 rounded-full ${
                           isRunning
-                            ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
+                            ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
                             : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]'
                         }`}
                       />
                       <span
-                        className={`font-semibold text-xs ${
-                          isRunning ? 'text-emerald-400' : 'text-slate-400'
-                        }`}
+                        className={isRunning ? 'text-emerald-400 font-semibold' : 'text-slate-400 font-semibold'}
                       >
-                        {isRunning ? 'Running' : inst.status || 'Stopped'}
+                        {isRunning ? 'Running' : 'Stopped'}
                       </span>
                     </div>
                   </td>
 
-                  {/* 4. Resource Usage (Stacked CPU / Mem / Disk) */}
-                  <td className="py-3.5 px-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex flex-col gap-1 w-36 text-[10px] font-mono">
-                      {/* CPU */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-400 text-[10px] w-6">CPU</span>
-                        <div className="flex-1 h-1.5 bg-[#162238] rounded-full overflow-hidden">
+                  {/* CPU Usage */}
+                  <td className="py-3 px-4">
+                    {cpuVal !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {cpuVal}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-cyan-400 rounded-full shadow-[0_0_6px_rgba(34,211,238,0.5)] transition-all duration-500"
-                            style={{ width: `${Math.min(100, Math.max(0, cpuVal || 0))}%` }}
+                            className={`h-full rounded-full ${getUsageColor(
+                              cpuVal
+                            )}`}
+                            style={{ width: `${Math.min(100, Math.max(0, cpuVal))}%` }}
                           />
                         </div>
-                        <span className="text-slate-200 font-semibold w-8 text-right">
-                          {cpuVal !== null ? `${cpuVal}%` : 'N/A'}
-                        </span>
                       </div>
-
-                      {/* Mem */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-400 text-[10px] w-6">Mem</span>
-                        <div className="flex-1 h-1.5 bg-[#162238] rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-cyan-400 rounded-full shadow-[0_0_6px_rgba(34,211,238,0.5)] transition-all duration-500"
-                            style={{ width: `${Math.min(100, Math.max(0, memVal || 0))}%` }}
-                          />
-                        </div>
-                        <span className="text-slate-200 font-semibold w-8 text-right">
-                          {memVal !== null ? `${memVal}%` : 'N/A'}
-                        </span>
-                      </div>
-
-                      {/* Disk */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-slate-400 text-[10px] w-6">Disk</span>
-                        <div className="flex-1 h-1.5 bg-[#162238] rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-cyan-400 rounded-full shadow-[0_0_6px_rgba(34,211,238,0.5)] transition-all duration-500"
-                            style={{ width: `${Math.min(100, Math.max(0, diskVal || 0))}%` }}
-                          />
-                        </div>
-                        <span className="text-slate-200 font-semibold w-8 text-right">
-                          {diskVal !== null ? `${diskVal}%` : 'N/A'}
-                        </span>
-                      </div>
-                    </div>
+                    ) : (
+                      <span className="text-slate-500 text-xs italic">Unavailable</span>
+                    )}
                   </td>
 
-                  {/* 5. Public IP with Copy Icon */}
-                  <td className="py-3.5 px-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-slate-200 font-semibold text-xs">
-                        {ipAddress}
+                  {/* Memory */}
+                  <td className="py-3 px-4">
+                    {memVal !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {memVal}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-blue-500"
+                            style={{ width: `${Math.min(100, Math.max(0, memVal))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60"
+                        title="Guest OS memory requires Amazon CloudWatch Agent or direct SSH connection"
+                      >
+                        Unavailable
                       </span>
-                      {ipAddress !== '-' && (
-                        <button
-                          type="button"
-                          onClick={(e) => handleCopyIp(ipAddress, e)}
-                          className="p-1 text-slate-400 hover:text-white transition-colors cursor-pointer rounded hover:bg-slate-800"
-                          title={copiedIp === ipAddress ? 'Copied!' : 'Copy IP Address'}
-                        >
-                          {copiedIp === ipAddress ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5 text-slate-400" />
-                          )}
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </td>
 
-                  {/* 6. Compact Icon Toolstrip Actions */}
-                  <td className="py-3.5 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                  {/* Disk */}
+                  <td className="py-3 px-4">
+                    {diskVal !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-9 font-semibold text-slate-200">
+                          {diskVal}%
+                        </span>
+                        <div className="w-16 h-1.5 bg-[#1E293B] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-amber-500"
+                            style={{ width: `${Math.min(100, Math.max(0, diskVal))}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-slate-500 text-xs italic">Unavailable</span>
+                    )}
+                  </td>
+
+                  {/* Actions */}
+                  <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
-                      {/* Button 1: >_ SSH in Vibrant Emerald */}
-                      <button
-                        type="button"
-                        onClick={() => handleOpenTerminal(inst)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-black bg-[#00FF9D] hover:bg-[#00E58D] text-[#0A1628] rounded-lg shadow-[0_0_14px_rgba(0,255,157,0.5)] transition-all cursor-pointer transform hover:scale-105 active:scale-95"
-                        title="Login into Server (Real Interactive SSH Terminal)"
-                      >
-                        <Terminal className="w-3.5 h-3.5 stroke-[2.5]" />
-                        <span>SSH</span>
-                      </button>
-
-                      {/* Button 2: Power (Stop / Start) in Deep Rose */}
-                      {isRunning ? (
-                        <button
-                          type="button"
-                          onClick={() => handlePowerAction(inst.instanceId, 'stop')}
-                          disabled={powerActionLoadingId === inst.instanceId}
-                          className="p-2 bg-[#3D1424] hover:bg-[#521B31] text-[#FF4D6D] border border-[#FF4D6D]/30 rounded-lg transition-all cursor-pointer transform hover:scale-105 active:scale-95 disabled:opacity-40"
-                          title="Stop EC2 Instance in AWS"
-                        >
-                          <Power
-                            className={`w-3.5 h-3.5 ${
-                              powerActionLoadingId === inst.instanceId ? 'animate-spin' : ''
-                            }`}
-                          />
-                        </button>
-                      ) : (
+                      {/* 1. Real Cloud Power Actions (Start & Stop) */}
+                      <div className="inline-flex rounded-lg border border-[#1E293B] bg-[#0D1526] p-0.5 shadow-sm shrink-0">
                         <button
                           type="button"
                           onClick={() => handlePowerAction(inst.instanceId, 'start')}
-                          disabled={powerActionLoadingId === inst.instanceId}
-                          className="p-2 bg-[#0D382B] hover:bg-[#134D3C] text-emerald-400 border border-emerald-500/30 rounded-lg transition-all cursor-pointer transform hover:scale-105 active:scale-95 disabled:opacity-40"
-                          title="Start EC2 Instance in AWS"
+                          disabled={isRunning || powerActionLoadingId === inst.instanceId}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
+                            isRunning
+                              ? 'text-slate-500 cursor-not-allowed opacity-40'
+                              : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
+                          }`}
+                          title={isRunning ? 'EC2 instance is already running' : 'Start EC2 Instance in AWS'}
                         >
                           <Play
-                            className={`w-3.5 h-3.5 fill-current ${
+                            className={`w-3 h-3 fill-current ${
                               powerActionLoadingId === inst.instanceId ? 'animate-spin' : ''
                             }`}
                           />
+                          <span>Start</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePowerAction(inst.instanceId, 'stop')}
+                          disabled={!isRunning || powerActionLoadingId === inst.instanceId}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md transition-all ${
+                            !isRunning
+                              ? 'text-slate-500 cursor-not-allowed opacity-40'
+                              : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
+                          }`}
+                          title={!isRunning ? 'EC2 instance is currently stopped' : 'Stop EC2 Instance in AWS'}
+                        >
+                          <Power
+                            className={`w-3 h-3 ${
+                              powerActionLoadingId === inst.instanceId ? 'animate-spin' : ''
+                            }`}
+                          />
+                          <span>Stop</span>
+                        </button>
+                      </div>
+
+                      {isSSH ? (
+                        <>
+                          {/* Login: Real Interactive SSH Terminal */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTerminal(inst)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-md transition-all shadow-sm shrink-0 cursor-pointer whitespace-nowrap"
+                            title="Login into EC2 Instance (Interactive SSH Terminal)"
+                          >
+                            <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Login</span>
+                          </button>
+
+                          {/* Reconfigure SSH credentials */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSSHModal(inst)}
+                            className="p-1 text-slate-400 hover:text-amber-400 rounded hover:bg-[#18233C] transition-colors shrink-0 cursor-pointer"
+                            title="Reconfigure SSH Credentials"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSSHModal(inst)}
+                          className="px-2 py-1 text-xs font-semibold bg-[#FF9900] hover:bg-[#FF9900]/85 text-black font-bold rounded border border-[#FF9900]/60 transition-colors flex items-center gap-1 shadow-sm shrink-0"
+                          title="Connect SSH (PPK / PEM / Password) to view real CPU, RAM, Disk, Docker & K8s"
+                        >
+                          <KeyRound className="w-3 h-3 text-black" />
+                          <span>Connect SSH</span>
                         </button>
                       )}
-
-                      {/* Button 3: Key in Warm Amber */}
-                      <button
-                        type="button"
-                        onClick={() => handleOpenSSHModal(inst)}
-                        className="p-2 bg-[#3D2C10] hover:bg-[#523B16] text-[#FFB703] border border-[#FFB703]/30 rounded-lg transition-all cursor-pointer transform hover:scale-105 active:scale-95"
-                        title="Configure SSH Credentials (PPK / PEM / Password)"
-                      >
-                        <KeyRound className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Button 4: Eye in Deep Blue */}
                       <Link
                         href={`/dashboard/ec2/${inst.instanceId}`}
-                        className="p-2 bg-[#0E294B] hover:bg-[#153B6C] text-[#38BDF8] border border-[#38BDF8]/30 rounded-lg transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center"
-                        title="View EC2 Instance Details"
+                        className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-blue-600 hover:text-white text-slate-300 rounded border border-[#1E293B] transition-colors"
                       >
-                        <Eye className="w-3.5 h-3.5" />
+                        View
                       </Link>
-
-                      {/* Button 5: Trash in Dark Charcoal */}
                       <button
-                        type="button"
+                        onClick={() => router.push(`/dashboard/ec2/${inst.instanceId}?tab=metrics`)}
+                        className="p-1 text-slate-400 hover:text-blue-400 rounded hover:bg-[#18233C]"
+                        title="View Metrics"
+                      >
+                        <TrendingUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
                         onClick={() => handleDeleteEC2(inst.instanceId, inst.name)}
                         disabled={deletingId === inst.instanceId}
-                        className="p-2 bg-[#162032] hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 border border-[#1E293B] hover:border-rose-500/40 rounded-lg transition-all cursor-pointer transform hover:scale-105 active:scale-95 disabled:opacity-40"
+                        className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-500/10 transition-colors disabled:opacity-50"
                         title="Remove EC2 Instance"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -646,7 +690,7 @@ export function EC2InstancesTable({
 
             {isLoading && instances.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
+                <td colSpan={9} className="py-12 text-center text-slate-400 font-medium">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
                     <span>Synchronizing EC2 instances with AWS...</span>
@@ -657,7 +701,7 @@ export function EC2InstancesTable({
               paginatedInstances.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={9}
                     className="py-8 text-center text-slate-400 font-medium"
                   >
                     No EC2 instances found matching current filters.
