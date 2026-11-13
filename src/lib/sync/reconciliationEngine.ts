@@ -2,6 +2,7 @@ import connectToDatabase from '@/lib/mongodb';
 import CloudAccount from '@/models/CloudAccount';
 import CloudResource from '@/models/CloudResource';
 import Server from '@/models/Server';
+import NginxServer from '@/models/NginxServer';
 import AnsibleHost from '@/models/AnsibleHost';
 import AnsibleController from '@/models/AnsibleController';
 import { discoverAllAzureResources } from '@/lib/azure/resources';
@@ -162,6 +163,12 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
           provider: 'azure',
           name: { $nin: liveAzureNames },
           ipAddress: { $nin: liveAzureIps },
+        }).catch(() => null);
+
+        await NginxServer.deleteMany({
+          cloudProvider: 'azure',
+          name: { $nin: liveAzureNames },
+          host: { $nin: liveAzureIps },
         }).catch(() => null);
 
         prunedCount += pruneAzureRes.deletedCount || 0;
@@ -386,6 +393,16 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
             $and: [
               { name: { $nin: Array.from(regionLiveNames) } },
               { ipAddress: { $nin: Array.from(regionLiveIps) } },
+              ...(regionLiveIds.size > 0 ? [{ instanceId: { $nin: Array.from(regionLiveIds) } }] : []),
+            ],
+          }).catch(() => null);
+
+          await NginxServer.deleteMany({
+            cloudProvider: 'aws',
+            region: reg,
+            $and: [
+              { name: { $nin: Array.from(regionLiveNames) } },
+              { host: { $nin: Array.from(regionLiveIps) } },
               ...(regionLiveIds.size > 0 ? [{ instanceId: { $nin: Array.from(regionLiveIds) } }] : []),
             ],
           }).catch(() => null);

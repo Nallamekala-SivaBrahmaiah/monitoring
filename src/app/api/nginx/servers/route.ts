@@ -7,18 +7,31 @@ import AnsibleController from '@/models/AnsibleController';
 import AnsibleHost from '@/models/AnsibleHost';
 import { encryptSecret } from '@/lib/serverMonitoring/crypto';
 
+const KNOWN_FAKE_HOSTS = [
+  '44.199.21.34',
+  '4.240.109.230',
+  '20.235.243.1',
+  '52.63.226.201',
+  '3.27.205.136',
+  '3.107.183.202',
+  '3.106.216.16',
+  '32.236.173.166',
+  '3.106.129.147',
+  '4.194.249.85',
+];
+
 /**
  * Synchronize real cloud VMs, servers, controllers, and managed hosts into NginxServer
  */
 async function autoImportExistingServers() {
-  // 0. Aggressively purge any racha, nacha, rachana, 44.199.21.34, or on-premise records
+  // 0. Aggressively purge any known fake / terminated / demo records
   try {
     await Promise.all([
       NginxServer.deleteMany({
         $or: [
           { name: { $regex: /racha|nacha|rachana/i } },
           { host: { $regex: /racha|nacha|rachana/i } },
-          { host: '44.199.21.34' },
+          { host: { $in: KNOWN_FAKE_HOSTS } },
           { cloudProvider: { $regex: /premise/i } },
         ],
       } as any),
@@ -26,23 +39,23 @@ async function autoImportExistingServers() {
         $or: [
           { name: { $regex: /racha|nacha|rachana/i } },
           { host: { $regex: /racha|nacha|rachana/i } },
-          { host: '44.199.21.34' },
-          { ip: '44.199.21.34' },
+          { host: { $in: KNOWN_FAKE_HOSTS } },
+          { ip: { $in: KNOWN_FAKE_HOSTS } },
           { cloudProvider: { $regex: /premise/i } },
         ],
       } as any),
       AnsibleHost.deleteMany({
         $or: [
           { name: { $regex: /racha|nacha|rachana/i } },
-          { ip: '44.199.21.34' },
+          { ip: { $in: KNOWN_FAKE_HOSTS } },
           { provider: { $regex: /premise/i } },
         ],
       } as any),
       CloudResource.deleteMany({
         $or: [
           { name: { $regex: /racha|nacha|rachana/i } },
-          { publicIp: '44.199.21.34' },
-          { privateIp: '44.199.21.34' },
+          { publicIp: { $in: KNOWN_FAKE_HOSTS } },
+          { privateIp: { $in: KNOWN_FAKE_HOSTS } },
         ],
       } as any),
     ]);
@@ -367,15 +380,61 @@ async function autoImportExistingServers() {
     }
   }
 
-  // 5. Purge any legacy demo "rachana" records
+  // 5. Reconcile & Prune: Purge any NginxServer not backed by an active CloudResource or Server
   try {
-    await NginxServer.deleteMany({
-      $or: [
-        { name: { $regex: /rachana/i } },
-        { host: { $regex: /rachana/i } },
-      ],
-    });
-  } catch {}
+    const validCloudHosts = new Set<string>();
+    const validCloudInstanceIds = new Set<string>();
+    const validCloudNames = new Set<string>();
+
+    for (const cr of cloudResources as any[]) {
+      const pub = (cr.publicIp || '').trim().toLowerCase();
+      const priv = (cr.privateIp || '').trim().toLowerCase();
+      const inst = (cr.resourceId || '').trim().toLowerCase();
+      const nm = (cr.name || '').trim().toLowerCase();
+      if (pub && pub !== '-') validCloudHosts.add(pub);
+      if (priv && priv !== '-') validCloudHosts.add(priv);
+      if (inst) validCloudInstanceIds.add(inst);
+      if (nm) validCloudNames.add(nm);
+    }
+
+    for (const s of servers as any[]) {
+      const host = (s.host || s.ip || '').trim().toLowerCase();
+      const inst = (s.resourceId || s.cloudResourceId || '').trim().toLowerCase();
+      const nm = (s.name || '').trim().toLowerCase();
+      if (host && host !== '-') validCloudHosts.add(host);
+      if (inst) validCloudInstanceIds.add(inst);
+      if (nm) validCloudNames.add(nm);
+    }
+
+    const currentNginxList = await NginxServer.find().lean();
+    const staleIds: any[] = [];
+
+    for (const srv of currentNginxList as any[]) {
+      const h = (srv.host || '').trim().toLowerCase();
+      const inst = (srv.instanceId || '').trim().toLowerCase();
+      const nm = (srv.name || '').trim().toLowerCase();
+
+      const isKnownFake =
+        KNOWN_FAKE_HOSTS.includes(h) ||
+        /racha|nacha|rachana/i.test(nm) ||
+        /racha|nacha|rachana/i.test(h);
+
+      const existsInCloud =
+        (h && validCloudHosts.has(h)) ||
+        (inst && validCloudInstanceIds.has(inst)) ||
+        (nm && validCloudNames.has(nm));
+
+      if (isKnownFake || !existsInCloud) {
+        staleIds.push(srv._id);
+      }
+    }
+
+    if (staleIds.length > 0) {
+      await NginxServer.deleteMany({ _id: { $in: staleIds } });
+    }
+  } catch (err: any) {
+    console.warn('[NginxServersAPI] Pruning warning:', err?.message);
+  }
 }
 
 /**
@@ -392,7 +451,7 @@ export async function GET(req: NextRequest) {
     }
 
     const servers = await NginxServer.find({
-      host: { $ne: '44.199.21.34' },
+      host: { $nin: KNOWN_FAKE_HOSTS },
       name: { $not: /racha|nacha|rachana/i },
       cloudProvider: { $regex: /^(?!.*premise).*$/i },
     } as any)
@@ -403,7 +462,7 @@ export async function GET(req: NextRequest) {
     let finalServers = servers;
     if (finalServers.length === 0) {
       const fallbackServers = await Server.find({
-        host: { $ne: '44.199.21.34' },
+        host: { $nin: KNOWN_FAKE_HOSTS },
         name: { $not: /racha|nacha|rachana/i },
         cloudProvider: { $in: ['aws', 'azure'] },
       } as any).select('-encryptedAuthSecret -authSecretIv -authSecretTag').lean();
@@ -428,15 +487,43 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Strict filter to guarantee no on-premise, racha, nacha, or 44.199.21.34 is ever returned
+    // Strict filter to guarantee ONLY real active cloud servers are returned
+    const activeCloudResources = await CloudResource.find({
+      provider: { $in: ['aws', 'azure'] },
+      isDeleted: { $ne: true },
+      status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
+    }).lean();
+
+    const activeCloudHosts = new Set(
+      activeCloudResources.flatMap((cr: any) => [
+        (cr.publicIp || '').trim().toLowerCase(),
+        (cr.privateIp || '').trim().toLowerCase(),
+      ]).filter((ip: string) => ip && ip !== '-')
+    );
+    const activeCloudIds = new Set(
+      activeCloudResources.map((cr: any) => (cr.resourceId || '').trim().toLowerCase()).filter(Boolean)
+    );
+    const activeCloudNames = new Set(
+      activeCloudResources.map((cr: any) => (cr.name || '').trim().toLowerCase()).filter(Boolean)
+    );
+
     finalServers = finalServers.filter((s: any) => {
-      const host = (s.host || '').trim();
-      const name = (s.name || '').toLowerCase().trim();
+      const host = (s.host || '').trim().toLowerCase();
+      const inst = (s.instanceId || '').trim().toLowerCase();
+      const name = (s.name || '').trim().toLowerCase();
       const provider = (s.cloudProvider || '').toLowerCase().trim();
-      if (host === '44.199.21.34') return false;
+
+      if (KNOWN_FAKE_HOSTS.includes(host)) return false;
       if (provider === 'on-premise' || provider === 'on-premises' || provider === 'onpremise') return false;
       if (/racha|nacha|rachana/i.test(name) || /racha|nacha|rachana/i.test(host)) return false;
-      return true;
+
+      // Must be present in actual cloud resources
+      const isPresentInCloud =
+        (host && activeCloudHosts.has(host)) ||
+        (inst && activeCloudIds.has(inst)) ||
+        (name && activeCloudNames.has(name));
+
+      return isPresentInCloud;
     });
 
     return NextResponse.json({

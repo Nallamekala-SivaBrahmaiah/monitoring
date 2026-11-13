@@ -138,14 +138,46 @@ export default function NginxDashboardPage() {
       const dataServers = resServers && resServers.ok ? await resServers.json() : null;
       const registeredServers: any[] = dataServers?.servers || [];
 
+      const KNOWN_FAKE_HOSTS = new Set([
+        '44.199.21.34',
+        '4.240.109.230',
+        '20.235.243.1',
+        '52.63.226.201',
+        '3.27.205.136',
+        '3.107.183.202',
+        '3.106.216.16',
+        '32.236.173.166',
+        '3.106.129.147',
+        '4.194.249.85',
+      ]);
+
       if (resNginx.ok && dataNginx.servers) {
         const cleanServers = (dataNginx.servers as INginxServerData[])
-          .filter(
-            (s) =>
-              s.host !== '44.199.21.34' &&
-              !/racha|nacha|rachana/i.test(s.name || '') &&
-              !/premise/i.test(s.cloudProvider || '')
-          )
+          .filter((s) => {
+            const h = (s.host || '').trim().toLowerCase();
+            const nm = (s.name || '').toLowerCase();
+            if (KNOWN_FAKE_HOSTS.has(h)) return false;
+            if (/racha|nacha|rachana/i.test(nm)) return false;
+            if (/premise/i.test(s.cloudProvider || '')) return false;
+
+            if (registeredServers.length > 0) {
+              const matched = registeredServers.some((rs: any) => {
+                const rHost = (rs.host || rs.publicIp || '').trim().toLowerCase();
+                const rPriv = (rs.privateIp || '').trim().toLowerCase();
+                const rName = (rs.name || '').trim().toLowerCase();
+                const rId = (rs.cloudResourceId || rs.resourceId || '').trim().toLowerCase();
+                const instNorm = (s.instanceId || '').trim().toLowerCase();
+                return (
+                  (rHost && (rHost === h || rHost === s.privateIp?.toLowerCase())) ||
+                  (rPriv && rPriv === h) ||
+                  (instNorm && rId && instNorm === rId) ||
+                  (rName && rName === nm)
+                );
+              });
+              return matched;
+            }
+            return true;
+          })
           .map((s) => {
             const hostNorm = (s.host || '').trim().toLowerCase();
             const nameNorm = (s.name || '').trim().toLowerCase();
