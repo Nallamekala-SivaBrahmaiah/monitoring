@@ -1571,9 +1571,22 @@ export default function ServersPage() {
         isOpen={showSSHModal}
         onClose={() => setShowSSHModal(false)}
         target={sshTarget}
-        onSuccess={() => {
+        onSuccess={(savedData) => {
           fetchServers();
           showNotification('success', 'SSH Credentials Saved', 'Server credentials updated successfully.');
+          if (sshTarget) {
+            setTerminalTarget({
+              id: savedData?._id || sshTarget.id,
+              sshServerId: savedData?._id || sshTarget.id,
+              name: sshTarget.name,
+              host: sshTarget.host,
+              port: sshTarget.port || 22,
+              username: sshTarget.username,
+              cloudProvider: sshTarget.cloudProvider,
+              isSSHConnected: true,
+            });
+            setShowTerminalModal(true);
+          }
         }}
       />
     </div>

@@ -587,10 +587,23 @@ export function UnifiedServerTable({
             setSshTarget(null);
           }}
           target={sshTarget}
-          onSuccess={() => {
+          onSuccess={(savedData) => {
             showNotification('success', 'Connected', 'SSH credentials saved and verified.');
             onRefresh?.();
             triggerRefresh?.();
+            if (sshTarget) {
+              setTerminalTarget({
+                id: savedData?._id || sshTarget.id,
+                sshServerId: savedData?._id || sshTarget.id,
+                name: sshTarget.name,
+                host: sshTarget.host,
+                port: sshTarget.port || 22,
+                username: sshTarget.username,
+                cloudProvider: sshTarget.cloudProvider,
+                isSSHConnected: true,
+              });
+              setShowTerminalModal(true);
+            }
           }}
         />
       )}

@@ -47,6 +47,7 @@ import { NginxDirectPipeline } from '@/components/dashboard/nginx/NginxDirectPip
 import { AddNginxServerModal } from '@/components/dashboard/nginx/AddNginxServerModal';
 import { CreateReverseProxyModal } from '@/components/dashboard/nginx/CreateReverseProxyModal';
 import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
+import { ConnectSSHModal, ConnectSSHTarget } from '@/components/dashboard/ConnectSSHModal';
 import { INginxServerData } from '@/models/NginxServer';
 import { INginxDeploymentData } from '@/models/NginxDeployment';
 import { ReverseProxySite, GitRepoInfo, DiscoveredApp } from '@/lib/nginx/nginxEngine';
@@ -115,6 +116,8 @@ export default function NginxDashboardPage() {
   const [proxyTargetServer, setProxyTargetServer] = useState<INginxServerData | null>(null);
   const [sshModalOpen, setSshModalOpen] = useState(false);
   const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
+  const [sshTarget, setSshTarget] = useState<ConnectSSHTarget | null>(null);
+  const [showSSHModal, setShowSSHModal] = useState(false);
 
   // Feedback Toast
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -1637,7 +1640,49 @@ export default function NginxDashboardPage() {
         isOpen={sshModalOpen}
         onClose={() => setSshModalOpen(false)}
         target={terminalTarget}
+        onConfigureSSH={(tgt) => {
+          setSshModalOpen(false);
+          setSshTarget({
+            id: tgt.id || tgt.sshServerId || tgt.vmId,
+            name: tgt.name,
+            host: tgt.host && tgt.host !== '-' ? tgt.host : '',
+            port: tgt.port || 22,
+            username: tgt.username || (tgt.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
+            authMethod: 'password',
+            cloudProvider: (tgt.cloudProvider as any) || 'other',
+            region: tgt.region,
+          });
+          setShowSSHModal(true);
+        }}
       />
+
+      {showSSHModal && sshTarget && (
+        <ConnectSSHModal
+          isOpen={showSSHModal}
+          onClose={() => {
+            setShowSSHModal(false);
+            setSshTarget(null);
+          }}
+          target={sshTarget}
+          onSuccess={(savedData) => {
+            showToast('success', 'SSH Credentials Saved & Connected');
+            fetchServers();
+            if (sshTarget) {
+              setTerminalTarget({
+                id: savedData?._id || sshTarget.id,
+                sshServerId: savedData?._id || sshTarget.id,
+                name: sshTarget.name,
+                host: sshTarget.host,
+                port: sshTarget.port || 22,
+                username: sshTarget.username,
+                cloudProvider: sshTarget.cloudProvider,
+                isSSHConnected: true,
+              });
+              setSshModalOpen(true);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
