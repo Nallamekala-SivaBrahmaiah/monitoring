@@ -250,6 +250,8 @@ export function UnifiedServerTable({
       name: server.name,
       host: pub && pub !== '-' && pub !== 'N/A' ? pub : (server.host || ''),
       port: server.port || 22,
+      username: server.username || (server.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
+      authMethod: server.authMethod,
       cloudProvider: server.cloudProvider,
       region: server.region,
       cloudResourceId: instanceId,

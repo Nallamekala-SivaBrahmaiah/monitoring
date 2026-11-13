@@ -24,12 +24,28 @@ export interface ConnectSSHTarget {
   name: string;
   host: string;
   port?: number;
+  username?: string;
+  authMethod?: 'privateKey' | 'password';
   cloudProvider?: 'aws' | 'azure' | 'gcp' | 'on-premise' | 'other';
   region?: string;
   os?: string;
   cloudResourceId?: string;
   instanceId?: string;
   hasSavedKey?: boolean;
+}
+
+function formatServerId(rawId?: string): string {
+  if (!rawId) return '-';
+  if (rawId.startsWith('/subscriptions/')) {
+    const parts = rawId.split('/');
+    const vmIndex = parts.indexOf('virtualMachines');
+    const rgIndex = parts.indexOf('resourceGroups');
+    const vmName = vmIndex !== -1 && parts[vmIndex + 1] ? parts[vmIndex + 1] : '';
+    const rgName = rgIndex !== -1 && parts[rgIndex + 1] ? parts[rgIndex + 1] : '';
+    if (vmName && rgName) return `${rgName}/${vmName}`;
+    if (vmName) return vmName;
+  }
+  return rawId;
 }
 
 interface ConnectSSHModalProps {
@@ -69,16 +85,22 @@ export function ConnectSSHModal({
       setPort(target.port || 22);
       setHasSavedKey(Boolean(target.hasSavedKey));
 
-      // Intelligent default username based on provider
-      if (target.cloudProvider === 'azure') {
-        setUsername('azureuser');
+      // Intelligent default username based on provider or existing target
+      if (target.username) {
+        setUsername(target.username);
+      } else if (target.cloudProvider === 'azure') {
+        setUsername('siva');
       } else if (target.cloudProvider === 'aws') {
         setUsername('ubuntu');
       } else {
         setUsername('ubuntu');
       }
 
-      setAuthMethod('privateKey');
+      if (target.authMethod) {
+        setAuthMethod(target.authMethod);
+      } else {
+        setAuthMethod('privateKey');
+      }
       setAuthSecret('');
       setKeyFileName(null);
       setTestResult(null);
@@ -294,8 +316,11 @@ export function ConnectSSHModal({
               <Server className="w-4 h-4 text-slate-400" />
               <span className="font-semibold text-slate-200">{target.name}</span>
               {(target.instanceId || target.cloudResourceId) && (
-                <span className="font-mono text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
-                  {target.instanceId || target.cloudResourceId}
+                <span
+                  className="font-mono text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 max-w-[200px] truncate"
+                  title={target.instanceId || target.cloudResourceId}
+                >
+                  {formatServerId(target.instanceId || target.cloudResourceId)}
                 </span>
               )}
             </div>

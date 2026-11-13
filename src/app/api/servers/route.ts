@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import os from 'os';
+import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Server from '@/models/Server';
 import CloudResource from '@/models/CloudResource';
@@ -480,14 +481,25 @@ export async function POST(request: NextRequest) {
 
     // Check if updating an existing server
     let existing: any = null;
-    if (id) {
+    if (id && mongoose.isValidObjectId(id)) {
       existing = await Server.findById(id);
+    }
+    if (!existing && id) {
+      existing = await Server.findOne({
+        $or: [
+          { cloudResourceId: id },
+          { instanceId: id },
+          { resourceId: id },
+          { name: id },
+        ],
+      });
     }
     if (!existing && resolvedInstanceId) {
       existing = await Server.findOne({
         $or: [
           { cloudResourceId: resolvedInstanceId },
           { instanceId: resolvedInstanceId },
+          { resourceId: resolvedInstanceId },
           { name: resolvedInstanceId },
         ],
       });
@@ -495,11 +507,17 @@ export async function POST(request: NextRequest) {
     if (!existing && name) {
       existing = await Server.findOne({
         name: name.trim(),
-        ...(cloudProvider ? { cloudProvider } : {}),
+        ...(cloudProvider && cloudProvider !== 'other' ? { cloudProvider } : {}),
       });
     }
-    if (!existing) {
-      existing = await Server.findOne({ host: host.trim(), port: parsedPort });
+    if (!existing && host) {
+      existing = await Server.findOne({
+        $or: [
+          { host: host.trim() },
+          { publicIp: host.trim() },
+          { privateIp: host.trim() },
+        ],
+      });
     }
 
     let secretToUse = (authSecret || '').trim();
@@ -632,6 +650,9 @@ export async function POST(request: NextRequest) {
       if (resolvedInstanceId) {
         existing.cloudResourceId = resolvedInstanceId;
         existing.instanceId = resolvedInstanceId;
+      } else if (id && !mongoose.isValidObjectId(id)) {
+        existing.cloudResourceId = id;
+        existing.instanceId = id;
       }
       existing.cloudProvider = cloudProvider || existing.cloudProvider;
       existing.region = region || existing.region;
@@ -644,18 +665,22 @@ export async function POST(request: NextRequest) {
         existing.lastHeartbeatAt = new Date();
       }
       existing.lastError = initialError;
-      existing.hostFingerprint = initialSpecs.fingerprint || existing.hostFingerprint;
-      existing.os = initialSpecs.os;
-      existing.hardware = initialSpecs.hardware;
-      existing.metrics = initialSpecs.metrics;
-      existing.docker = {
-        ...initialSpecs.docker,
-        lastSyncedAt: new Date(),
-      };
-      existing.kubernetes = {
-        ...initialSpecs.kubernetes,
-        lastSyncedAt: new Date(),
-      };
+      if (initialSpecs?.fingerprint) existing.hostFingerprint = initialSpecs.fingerprint;
+      if (initialSpecs?.os) existing.os = initialSpecs.os;
+      if (initialSpecs?.hardware) existing.hardware = initialSpecs.hardware;
+      if (initialSpecs?.metrics) existing.metrics = initialSpecs.metrics;
+      if (initialSpecs?.docker) {
+        existing.docker = {
+          ...initialSpecs.docker,
+          lastSyncedAt: new Date(),
+        };
+      }
+      if (initialSpecs?.kubernetes) {
+        existing.kubernetes = {
+          ...initialSpecs.kubernetes,
+          lastSyncedAt: new Date(),
+        };
+      }
       await existing.save();
       serverDoc = existing;
     } else {
@@ -663,8 +688,8 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         host: host.trim(),
         publicIp: host.trim(),
-        cloudResourceId: resolvedInstanceId || undefined,
-        instanceId: resolvedInstanceId || undefined,
+        cloudResourceId: resolvedInstanceId || (id && !mongoose.isValidObjectId(id) ? id : undefined),
+        instanceId: resolvedInstanceId || (id && !mongoose.isValidObjectId(id) ? id : undefined),
         port: parsedPort,
         username: username.trim(),
         authMethod,
@@ -678,16 +703,16 @@ export async function POST(request: NextRequest) {
         lastConnectedAt: isInitialOnline ? new Date() : null,
         lastHeartbeatAt: isInitialOnline ? new Date() : null,
         lastError: initialError,
-        hostFingerprint: initialSpecs.fingerprint,
-        os: initialSpecs.os,
-        hardware: initialSpecs.hardware,
-        metrics: initialSpecs.metrics,
+        hostFingerprint: initialSpecs?.fingerprint || null,
+        os: initialSpecs?.os || { name: 'Linux', version: '', uptimeFormatted: 'Online' },
+        hardware: initialSpecs?.hardware || { cpuCores: 2, totalMemoryBytes: 4 * 1024 * 1024 * 1024 },
+        metrics: initialSpecs?.metrics || {},
         docker: {
-          ...initialSpecs.docker,
+          ...(initialSpecs?.docker || {}),
           lastSyncedAt: new Date(),
         },
         kubernetes: {
-          ...initialSpecs.kubernetes,
+          ...(initialSpecs?.kubernetes || {}),
           lastSyncedAt: new Date(),
         },
         agent: {
@@ -742,15 +767,15 @@ export async function POST(request: NextRequest) {
           resourceType: 'Server',
           status: isInitialOnline ? 'Running' : 'Stopped',
           metrics: {
-            cpuUtilization: initialSpecs.metrics.cpu.usagePercent,
-            memoryUtilization: initialSpecs.metrics.memory.usagePercent,
-            diskUtilization: initialSpecs.metrics.disks[0]?.usagePercent || 0,
-            networkIn: initialSpecs.metrics.network[0]?.bytesReceived || 0,
-            networkOut: initialSpecs.metrics.network[0]?.bytesSent || 0,
+            cpuUtilization: initialSpecs?.metrics?.cpu?.usagePercent || 0,
+            memoryUtilization: initialSpecs?.metrics?.memory?.usagePercent || 0,
+            diskUtilization: initialSpecs?.metrics?.disks?.[0]?.usagePercent || 0,
+            networkIn: initialSpecs?.metrics?.network?.[0]?.bytesReceived || 0,
+            networkOut: initialSpecs?.metrics?.network?.[0]?.bytesSent || 0,
           },
           tags: {
             ip: serverDoc.host,
-            os: `${initialSpecs.os.name} ${initialSpecs.os.version}`,
+            os: initialSpecs?.os ? `${initialSpecs.os.name} ${initialSpecs.os.version || ''}` : 'Linux',
             isSSHConnected: 'true',
           },
           isDeleted: false,
@@ -759,6 +784,62 @@ export async function POST(request: NextRequest) {
       },
       { upsert: true }
     );
+
+    // 6b. Mirror encrypted credentials to NginxServer for web terminal & Nginx workspace
+    try {
+      const NginxServer = (await import('@/models/NginxServer')).default;
+      await NginxServer.findOneAndUpdate(
+        { host: hostTrim },
+        {
+          $set: {
+            name: serverDoc.name,
+            host: hostTrim,
+            privateIp: serverDoc.privateIp || '',
+            region: serverDoc.region || '',
+            instanceId: serverDoc.instanceId || serverDoc.cloudResourceId || '',
+            cloudProvider: (serverDoc.cloudProvider || 'other').toLowerCase(),
+            connectionStatus: isInitialOnline ? 'Online' : 'Offline',
+            osName: initialSpecs?.os?.name || serverDoc.os?.name || 'Linux',
+            username: serverDoc.username,
+            port: serverDoc.port,
+            authMethod: serverDoc.authMethod,
+            encryptedAuthSecret: encrypted.encrypted,
+            authSecretIv: encrypted.iv,
+            authSecretTag: encrypted.tag,
+            lastConnectedAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
+    } catch (e: any) {
+      console.warn('[Server Reg] NginxServer sync note:', e.message);
+    }
+
+    // 6c. Mirror credentials to AnsibleHost
+    try {
+      const AnsibleHost = (await import('@/models/AnsibleHost')).default;
+      await AnsibleHost.updateMany(
+        {
+          $or: [
+            { ip: hostTrim },
+            { name: name.trim() },
+          ],
+        },
+        {
+          $set: {
+            encryptedAuthSecret: encrypted.encrypted,
+            authSecretIv: encrypted.iv,
+            authSecretTag: encrypted.tag,
+            username: serverDoc.username,
+            port: serverDoc.port,
+            authMethod: serverDoc.authMethod,
+            status: 'Connected',
+          },
+        }
+      );
+    } catch (e: any) {
+      console.warn('[Server Reg] AnsibleHost sync note:', e.message);
+    }
 
     // 7. Evaluate real-time alerts on newly registered server metrics
     if (initialSpecs?.metrics) {

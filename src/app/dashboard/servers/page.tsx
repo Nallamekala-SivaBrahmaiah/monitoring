@@ -173,6 +173,8 @@ export default function ServersPage() {
       name: server.name,
       host: (pubIp && pubIp !== 'N/A' && pubIp !== '-') ? pubIp : server.host,
       port: server.port || 22,
+      username: server.username || (server.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
+      authMethod: server.authMethod,
       cloudProvider: server.cloudProvider,
       region: server.region,
       cloudResourceId: instanceId,

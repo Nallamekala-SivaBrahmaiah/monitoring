@@ -41,11 +41,26 @@ export async function resolveServerCredentials(target: {
     serverDoc = await Server.findById(target.sshServerId).lean();
   }
 
+  // 1b. If sshServerId was passed but not an ObjectId, try finding by cloudResourceId or instanceId
+  if (!serverDoc && target.sshServerId) {
+    serverDoc = await Server.findOne({
+      $or: [
+        { cloudResourceId: target.sshServerId },
+        { instanceId: target.sshServerId },
+        { name: target.sshServerId },
+      ],
+    }).lean();
+  }
+
   // 2. Try by host IP
   const targetHost = normalize(target.host);
   if (!serverDoc && targetHost && targetHost !== '-') {
     serverDoc = await Server.findOne({
-      host: { $regex: new RegExp(`^${targetHost}$`, 'i') },
+      $or: [
+        { host: { $regex: new RegExp(`^${targetHost}$`, 'i') } },
+        { publicIp: { $regex: new RegExp(`^${targetHost}$`, 'i') } },
+        { privateIp: { $regex: new RegExp(`^${targetHost}$`, 'i') } },
+      ],
     }).lean();
   }
 
@@ -122,7 +137,60 @@ export async function resolveServerCredentials(target: {
   }
 
   if (!rawSecret) {
-    // Fallback: inherit credentials from Server or Controller monitoring
+    // Fallback 1: check NginxServer collection
+    try {
+      const NginxServer = (await import('@/models/NginxServer')).default;
+      const nginxSrv: any = await NginxServer.findOne({
+        $or: [
+          ...(serverDoc.host ? [{ host: serverDoc.host }] : []),
+          ...(serverDoc.name ? [{ name: serverDoc.name }] : []),
+          ...(serverDoc.cloudResourceId ? [{ instanceId: serverDoc.cloudResourceId }] : []),
+          ...(targetHost ? [{ host: targetHost }] : []),
+          ...(targetName ? [{ name: targetName }] : []),
+        ],
+        encryptedAuthSecret: { $exists: true, $ne: '' },
+      }).lean();
+
+      if (nginxSrv && nginxSrv.encryptedAuthSecret) {
+        rawSecret = decryptSecret({
+          encrypted: nginxSrv.encryptedAuthSecret,
+          iv: nginxSrv.authSecretIv || '',
+          tag: nginxSrv.authSecretTag || '',
+        });
+        if (nginxSrv.username && !serverDoc.username) serverDoc.username = nginxSrv.username;
+        if (nginxSrv.authMethod) serverDoc.authMethod = nginxSrv.authMethod;
+      }
+    } catch {}
+  }
+
+  if (!rawSecret) {
+    // Fallback 2: check AnsibleHost collection
+    try {
+      const AnsibleHost = (await import('@/models/AnsibleHost')).default;
+      const ansHost: any = await AnsibleHost.findOne({
+        $or: [
+          ...(serverDoc.host ? [{ ip: serverDoc.host }] : []),
+          ...(serverDoc.name ? [{ name: serverDoc.name }] : []),
+          ...(targetHost ? [{ ip: targetHost }] : []),
+          ...(targetName ? [{ name: targetName }] : []),
+        ],
+        encryptedAuthSecret: { $exists: true, $ne: '' },
+      }).lean();
+
+      if (ansHost && ansHost.encryptedAuthSecret) {
+        rawSecret = decryptSecret({
+          encrypted: ansHost.encryptedAuthSecret,
+          iv: ansHost.authSecretIv || '',
+          tag: ansHost.authSecretTag || '',
+        });
+        if (ansHost.username && !serverDoc.username) serverDoc.username = ansHost.username;
+        if (ansHost.authMethod) serverDoc.authMethod = ansHost.authMethod;
+      }
+    } catch {}
+  }
+
+  if (!rawSecret) {
+    // Fallback 3: inherit credentials from other Server records
     try {
       const orConditions: any[] = [
         { host: serverDoc.host },
@@ -144,6 +212,8 @@ export async function resolveServerCredentials(target: {
           iv: srv.authSecretIv || '',
           tag: srv.authSecretTag || '',
         });
+        if (srv.username && !serverDoc.username) serverDoc.username = srv.username;
+        if (srv.authMethod) serverDoc.authMethod = srv.authMethod;
       }
     } catch {}
   }

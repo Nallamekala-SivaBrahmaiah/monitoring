@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Server from '@/models/Server';
 import { decryptSecret } from '@/lib/serverMonitoring/crypto';
@@ -47,8 +48,17 @@ export async function POST(request: NextRequest) {
     // If authSecret not provided, look for existing saved credentials in database
     if (!secretToUse) {
       let serverDoc: any = null;
-      if (serverId) {
+      if (serverId && mongoose.isValidObjectId(serverId)) {
         serverDoc = await Server.findById(serverId);
+      }
+      if (!serverDoc && serverId) {
+        serverDoc = await Server.findOne({
+          $or: [
+            { cloudResourceId: serverId },
+            { instanceId: serverId },
+            { name: serverId },
+          ],
+        });
       }
       if (!serverDoc && instanceId) {
         serverDoc = await Server.findOne({
@@ -61,6 +71,9 @@ export async function POST(request: NextRequest) {
       }
       if (!serverDoc && name) {
         serverDoc = await Server.findOne({ name });
+      }
+      if (!serverDoc && hostStr) {
+        serverDoc = await Server.findOne({ host: hostStr });
       }
 
       if (serverDoc && serverDoc.encryptedAuthSecret) {
