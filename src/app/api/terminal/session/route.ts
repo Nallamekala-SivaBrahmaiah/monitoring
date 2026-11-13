@@ -38,8 +38,10 @@ export async function POST(request: NextRequest) {
     if (!creds) {
       return NextResponse.json(
         {
-          error: `No saved SSH credentials found for ${name || host || 'this VM'}. Please verify SSH credentials are configured in server settings.`,
+          error: `No saved SSH credentials found for ${name || host || 'this VM'}. Please enter credentials to login.`,
           unconfigured: true,
+          serverName: name,
+          host: host,
         },
         { status: 404 }
       );
@@ -67,9 +69,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: any) {
     console.error('Terminal session creation failed:', err);
+    const msg = err.message || 'Failed to establish SSH connection to target VM';
+    const isCredIssue = /secret|credential|key|password|auth|denied|no encrypted/i.test(msg);
     return NextResponse.json(
-      { error: err.message || 'Failed to establish SSH connection to target VM' },
-      { status: 500 }
+      {
+        error: msg,
+        unconfigured: isCredIssue,
+      },
+      { status: isCredIssue ? 404 : 500 }
     );
   }
 }

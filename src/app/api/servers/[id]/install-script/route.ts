@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Server from '@/models/Server';
 
@@ -16,7 +17,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
     await connectToDatabase();
     const { id } = await context.params;
 
-    const server = await Server.findById(id).select('name host environment agent');
+    let server: any = null;
+    if (mongoose.isValidObjectId(id)) {
+      server = await Server.findById(id).select('name host environment agent');
+    }
+    if (!server) {
+      server = await Server.findOne({
+        $or: [
+          { cloudResourceId: id },
+          { instanceId: id },
+          { resourceId: id },
+          { name: id },
+        ],
+      }).select('name host environment agent');
+    }
     if (!server) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 });
     }

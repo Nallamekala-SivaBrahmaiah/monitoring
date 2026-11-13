@@ -1550,6 +1550,20 @@ export default function ServersPage() {
         isOpen={showTerminalModal}
         onClose={() => setShowTerminalModal(false)}
         target={terminalTarget}
+        onConfigureSSH={(tgt) => {
+          setShowTerminalModal(false);
+          setSshTarget({
+            id: tgt.id || tgt.sshServerId || tgt.vmId,
+            name: tgt.name,
+            host: tgt.host && tgt.host !== '-' ? tgt.host : '',
+            port: tgt.port || 22,
+            username: tgt.username || (tgt.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
+            authMethod: 'password',
+            cloudProvider: (tgt.cloudProvider as any) || 'other',
+            region: tgt.region,
+          });
+          setShowSSHModal(true);
+        }}
       />
 
       {/* 5. SSH Credentials Configuration Modal (matching Second Image) */}

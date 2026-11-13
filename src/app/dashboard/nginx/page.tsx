@@ -370,7 +370,7 @@ export default function NginxDashboardPage() {
       name: srv.name,
       host: srv.host,
       port: srv.port || 22,
-      username: srv.username,
+      username: srv.username || (srv.cloudProvider === 'azure' || srv.host?.startsWith('4.') || srv.name?.toLowerCase().includes('ansible') || srv.name?.toLowerCase().includes('azure') ? 'siva' : 'ubuntu'),
       cloudProvider: srv.cloudProvider,
       region: srv.region,
     });

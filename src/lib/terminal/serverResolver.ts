@@ -234,7 +234,7 @@ export async function resolveServerCredentials(target: {
   }
 
   if (!rawSecret) {
-    throw new Error('No encrypted secret found for registered server: ' + serverDoc.name);
+    return null;
   }
 
   let finalSecret = rawSecret;

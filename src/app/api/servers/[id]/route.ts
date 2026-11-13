@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Server from '@/models/Server';
 import CloudResource from '@/models/CloudResource';
@@ -17,9 +18,24 @@ export async function GET(request: NextRequest, context: RouteContext) {
     await connectToDatabase();
     const { id } = await context.params;
 
-    const server = await Server.findById(id)
-      .select('-encryptedAuthSecret -authSecretIv -authSecretTag')
-      .lean();
+    let server: any = null;
+    if (mongoose.isValidObjectId(id)) {
+      server = await Server.findById(id)
+        .select('-encryptedAuthSecret -authSecretIv -authSecretTag')
+        .lean();
+    }
+    if (!server) {
+      server = await Server.findOne({
+        $or: [
+          { cloudResourceId: id },
+          { instanceId: id },
+          { resourceId: id },
+          { name: id },
+        ],
+      })
+        .select('-encryptedAuthSecret -authSecretIv -authSecretTag')
+        .lean();
+    }
 
     if (!server) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 });
@@ -50,19 +66,34 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     await connectToDatabase();
     const { id } = await context.params;
 
-    const server = await Server.findById(id);
+    let server: any = null;
+    if (mongoose.isValidObjectId(id)) {
+      server = await Server.findById(id);
+    }
+    if (!server) {
+      server = await Server.findOne({
+        $or: [
+          { cloudResourceId: id },
+          { instanceId: id },
+          { resourceId: id },
+          { name: id },
+        ],
+      });
+    }
+
     if (!server) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 });
     }
 
-    await Server.findByIdAndDelete(id);
+    await Server.deleteOne({ _id: server._id });
 
     // Cascade remove from CloudResource (srv-id and any matching cloud provider instance records)
     await CloudResource.deleteMany({
       $or: [
+        { resourceId: `srv-${server._id.toString()}` },
         { resourceId: `srv-${id}` },
-        { 'metadata.sshServerId': id },
-        { 'tags.sshServerId': id },
+        { 'metadata.sshServerId': server._id.toString() },
+        { 'tags.sshServerId': server._id.toString() },
         { name: server.name },
         { publicIp: server.host },
         { privateIp: server.host },

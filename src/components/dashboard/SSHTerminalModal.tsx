@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Eye, EyeOff, KeyRound, Lock, Loader2, AlertCircle, Upload } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
 
 export interface SSHTerminalTarget {
@@ -69,6 +70,47 @@ export function SSHTerminalModal({
   const [isUnconfigured, setIsUnconfigured] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(true);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
+
+  // Quick SSH Authentication Form State
+  const defaultUsername =
+    target?.username ||
+    (target?.cloudProvider === 'azure' ||
+    target?.host?.startsWith('4.') ||
+    target?.host?.startsWith('20.') ||
+    target?.name?.toLowerCase().includes('ansible') ||
+    target?.name?.toLowerCase().includes('azure')
+      ? 'siva'
+      : 'ubuntu');
+
+  const [quickUsername, setQuickUsername] = useState<string>(defaultUsername);
+  const [quickAuthMethod, setQuickAuthMethod] = useState<'password' | 'privateKey'>('password');
+  const [quickPassword, setQuickPassword] = useState<string>('');
+  const [quickPrivateKey, setQuickPrivateKey] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [isQuickSubmitting, setIsQuickSubmitting] = useState<boolean>(false);
+  const [quickLoginError, setQuickLoginError] = useState<string | null>(null);
+  const [quickKeyFileName, setQuickKeyFileName] = useState<string | null>(null);
+
+  // Reset/sync quick form when modal opens or target changes
+  useEffect(() => {
+    if (isOpen && target) {
+      const u =
+        target.username ||
+        (target.cloudProvider === 'azure' ||
+        target.host?.startsWith('4.') ||
+        target.host?.startsWith('20.') ||
+        target.name?.toLowerCase().includes('ansible') ||
+        target.name?.toLowerCase().includes('azure')
+          ? 'siva'
+          : 'ubuntu');
+      setQuickUsername(u);
+      setQuickAuthMethod('password');
+      setQuickPassword('');
+      setQuickPrivateKey('');
+      setQuickLoginError(null);
+      setQuickKeyFileName(null);
+    }
+  }, [isOpen, target]);
 
   const activeSessionIdRef = useRef<string | null>(null);
   const streamAbortControllerRef = useRef<AbortController | null>(null);
@@ -150,10 +192,21 @@ export function SSHTerminalModal({
         const data = await res.json();
 
         if (!res.ok || !data.success) {
-          if (data.unconfigured) {
+          const errText = data.error || 'Failed to establish SSH connection.';
+          const isCredRelated =
+            Boolean(data.unconfigured) ||
+            res.status === 404 ||
+            /secret|credential|key|password|unconfigured|no encrypted/i.test(errText);
+
+          if (isCredRelated) {
             setIsUnconfigured(true);
+            setErrorMessage(null);
+            setStatus('disconnected');
+            term.write(`\r\n\x1b[33m[PuTTY: Authentication required for ${targetVm.name}]\x1b[0m\r\n`);
+            return;
           }
-          throw new Error(data.error || 'Failed to establish SSH connection.');
+
+          throw new Error(errText);
         }
 
         const sessionId = data.sessionId;
@@ -221,13 +274,101 @@ export function SSHTerminalModal({
           }
         })();
       } catch (err: any) {
-        setStatus('error');
-        setErrorMessage(err.message || 'SSH connection failed.');
-        term.write(`\r\n\x1b[31mNetwork error: ${err.message || 'Connection failed'}\x1b[0m\r\n`);
+        const msg = err.message || 'SSH connection failed.';
+        const isCredError = /secret|credential|key|password|unconfigured|no encrypted/i.test(msg);
+        if (isCredError) {
+          setIsUnconfigured(true);
+          setErrorMessage(null);
+          setStatus('disconnected');
+          term.write(`\r\n\x1b[33m[PuTTY: Authentication required for ${targetVm.name}]\x1b[0m\r\n`);
+        } else {
+          setStatus('error');
+          setErrorMessage(msg);
+          term.write(`\r\n\x1b[31mNetwork error: ${msg}\x1b[0m\r\n`);
+        }
       }
     },
     []
   );
+
+  // Quick Inline SSH Authentication Submission
+  const handleQuickLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!target) return;
+
+    if (quickAuthMethod === 'password' && !quickPassword.trim()) {
+      setQuickLoginError('Please enter the SSH password for ' + (quickUsername || 'this server') + '.');
+      return;
+    }
+    if (quickAuthMethod === 'privateKey' && !quickPrivateKey.trim()) {
+      setQuickLoginError('Please enter or upload an SSH private key (.pem / .ppk).');
+      return;
+    }
+
+    try {
+      setIsQuickSubmitting(true);
+      setQuickLoginError(null);
+
+      const secret = quickAuthMethod === 'password' ? quickPassword.trim() : quickPrivateKey.trim();
+      const resolvedUser = quickUsername.trim() || defaultUsername;
+      const targetHost = target.host && target.host !== '-' ? target.host : '';
+      const resolvedProvider =
+        target.cloudProvider ||
+        (target.name?.toLowerCase().includes('azure') || target.host?.startsWith('4.') ? 'azure' : 'aws');
+
+      const payload = {
+        id: target.id || target.sshServerId || target.vmId,
+        instanceId: target.vmId || target.id,
+        name: target.name,
+        host: targetHost,
+        port: target.port || 22,
+        username: resolvedUser,
+        authMethod: quickAuthMethod,
+        authSecret: secret,
+        cloudProvider: resolvedProvider,
+        region: target.region || 'global',
+        tags: ['ssh-connected'],
+        allowOfflineSave: false,
+      };
+
+      const res = await fetch('/api/servers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error + (data.hint ? ` (Hint: ${data.hint})` : ''));
+      }
+
+      // Credentials successfully verified and saved in MongoDB!
+      target.isSSHConnected = true;
+      target.username = resolvedUser;
+      if (data._id) {
+        target.sshServerId = data._id;
+        target.id = data._id;
+      }
+
+      setIsUnconfigured(false);
+      setErrorMessage(null);
+      setQuickLoginError(null);
+
+      // Immediately connect terminal to live session
+      if (xtermInstanceRef.current) {
+        const cols = xtermInstanceRef.current.cols || 80;
+        const rows = xtermInstanceRef.current.rows || 24;
+        xtermInstanceRef.current.clear();
+        xtermInstanceRef.current.write(`\r\n\x1b[32m[Credentials verified & saved. Connecting to ${target.name}...]\x1b[0m\r\n`);
+        connectHttpStreaming(xtermInstanceRef.current, target, cols, rows);
+      }
+    } catch (err: any) {
+      setQuickLoginError(err.message || 'Authentication failed. Please verify credentials.');
+    } finally {
+      setIsQuickSubmitting(false);
+    }
+  };
 
   // Initialize terminal and attempt connection
   const initTerminal = useCallback(async () => {
@@ -582,6 +723,18 @@ export function SSHTerminalModal({
                     </div>
                   </div>
                   <div className="bg-[#252525] px-4 py-2 border-t border-[#3A3A3A] flex items-center justify-end gap-2">
+                    {/secret|credential|auth|password|key|denied|no encrypted/i.test(errorMessage) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setErrorMessage(null);
+                          setIsUnconfigured(true);
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white border border-blue-400 text-xs font-medium cursor-pointer transition-colors"
+                      >
+                        Enter Credentials
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={handleReconnect}
@@ -601,55 +754,217 @@ export function SSHTerminalModal({
               </div>
             )}
 
-            {/* PuTTY Unconfigured SSH Credentials Dialog */}
+            {/* PuTTY SSH Authentication Dialog */}
             {isUnconfigured && (
               <div
-                className="absolute inset-0 flex items-center justify-center bg-black/60 z-30 select-none p-4"
+                className="absolute inset-0 flex items-center justify-center bg-black/75 z-40 select-none p-4"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="bg-[#2D2D2D] border border-[#555555] shadow-2xl w-[440px] max-w-[95vw] text-slate-200 font-sans text-xs">
-                  <div className="bg-[#1F1F1F] px-3 py-1.5 border-b border-[#3A3A3A] flex items-center justify-between font-semibold text-slate-200">
-                    <span>PuTTY Configuration</span>
+                <div className="bg-[#1F1F1F] border border-[#444444] shadow-2xl w-[460px] max-w-[95vw] text-slate-200 font-sans text-xs rounded-none">
+                  {/* Dialog Title Bar */}
+                  <div className="bg-[#141414] px-3 py-2 border-b border-[#333333] flex items-center justify-between font-semibold text-slate-200 select-none">
+                    <div className="flex items-center gap-2">
+                      <PuttyIcon className="w-4 h-4 shrink-0" />
+                      <span className="font-mono text-xs text-white">PuTTY - SSH Authentication</span>
+                    </div>
                     <button
                       type="button"
                       onClick={handleClose}
-                      className="text-slate-400 hover:text-white px-1.5 cursor-pointer"
+                      className="text-slate-400 hover:text-white px-1.5 cursor-pointer font-bold"
+                      title="Close"
                     >
                       ✕
                     </button>
                   </div>
-                  <div className="p-4 flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-amber-600 flex items-center justify-center text-white font-bold text-base shrink-0">
-                      !
+
+                  {/* Target Host Details Banner */}
+                  <div className="px-4 pt-3.5 pb-2.5 border-b border-[#2C2C2C] bg-[#171717] flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-white font-mono">{target.name}</span>
+                      <span className="text-[#888888]">({target.host && target.host !== '-' ? target.host : 'Dynamic IP'})</span>
                     </div>
-                    <div className="text-slate-200 leading-relaxed pt-0.5">
-                      <p className="font-semibold text-sm text-white mb-1">No Saved SSH Credentials</p>
-                      <p className="text-slate-300">
-                        No saved SSH private key or password found for this server. Please configure credentials once to enable direct login.
-                      </p>
-                    </div>
+                    <span className="px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-400 border border-blue-800/60 font-mono text-[10px] uppercase font-bold tracking-wider">
+                      {target.cloudProvider || 'SSH Port 22'}
+                    </span>
                   </div>
-                  <div className="bg-[#252525] px-4 py-2 border-t border-[#3A3A3A] flex items-center justify-end gap-2">
-                    {onConfigureSSH && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleClose();
-                          onConfigureSSH(target);
-                        }}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white border border-blue-400 text-xs font-medium cursor-pointer transition-colors"
-                      >
-                        Configure SSH
-                      </button>
+
+                  {/* Auth Form */}
+                  <form onSubmit={handleQuickLogin} className="p-4 space-y-3.5">
+                    {/* Username */}
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        SSH Username <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={quickUsername}
+                        onChange={(e) => setQuickUsername(e.target.value)}
+                        placeholder="e.g. siva, ubuntu, root"
+                        className="w-full bg-[#121212] border border-[#3A3A3A] focus:border-blue-500 focus:outline-none px-2.5 py-1.5 text-xs text-white font-mono rounded-none"
+                      />
+                    </div>
+
+                    {/* Auth Method Selector */}
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1.5">
+                        Authentication Method
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuickAuthMethod('password');
+                            setQuickLoginError(null);
+                          }}
+                          className={`py-1.5 px-3 text-xs font-medium border flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                            quickAuthMethod === 'password'
+                              ? 'bg-blue-600/20 border-blue-500 text-blue-300 font-semibold'
+                              : 'bg-[#181818] border-[#333333] text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Password</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuickAuthMethod('privateKey');
+                            setQuickLoginError(null);
+                          }}
+                          className={`py-1.5 px-3 text-xs font-medium border flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                            quickAuthMethod === 'privateKey'
+                              ? 'bg-blue-600/20 border-blue-500 text-blue-300 font-semibold'
+                              : 'bg-[#181818] border-[#333333] text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          <span>Private Key (.pem / .ppk)</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Password Input */}
+                    {quickAuthMethod === 'password' && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-medium text-slate-300">
+                            SSH Password <span className="text-rose-400">*</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                          >
+                            {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            <span>{showPassword ? 'Hide' : 'Show'}</span>
+                          </button>
+                        </div>
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={quickPassword}
+                          onChange={(e) => {
+                            setQuickPassword(e.target.value);
+                            setQuickLoginError(null);
+                          }}
+                          autoFocus
+                          placeholder="Enter server password..."
+                          className="w-full bg-[#121212] border border-[#3A3A3A] focus:border-blue-500 focus:outline-none px-2.5 py-1.5 text-xs text-white font-mono rounded-none"
+                        />
+                      </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={handleClose}
-                      className="px-4 py-1 bg-[#3A3A3A] hover:bg-[#4A4A4A] text-white border border-[#555555] text-xs font-medium cursor-pointer transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+
+                    {/* Private Key Input */}
+                    {quickAuthMethod === 'privateKey' && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-medium text-slate-300">
+                            SSH Private Key (.pem or PuTTY .ppk) <span className="text-rose-400">*</span>
+                          </label>
+                          <label className="text-[10px] text-blue-400 hover:text-blue-300 cursor-pointer flex items-center gap-1">
+                            <Upload className="w-3 h-3" />
+                            <span>{quickKeyFileName || 'Upload File'}</span>
+                            <input
+                              type="file"
+                              accept=".pem,.ppk,.id_rsa,.key,text/plain"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  setQuickKeyFileName(file.name);
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => {
+                                    const text = ev.target?.result as string;
+                                    if (text) setQuickPrivateKey(text);
+                                  };
+                                  reader.readAsText(file);
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <textarea
+                          rows={4}
+                          value={quickPrivateKey}
+                          onChange={(e) => {
+                            setQuickPrivateKey(e.target.value);
+                            setQuickLoginError(null);
+                          }}
+                          placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...or paste PuTTY-User-Key-File-2..."
+                          className="w-full bg-[#121212] border border-[#3A3A3A] focus:border-blue-500 focus:outline-none p-2 text-[11px] text-white font-mono resize-none rounded-none"
+                        />
+                      </div>
+                    )}
+
+                    {/* Error Banner */}
+                    {quickLoginError && (
+                      <div className="p-2.5 bg-rose-950/60 border border-rose-800/80 text-rose-300 text-[11px] flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                        <span className="leading-snug break-words">{quickLoginError}</span>
+                      </div>
+                    )}
+
+                    {/* Bottom Action Buttons */}
+                    <div className="pt-2.5 border-t border-[#333333] flex items-center justify-between gap-2">
+                      <div>
+                        {onConfigureSSH && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleClose();
+                              onConfigureSSH(target);
+                            }}
+                            className="text-[11px] text-blue-400 hover:text-blue-300 hover:underline cursor-pointer"
+                          >
+                            SSH Settings →
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleClose}
+                          disabled={isQuickSubmitting}
+                          className="px-3 py-1.5 bg-[#2A2A2A] hover:bg-[#383838] text-slate-300 hover:text-white border border-[#444444] text-xs font-medium cursor-pointer transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isQuickSubmitting}
+                          className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white border border-blue-400 text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 shadow-lg"
+                        >
+                          {isQuickSubmitting ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Authenticating...</span>
+                            </>
+                          ) : (
+                            <span>Login to Server</span>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}

@@ -560,6 +560,21 @@ export function UnifiedServerTable({
             setTerminalTarget(null);
           }}
           target={terminalTarget}
+          onConfigureSSH={(tgt) => {
+            setShowTerminalModal(false);
+            setTerminalTarget(null);
+            setSshTarget({
+              id: tgt.id || tgt.sshServerId || tgt.vmId,
+              name: tgt.name,
+              host: tgt.host && tgt.host !== '-' ? tgt.host : '',
+              port: tgt.port || 22,
+              username: tgt.username || (tgt.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
+              authMethod: 'password',
+              cloudProvider: (tgt.cloudProvider as any) || 'other',
+              region: tgt.region,
+            });
+            setShowSSHModal(true);
+          }}
         />
       )}
 
