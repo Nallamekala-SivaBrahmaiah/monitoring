@@ -364,23 +364,10 @@ export function AzureVMsTable({
                           <span className="font-semibold text-white group-hover:underline">
                             {vm.name}
                           </span>
-                          {(vm as any).isSSHConnected ? (
+                          {(vm as any).isSSHConnected && (
                             <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
                               SSH Verified
                             </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenSSHModal(vm);
-                              }}
-                              className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 font-mono flex items-center gap-1 transition-colors cursor-pointer"
-                              title="Connect SSH (PPK / PEM / Password) for in-guest CPU, RAM, Disk, Docker & K8s telemetry"
-                            >
-                              <KeyRound className="w-2.5 h-2.5" />
-                              <span>Connect SSH</span>
-                            </button>
                           )}
                         </div>
                         <span className="text-[10px] text-slate-400 font-mono block">

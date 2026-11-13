@@ -473,23 +473,10 @@ export function EC2InstancesTable({
                       <span className="font-semibold text-white">
                         {inst.name}
                       </span>
-                      {isSSH ? (
+                      {isSSH && (
                         <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
                           SSH Verified
                         </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenSSHModal(inst);
-                          }}
-                          className="text-[9px] px-1.5 py-0.5 rounded bg-[#FF9900]/15 hover:bg-[#FF9900]/25 text-[#FF9900] border border-[#FF9900]/30 font-mono flex items-center gap-1 transition-colors"
-                          title="Connect SSH (PPK / PEM / Password) for real in-guest telemetry"
-                        >
-                          <KeyRound className="w-2.5 h-2.5" />
-                          <span>Connect SSH</span>
-                        </button>
                       )}
                     </div>
                   </td>
