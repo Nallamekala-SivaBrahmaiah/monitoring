@@ -15,7 +15,6 @@ import {
   HardDrive,
   Activity,
   FileKey,
-  ShieldCheck,
 } from 'lucide-react';
 import { DockerIcon, KubernetesIcon } from '@/components/icons/CloudIcons';
 
@@ -32,20 +31,6 @@ export interface ConnectSSHTarget {
   cloudResourceId?: string;
   instanceId?: string;
   hasSavedKey?: boolean;
-}
-
-function formatServerId(rawId?: string): string {
-  if (!rawId) return '-';
-  if (rawId.startsWith('/subscriptions/')) {
-    const parts = rawId.split('/');
-    const vmIndex = parts.indexOf('virtualMachines');
-    const rgIndex = parts.indexOf('resourceGroups');
-    const vmName = vmIndex !== -1 && parts[vmIndex + 1] ? parts[vmIndex + 1] : '';
-    const rgName = rgIndex !== -1 && parts[rgIndex + 1] ? parts[rgIndex + 1] : '';
-    if (vmName && rgName) return `${rgName}/${vmName}`;
-    if (vmName) return vmName;
-  }
-  return rawId;
 }
 
 interface ConnectSSHModalProps {
@@ -68,10 +53,6 @@ export function ConnectSSHModal({
   const [authMethod, setAuthMethod] = useState<'privateKey' | 'password'>('privateKey');
   const [authSecret, setAuthSecret] = useState('');
   const [keyFileName, setKeyFileName] = useState<string | null>(null);
-  const [hasSavedKey, setHasSavedKey] = useState(false);
-
-  const [isSyncingIp, setIsSyncingIp] = useState(false);
-  const [ipSyncMessage, setIpSyncMessage] = useState<string | null>(null);
 
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
@@ -83,7 +64,6 @@ export function ConnectSSHModal({
       setName(target.name || '');
       setHost(target.host && target.host !== '-' ? target.host : '');
       setPort(target.port || 22);
-      setHasSavedKey(Boolean(target.hasSavedKey));
 
       // Intelligent default username based on provider or existing target
       if (target.username) {
@@ -101,72 +81,11 @@ export function ConnectSSHModal({
       } else {
         setAuthMethod('privateKey');
       }
+
       setAuthSecret('');
       setKeyFileName(null);
       setTestResult(null);
       setSubmitError(null);
-      setIpSyncMessage(null);
-
-      // If target is AWS, immediately fetch the live real-time dynamic Public IP via DescribeInstances
-      const isAwsTarget =
-        target.cloudProvider?.toLowerCase() === 'aws' ||
-        Boolean(target.instanceId?.startsWith('i-')) ||
-        Boolean(target.cloudResourceId?.startsWith('i-')) ||
-        Boolean(target.name?.startsWith('i-'));
-
-      if (isAwsTarget) {
-        let isCancelled = false;
-        const syncDynamicIp = async () => {
-          try {
-            setIsSyncingIp(true);
-            setIpSyncMessage('Resolving live Public IP from AWS EC2 DescribeInstances...');
-            const res = await fetch('/api/aws/ec2/sync-ip', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                instanceId: target.instanceId || target.cloudResourceId || (target.name.startsWith('i-') ? target.name : undefined),
-                serverId: target.id,
-                name: target.name,
-                region: target.region,
-              }),
-            });
-            const data = await res.json();
-            if (!isCancelled && res.ok && data.success) {
-              if (data.publicIp) {
-                setHost(data.publicIp);
-                setIpSyncMessage(null);
-              } else if (!data.isRunning) {
-                setIpSyncMessage(`EC2 instance is currently ${data.state || 'stopped'} in AWS EC2.`);
-              } else {
-                setIpSyncMessage('Public IP Not Assigned in AWS EC2.');
-              }
-              if (data.hasSavedKey) {
-                setHasSavedKey(true);
-              }
-              if (data.username) {
-                setUsername(data.username);
-              }
-              if (data.port) {
-                setPort(data.port);
-              }
-              if (data.authMethod) {
-                setAuthMethod(data.authMethod);
-              }
-            } else if (!isCancelled && data.error) {
-              setIpSyncMessage(data.error);
-            }
-          } catch {
-            if (!isCancelled) setIpSyncMessage(null);
-          } finally {
-            if (!isCancelled) setIsSyncingIp(false);
-          }
-        };
-
-        syncDynamicIp();
-        return () => {
-          isCancelled = true;
-        };
-      }
     }
   }, [target]);
 
@@ -190,11 +109,7 @@ export function ConnectSSHModal({
   };
 
   const handleTestConnection = async () => {
-    if (!host) {
-      setSubmitError('Please provide server IP / host before testing.');
-      return;
-    }
-    if (!authSecret && !hasSavedKey) {
+    if (!host || !username || !authSecret) {
       setSubmitError('Please provide host IP, SSH username, and private key / password before testing.');
       return;
     }
@@ -212,7 +127,7 @@ export function ConnectSSHModal({
           port: Number(port) || 22,
           username: username.trim(),
           authMethod,
-          authSecret: authSecret.trim() || undefined,
+          authSecret: authSecret.trim(),
           serverId: target.id,
           instanceId: target.instanceId || target.cloudResourceId,
           name: target.name,
@@ -230,12 +145,8 @@ export function ConnectSSHModal({
 
   const handleConnectAndSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!host) {
-      setSubmitError('Please provide server IP / host.');
-      return;
-    }
-    if (!authSecret && !hasSavedKey) {
-      setSubmitError('Please provide SSH private key or password.');
+    if (!host || !username || !authSecret) {
+      setSubmitError('Please fill in all required fields (Host IP, SSH username, and key/password).');
       return;
     }
 
@@ -254,7 +165,7 @@ export function ConnectSSHModal({
           port: Number(port) || 22,
           username: username.trim(),
           authMethod,
-          authSecret: authSecret.trim() || undefined,
+          authSecret: authSecret.trim(),
           cloudProvider: target.cloudProvider || 'other',
           region: target.region || 'global',
           tags: ['ssh-connected', target.cloudProvider || 'vm'],
@@ -296,7 +207,7 @@ export function ConnectSSHModal({
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Direct SSH telemetry for <span className="text-white font-semibold">{target.name}</span> ({host || target.host})
+                Direct SSH telemetry for <span className="text-white font-semibold">{target.name}</span> ({target.host})
               </p>
             </div>
           </div>
@@ -311,58 +222,31 @@ export function ConnectSSHModal({
         {/* Modal Body */}
         <form onSubmit={handleConnectAndSave} className="p-6 space-y-4 flex-1">
           {/* Server Info Badge */}
-          <div className="bg-[#0B1120] border border-[#1E293B] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="bg-[#0B1120] border border-[#1E293B] rounded-xl p-3 flex items-center justify-between text-xs">
             <div className="flex items-center gap-2">
               <Server className="w-4 h-4 text-slate-400" />
               <span className="font-semibold text-slate-200">{target.name}</span>
-              {(target.instanceId || target.cloudResourceId) && (
-                <span
-                  className="font-mono text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 max-w-[200px] truncate"
-                  title={target.instanceId || target.cloudResourceId}
-                >
-                  {formatServerId(target.instanceId || target.cloudResourceId)}
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-3 text-slate-400 font-mono text-[11px]">
-              <span className="flex items-center gap-1.5">
-                <span>IP:</span>
-                <span className="text-emerald-400 font-bold">{host || 'Pending IP'}</span>
-                {isSyncingIp && <RefreshCw className="w-3 h-3 animate-spin text-blue-400" />}
-              </span>
+              <span>IP: {host || 'Pending IP'}</span>
               <span>•</span>
               <span>Region: {target.region || 'global'}</span>
             </div>
           </div>
 
-          {/* Dynamic IP Sync Message Banner */}
-          {ipSyncMessage && (
-            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-300 flex items-center gap-2">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-              <span>{ipSyncMessage}</span>
-            </div>
-          )}
-
           {/* Row: Host IP & Port */}
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-slate-300">
-                  Server IP / Host <span className="text-rose-400">*</span>
-                </label>
-                {isSyncingIp && (
-                  <span className="text-[10px] text-blue-400 flex items-center gap-1">
-                    <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Live AWS Sync
-                  </span>
-                )}
-              </div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Server IP / Host <span className="text-rose-400">*</span>
+              </label>
               <input
                 type="text"
                 required
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
-                placeholder="e.g. 13.210.209.229"
-                className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-emerald-400 font-bold placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
+                placeholder="e.g. 20.235.243.1"
+                className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
               />
             </div>
             <div>
@@ -390,7 +274,7 @@ export function ConnectSSHModal({
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="azureuser, ubuntu, ec2-user, root"
+                placeholder="siva, ubuntu, ec2-user, root"
                 className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
               />
             </div>
@@ -412,17 +296,10 @@ export function ConnectSSHModal({
           {/* Secret / Key Input */}
           <div>
             <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <label className="block text-xs font-semibold text-slate-300">
-                  {authMethod === 'privateKey' ? 'SSH Private Key (.pem or .ppk)' : 'SSH Password'}
-                  {!hasSavedKey && <span className="text-rose-400 ml-0.5">*</span>}
-                </label>
-                {hasSavedKey && (
-                  <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Saved Key Active
-                  </span>
-                )}
-              </div>
+              <label className="block text-xs font-semibold text-slate-300">
+                {authMethod === 'privateKey' ? 'SSH Private Key (.pem or .ppk)' : 'SSH Password'}{' '}
+                <span className="text-rose-400">*</span>
+              </label>
 
               {authMethod === 'privateKey' && (
                 <label className="cursor-pointer text-[11px] font-medium text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2.5 py-1 rounded-md border border-blue-500/30 transition-all flex items-center gap-1.5">
@@ -440,36 +317,28 @@ export function ConnectSSHModal({
 
             {authMethod === 'privateKey' ? (
               <textarea
-                required={!hasSavedKey}
+                required
                 rows={5}
                 value={authSecret}
                 onChange={(e) => setAuthSecret(e.target.value)}
-                placeholder={
-                  hasSavedKey
-                    ? 'Using existing saved PEM/PPK private key (encrypted with AES-256-GCM). Leave blank to keep existing key, or paste/upload a new key to update it.'
-                    : 'Paste OpenSSH PEM key (-----BEGIN RSA/OPENSSH PRIVATE KEY-----) or PuTTY PPK file content here...'
-                }
-                className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono leading-relaxed"
+                placeholder="Paste OpenSSH PEM key (-----BEGIN RSA/OPENSSH PRIVATE KEY-----) or PuTTY PPK file content here..."
+                className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono leading-relaxed"
               />
             ) : (
               <input
                 type="password"
-                required={!hasSavedKey}
+                required
                 value={authSecret}
                 onChange={(e) => setAuthSecret(e.target.value)}
-                placeholder={hasSavedKey ? '••••••••  (Using saved password. Enter new password to replace)' : 'Enter SSH password'}
+                placeholder="Enter SSH password"
                 className="w-full px-3 py-2 bg-[#0D1526] border border-[#1E293B] rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
               />
             )}
 
-            <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
+            <div className="text-[11px] text-slate-500 mt-1">
               <span className="flex items-center gap-1 text-slate-400">
                 <FileKey className="w-3 h-3 text-cyan-400" />
                 <span>Supports PuTTY .ppk and OpenSSH .pem keys</span>
-              </span>
-              <span className="flex items-center gap-1 text-emerald-400">
-                <Lock className="w-2.5 h-2.5" />
-                <span>Encrypted with AES-256-GCM</span>
               </span>
             </div>
           </div>
@@ -544,7 +413,7 @@ export function ConnectSSHModal({
           <div className="pt-2 flex items-center justify-between gap-3">
             <button
               type="button"
-              disabled={isTesting || isSubmitting || (!authSecret && !hasSavedKey) || !host}
+              disabled={isTesting || isSubmitting || !authSecret}
               onClick={handleTestConnection}
               className="px-3.5 py-2 rounded-lg bg-[#18233C] hover:bg-[#202E4E] text-slate-200 border border-[#1E293B] text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
             >
@@ -562,7 +431,7 @@ export function ConnectSSHModal({
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting || (!authSecret && !hasSavedKey) || !host}
+                disabled={isSubmitting || !authSecret}
                 className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 flex items-center gap-1.5 transition-all disabled:opacity-50"
               >
                 {isSubmitting ? (
