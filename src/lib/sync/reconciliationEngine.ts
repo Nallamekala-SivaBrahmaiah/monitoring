@@ -233,15 +233,14 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
               return false;
             });
 
-            // Preserve in-guest memory and disk if CloudWatch doesn't provide them
-            const finalMemory = matchingServer?.metrics?.memory?.usagePercent
-              ?? ((existingRes as any)?.metrics?.memoryUtilization ?? inst.metrics.memoryUtilization);
+            const isRunning = (inst.status || '').toLowerCase().includes('run');
 
-            const finalDisk = (matchingServer?.metrics?.disks?.find((d: any) => d.mount === '/') || matchingServer?.metrics?.disks?.[0])?.usagePercent
-              ?? ((existingRes as any)?.metrics?.diskUtilization ?? inst.metrics.diskUtilization);
-
-            const finalCpu = matchingServer?.metrics?.cpu?.usagePercent
-              ?? inst.metrics.cpuUtilization;
+            // For AWS EC2: Use actual CloudWatch and CWAgent metrics
+            const finalCpu = !isRunning ? null : inst.metrics.cpuUtilization;
+            const finalMemory = !isRunning ? null : inst.metrics.memoryUtilization;
+            const finalDisk = !isRunning ? null : inst.metrics.diskUtilization;
+            const finalNetIn = !isRunning ? null : inst.metrics.networkIn;
+            const finalNetOut = !isRunning ? null : inst.metrics.networkOut;
 
             const isSSH = Boolean(matchingServer || (existingRes as any)?.metadata?.isSSHConnected || (existingRes as any)?.tags?.isSSHConnected === 'true');
             const sshId = matchingServer?._id?.toString() || existingSshId;
@@ -264,10 +263,18 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
                     cpuUtilization: finalCpu,
                     memoryUtilization: finalMemory,
                     diskUtilization: finalDisk,
-                    networkIn: inst.metrics.networkIn,
-                    networkOut: inst.metrics.networkOut,
-                    lastUpdated: new Date(),
+                    networkIn: finalNetIn,
+                    networkOut: finalNetOut,
+                    networkInMB: inst.metrics.networkInMB,
+                    networkOutMB: inst.metrics.networkOutMB,
+                    cwAgentInstalled: inst.metrics.cwAgentInstalled || false,
+                    cwAgentStatus: inst.metrics.cwAgentStatus || 'Agent Not Installed',
+                    historicalMetrics: inst.metrics.historicalMetrics,
+                    lastUpdated: inst.metrics.lastUpdated || new Date(),
                   },
+                  metricSource: isRunning
+                    ? (inst.metrics.cwAgentInstalled ? 'AWS CloudWatch (CWAgent & AWS/EC2)' : 'AWS CloudWatch (AWS/EC2)')
+                    : 'Stopped (No Active Telemetry)',
                   metadata: {
                     ...((existingRes as any)?.metadata || {}),
                     availabilityZone: inst.availabilityZone,
@@ -290,7 +297,6 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
                   isDeleted: false,
                   deletedAt: null,
                   lastSyncAt: new Date(),
-                  metricSource: isSSH ? 'SSH In-Guest Telemetry (Verified)' : 'Amazon CloudWatch',
                 },
                 $setOnInsert: {
                   createdAt: new Date(),

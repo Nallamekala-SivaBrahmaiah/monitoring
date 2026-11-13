@@ -161,6 +161,20 @@ export async function GET(request: NextRequest) {
                       size: inst.instanceType,
                       privateIp: inst.privateIp,
                       publicIp: inst.publicIp,
+                      metrics: {
+                        cpuUtilization: inst.metrics.cpuUtilization,
+                        memoryUtilization: inst.metrics.memoryUtilization,
+                        diskUtilization: inst.metrics.diskUtilization,
+                        networkIn: inst.metrics.networkIn,
+                        networkOut: inst.metrics.networkOut,
+                        networkInMB: inst.metrics.networkInMB,
+                        networkOutMB: inst.metrics.networkOutMB,
+                        cwAgentInstalled: inst.metrics.cwAgentInstalled || false,
+                        cwAgentStatus: inst.metrics.cwAgentStatus || 'Agent Not Installed',
+                        historicalMetrics: inst.metrics.historicalMetrics,
+                        lastUpdated: inst.metrics.lastUpdated || new Date(),
+                      },
+                      metricSource: 'AWS CloudWatch',
                       isDeleted: false,
                       deletedAt: null,
                       lastSyncAt: new Date(),
@@ -170,6 +184,8 @@ export async function GET(request: NextRequest) {
                         subnetId: inst.subnetId,
                         launchTime: inst.launchTime,
                         rawState: inst.rawState,
+                        cwAgentInstalled: inst.metrics.cwAgentInstalled || false,
+                        cwAgentStatus: inst.metrics.cwAgentStatus || 'Agent Not Installed',
                       },
                       tags: {
                         availabilityZone: inst.availabilityZone,
@@ -286,52 +302,42 @@ export async function GET(request: NextRequest) {
     const payload = resources.map((r) => {
       const isRunning = (r.status || '').toLowerCase().includes('run');
 
-      const cpu = r.metrics.cpu !== undefined ? r.metrics.cpu : null;
-      const memory = r.metrics.memory !== undefined ? r.metrics.memory : null;
-      const disk = r.metrics.disk !== undefined ? r.metrics.disk : null;
+      // Stopped instances must NEVER show running metrics
+      const cpu = isRunning && r.metrics.cpu !== undefined ? r.metrics.cpu : null;
+      const memory = isRunning && r.metrics.memory !== undefined ? r.metrics.memory : null;
+      const disk = isRunning && r.metrics.disk !== undefined ? r.metrics.disk : null;
 
       const netInMB =
-        typeof r.metrics.networkIn === 'number'
-          ? Math.round(r.metrics.networkIn * 10) / 10
-          : 0;
+        isRunning && typeof r.metrics.networkIn === 'number'
+          ? Math.round((r.metrics.networkIn / (1024 * 1024)) * 100) / 100
+          : null;
       const netOutMB =
-        typeof r.metrics.networkOut === 'number'
-          ? Math.round(r.metrics.networkOut * 10) / 10
-          : 0;
+        isRunning && typeof r.metrics.networkOut === 'number'
+          ? Math.round((r.metrics.networkOut / (1024 * 1024)) * 100) / 100
+          : null;
 
       const vpcId = (r.tags as any)?.vpcId || (r as any).metadata?.vpcId || 'vpc-0a12b34c56d78e';
       const subnetId = (r.tags as any)?.subnetId || (r as any).metadata?.subnetId || 'subnet-09f8e7d6c5b4a';
       const az = (r.tags as any)?.availabilityZone || (r as any).metadata?.availabilityZone || `${r.region}a`;
 
-      // Pre-populate safe historical metrics for charts
-      const baseCpu = cpu !== null ? cpu : 1.5;
-      const baseMem = memory !== null ? memory : 34;
-      const historicalMetrics = {
-        cpu: [
-          { timestamp: '14:00', value: Math.max(0, Number((baseCpu - 0.5).toFixed(1))) },
-          { timestamp: '14:15', value: Math.max(0, Number((baseCpu + 0.3).toFixed(1))) },
-          { timestamp: '14:30', value: Math.max(0, Number((baseCpu - 0.2).toFixed(1))) },
-          { timestamp: '14:45', value: Number(baseCpu.toFixed(1)) },
-        ],
-        memory: [
-          { timestamp: '14:00', value: Math.max(0, Number((baseMem - 1.0).toFixed(1))) },
-          { timestamp: '14:15', value: Math.max(0, Number((baseMem + 0.5).toFixed(1))) },
-          { timestamp: '14:30', value: Math.max(0, Number((baseMem - 0.3).toFixed(1))) },
-          { timestamp: '14:45', value: Number(baseMem.toFixed(1)) },
-        ],
-        diskIo: [
-          { timestamp: '14:00', readMB: 1.2, writeMB: 3.4 },
-          { timestamp: '14:15', readMB: 2.1, writeMB: 4.8 },
-          { timestamp: '14:30', readMB: 1.6, writeMB: 3.9 },
-          { timestamp: '14:45', readMB: 2.0, writeMB: 4.2 },
-        ],
-        network: [
-          { timestamp: '14:00', inMB: netInMB, outMB: netOutMB },
-          { timestamp: '14:15', inMB: netInMB + 0.1, outMB: netOutMB + 0.2 },
-          { timestamp: '14:30', inMB: netInMB, outMB: netOutMB },
-          { timestamp: '14:45', inMB: netInMB + 0.1, outMB: netOutMB + 0.1 },
-        ],
-      };
+      // Real historical metrics from CloudWatch if present, otherwise empty (zero fake data)
+      const historicalMetrics = (r as any).historicalMetrics ||
+        (r as any).metadata?.historicalMetrics ||
+        (r.metrics as any)?.historicalMetrics || {
+          cpu: [],
+          memory: [],
+          disk: [],
+          network: [],
+        };
+
+      const cwAgentInstalled = Boolean(
+        (r as any).cwAgentInstalled ||
+        (r as any).metadata?.cwAgentInstalled ||
+        (r.metrics as any)?.cwAgentInstalled ||
+        memory !== null
+      );
+
+      const cwAgentStatus = cwAgentInstalled ? 'Installed & Active' : 'Agent Not Installed';
 
       return {
         id: r.id,
@@ -356,26 +362,29 @@ export async function GET(request: NextRequest) {
         // In-Guest / Cloud Telemetry
         cpuUsage: cpu,
         cpuUtilization: cpu,
-        cpuStatus: cpu !== null ? 'Available' : 'Unavailable',
+        cpuStatus: isRunning ? (cpu !== null ? 'Available' : 'Unavailable') : 'Stopped',
 
         memoryUsage: memory,
         memoryUtilization: memory,
-        memoryStatus: memory !== null ? 'Available' : 'Unavailable',
+        memoryStatus: memory !== null ? 'Available' : 'Agent Not Installed',
         memoryExplanation:
           memory === null
-            ? 'Guest memory requires Amazon CloudWatch Agent or direct SSH connection'
+            ? 'Guest memory requires Amazon CloudWatch Agent (CWAgent) publishing mem_used_percent'
             : undefined,
 
         diskUsage: disk,
         diskUtilization: disk,
-        diskStatus: disk !== null ? 'Available' : 'Unavailable',
+        diskStatus: disk !== null ? 'Available' : 'Agent Not Installed',
 
-        networkIn: r.metrics.networkIn,
-        networkOut: r.metrics.networkOut,
+        networkIn: isRunning ? r.metrics.networkIn : null,
+        networkOut: isRunning ? r.metrics.networkOut : null,
         networkInMB: netInMB,
         networkOutMB: netOutMB,
 
-        // Safe historical metrics for detail charts
+        cwAgentInstalled,
+        cwAgentStatus,
+
+        // Real historical metrics for detail charts
         historicalMetrics,
 
         // SSH Connection & Verified Status
@@ -383,11 +392,9 @@ export async function GET(request: NextRequest) {
         sshServerId: r.sshServerId,
         sshStatus: r.sshStatus,
 
-        metricSource:
-          r.metrics.metricSource ||
-          (r.isSSHConnected
-            ? 'SSH In-Guest Telemetry (Verified)'
-            : 'Amazon CloudWatch (AWS/EC2)'),
+        metricSource: isRunning
+          ? (cwAgentInstalled ? 'AWS CloudWatch (CWAgent & AWS/EC2)' : 'AWS CloudWatch (AWS/EC2)')
+          : 'Stopped (No Active Telemetry)',
         metricTimestamp: r.lastSyncedAt
           ? new Date(r.lastSyncedAt).toISOString()
           : new Date().toISOString(),

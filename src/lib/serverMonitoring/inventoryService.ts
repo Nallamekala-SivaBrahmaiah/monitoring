@@ -201,22 +201,46 @@ export async function getUnifiedServerInventory(filter?: {
         lastSyncedAt: matchingServer.lastConnectedAt || cr.lastSyncedAt,
 
         metrics: {
-          cpu: liveMetrics ? liveMetrics.cpuPercent : (matchingServer.metrics?.cpu?.usagePercent ?? (cr.metrics?.cpuUtilization ?? null)),
-          memory: liveMetrics ? liveMetrics.memoryPercent : (matchingServer.metrics?.memory?.usagePercent ?? null),
-          disk: liveMetrics
+          cpu: !isRunning
+            ? null
+            : cr.provider === 'aws'
+            ? (cr.metrics?.cpuUtilization ?? null)
+            : (liveMetrics ? liveMetrics.cpuPercent : (matchingServer.metrics?.cpu?.usagePercent ?? (cr.metrics?.cpuUtilization ?? null))),
+          memory: !isRunning
+            ? null
+            : cr.provider === 'aws'
+            ? (cr.metrics?.memoryUtilization ?? null)
+            : (liveMetrics ? liveMetrics.memoryPercent : (matchingServer.metrics?.memory?.usagePercent ?? null)),
+          disk: !isRunning
+            ? null
+            : cr.provider === 'aws'
+            ? (cr.metrics?.diskUtilization ?? null)
+            : (liveMetrics
             ? liveMetrics.diskPercent
             : ((matchingServer.metrics?.disks?.find((d: any) => d.mount === '/') ||
                 matchingServer.metrics?.disks?.[0])?.usagePercent ??
-              (cr.metrics?.diskUtilization ?? null)),
-          networkIn: matchingServer.metrics?.network?.[0]?.bytesReceived
+              (cr.metrics?.diskUtilization ?? null))),
+          networkIn: !isRunning
+            ? null
+            : cr.provider === 'aws'
+            ? (cr.metrics?.networkIn ?? null)
+            : (matchingServer.metrics?.network?.[0]?.bytesReceived
             ? Math.round((matchingServer.metrics.network[0].bytesReceived / (1024 * 1024)) * 10) / 10
-            : (cr.metrics?.networkIn ?? null),
-          networkOut: matchingServer.metrics?.network?.[0]?.bytesSent
+            : (cr.metrics?.networkIn ?? null)),
+          networkOut: !isRunning
+            ? null
+            : cr.provider === 'aws'
+            ? (cr.metrics?.networkOut ?? null)
+            : (matchingServer.metrics?.network?.[0]?.bytesSent
             ? Math.round((matchingServer.metrics.network[0].bytesSent / (1024 * 1024)) * 10) / 10
-            : (cr.metrics?.networkOut ?? null),
-          metricSource: liveMetrics
+            : (cr.metrics?.networkOut ?? null)),
+          metricSource: !isRunning
+            ? 'Stopped (No Active Telemetry)'
+            : cr.provider === 'aws'
+            ? (cr.metrics?.memoryUtilization !== null ? 'AWS CloudWatch (CWAgent & AWS/EC2)' : 'AWS CloudWatch (AWS/EC2)')
+            : (liveMetrics
             ? 'Live Guest OS Kernel Counters (/proc/stat, /proc/meminfo, statfs)'
-            : 'SSH Agent / In-Guest Telemetry (Verified Mapping)',
+            : 'SSH Agent / In-Guest Telemetry (Verified Mapping)'),
         },
 
         docker: {
@@ -278,16 +302,18 @@ export async function getUnifiedServerInventory(filter?: {
         lastSyncedAt: cr.lastSyncedAt,
 
         metrics: {
-          cpu: liveMetrics ? liveMetrics.cpuPercent : (cr.metrics?.cpuUtilization ?? null),
-          memory: liveMetrics ? liveMetrics.memoryPercent : (cr.metrics?.memoryUtilization ?? null),
-          disk: liveMetrics ? liveMetrics.diskPercent : (cr.metrics?.diskUtilization ?? null),
-          networkIn: cr.metrics?.networkIn ?? null,
-          networkOut: cr.metrics?.networkOut ?? null,
-          metricSource: liveMetrics
+          cpu: !isRunning ? null : (liveMetrics ? liveMetrics.cpuPercent : (cr.metrics?.cpuUtilization ?? null)),
+          memory: !isRunning ? null : (liveMetrics ? liveMetrics.memoryPercent : (cr.metrics?.memoryUtilization ?? null)),
+          disk: !isRunning ? null : (liveMetrics ? liveMetrics.diskPercent : (cr.metrics?.diskUtilization ?? null)),
+          networkIn: !isRunning ? null : (cr.metrics?.networkIn ?? null),
+          networkOut: !isRunning ? null : (cr.metrics?.networkOut ?? null),
+          metricSource: !isRunning
+            ? 'Stopped (No Active Telemetry)'
+            : (liveMetrics
             ? 'Live Guest OS Kernel Counters (/proc/stat, /proc/meminfo, statfs)'
             : (cr.metrics?.memoryUtilization !== null && cr.metrics?.memoryUtilization !== undefined
             ? 'In-Guest Telemetry'
-            : (cr.provider === 'azure' ? 'Azure Monitor (Microsoft.Insights Platform Only)' : 'AWS CloudWatch Platform Only')),
+            : (cr.provider === 'azure' ? 'Azure Monitor (Microsoft.Insights Platform Only)' : 'AWS CloudWatch (AWS/EC2)'))),
         },
 
         docker: {

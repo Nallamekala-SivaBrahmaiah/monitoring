@@ -182,17 +182,21 @@ export interface EC2Instance {
   region: string;
   availabilityZone: string;
   status: 'Running' | 'Stopped' | 'Terminated' | 'Pending';
-  cpuUsage: number; // Percentage 0-100
-  memoryUsage: number; // Percentage 0-100
-  diskUsage: number; // Percentage 0-100
-  networkInMB: number; // MB/s
-  networkOutMB: number; // MB/s
+  cpuUsage: number | null; // Percentage 0-100 or null if stopped/unavailable
+  memoryUsage: number | null; // Percentage 0-100 or null if CWAgent not installed
+  diskUsage: number | null; // Percentage 0-100 or null if CWAgent not installed
+  networkInMB: number; // MB
+  networkOutMB: number; // MB
   uptime: string;
   instanceType: string;
   privateIp: string;
   publicIp: string;
   launchTime: string;
   os: string;
+  cwAgentInstalled?: boolean;
+  cwAgentStatus?: string;
+  metricSource?: string;
+  lastMetricTimestamp?: string;
   isSSHConnected?: boolean;
   sshServerId?: string;
   sshStatus?: string;
