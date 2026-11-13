@@ -112,28 +112,57 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Determine current power state
+    // Resolve canonical resource identity from CloudResource
+    let canonicalResourceId = resourceId.trim();
+    let canonicalRegion = region;
+    let canonicalProvider: 'aws' | 'azure' = provider === 'aws' ? 'aws' : 'azure';
+    let canonicalServerName = serverName.trim();
     let currentState: 'Running' | 'Stopped' | 'Unknown' = 'Unknown';
+
     try {
       const cr = await CloudResource.findOne({
         $or: [
-          { resourceId },
-          { name: resourceId },
-          { name: serverName },
+          { resourceId: canonicalResourceId },
+          { name: canonicalResourceId },
+          { name: canonicalServerName },
         ],
       }).lean();
 
-      if (cr && cr.status) {
-        currentState = cr.status === 'Running' ? 'Running' : 'Stopped';
+      if (cr) {
+        canonicalResourceId = cr.resourceId || canonicalResourceId;
+        canonicalRegion = cr.region || canonicalRegion;
+        canonicalProvider = cr.provider === 'aws' ? 'aws' : 'azure';
+        if (cr.name) canonicalServerName = cr.name;
+
+        const isRun =
+          (cr.status || '').toLowerCase().includes('run') ||
+          ((cr as any).metadata?.powerState || '').toLowerCase().includes('run');
+        currentState = isRun ? 'Running' : 'Stopped';
       }
     } catch {}
 
+    // Deduplication check: prevent duplicate active schedule for the same resource
+    const existingSched = await ServerSchedule.findOne({
+      provider: canonicalProvider,
+      resourceId: canonicalResourceId,
+    });
+
+    if (existingSched) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `An automated schedule already exists for "${canonicalServerName}" (${canonicalResourceId}). Please edit the existing schedule instead.`,
+        },
+        { status: 409 }
+      );
+    }
+
     const newSchedule = new ServerSchedule({
       name: name.trim(),
-      provider,
-      resourceId: resourceId.trim(),
-      serverName: serverName.trim(),
-      region,
+      provider: canonicalProvider,
+      resourceId: canonicalResourceId,
+      serverName: canonicalServerName,
+      region: canonicalRegion,
       startTime,
       stopTime,
       timezone,

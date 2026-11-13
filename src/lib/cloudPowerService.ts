@@ -466,7 +466,38 @@ export async function executeUnifiedPowerAction(
     });
   }
 
-  // 2. Check if target is a Registered Server by MongoDB _id, host, or name
+  // 2. Check if target is an Azure Resource ID directly (/subscriptions/...)
+  if (/^\/?subscriptions\//i.test(cleanTarget)) {
+    const subMatch = cleanTarget.match(/\/subscriptions\/([^\/]+)/i);
+    const rgMatch = cleanTarget.match(/\/resourcegroups\/([^\/]+)/i);
+    const vmMatch = cleanTarget.match(/\/virtualmachines\/([^\/]+)/i);
+
+    const vmName = vmMatch ? vmMatch[1] : cleanTarget.split('/').pop() || '';
+    let resourceGroup = rgMatch ? rgMatch[1] : undefined;
+    const subscriptionId = subMatch ? subMatch[1] : undefined;
+
+    // Look up CloudResource to confirm or retrieve accurate resourceGroup & subscriptionId
+    const cr = await CloudResource.findOne({
+      provider: 'azure',
+      $or: [
+        { resourceId: new RegExp(cleanTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+        { name: vmName },
+      ],
+    }).lean();
+
+    if (cr?.resourceGroup && (!resourceGroup || resourceGroup === 'default-rg')) {
+      resourceGroup = cr.resourceGroup;
+    }
+
+    return await executeAzurePowerAction({
+      vmName,
+      resourceGroup,
+      subscriptionId: subscriptionId || cr?.subscriptionId,
+      action,
+    });
+  }
+
+  // 3. Check if target is a Registered Server by MongoDB _id, host, or name
   let server = null;
   try {
     server = await Server.findById(cleanTarget);

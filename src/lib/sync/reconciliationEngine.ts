@@ -101,6 +101,31 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
             },
             { upsert: true }
           );
+
+          // Automatically link matching Azure Server document (Requirement 6)
+          const vmName = (res.name || '').toLowerCase().trim();
+          const pubIp = (res.publicIp || '').trim();
+          const privIp = (res.privateIp || '').trim();
+
+          const updateFields: any = {
+            cloudResourceId: res.resourceId,
+            instanceId: res.name,
+            region: res.region,
+          };
+          if (pubIp) updateFields.publicIp = pubIp;
+          if (privIp) updateFields.privateIp = privIp;
+
+          await Server.updateMany(
+            {
+              cloudProvider: 'azure',
+              $or: [
+                { name: new RegExp(`^${vmName}$`, 'i') },
+                ...(pubIp ? [{ host: pubIp }] : []),
+                ...(privIp ? [{ host: privIp }] : []),
+              ],
+            },
+            { $set: updateFields }
+          ).catch(() => null);
         }
 
         // PRUNE DELETED AZURE RESOURCES:
