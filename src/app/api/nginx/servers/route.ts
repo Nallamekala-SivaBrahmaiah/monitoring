@@ -195,13 +195,40 @@ async function autoImportExistingServers() {
       credsByLookup.get((cr.resourceId || '').trim().toLowerCase()) ||
       (cr.provider === 'aws' ? defaultAwsServer : null);
 
+    const matchingServer = (servers as any[]).find((s) => {
+      const sHost = (s.host || s.ip || '').trim().toLowerCase();
+      const sName = (s.name || '').trim().toLowerCase();
+      const sResId = (s.resourceId || s.cloudResourceId || '').trim().toLowerCase();
+      const crPub = (cr.publicIp || '').trim().toLowerCase();
+      const crPriv = (cr.privateIp || '').trim().toLowerCase();
+      const crName = (cr.name || '').trim().toLowerCase();
+      const crResId = (cr.resourceId || '').trim().toLowerCase();
+      return (sHost && (sHost === crPub || sHost === crPriv)) || 
+             (sResId && crResId && sResId === crResId) ||
+             (sName && sName === crName);
+    });
+
     const isAzure = cr.provider === 'azure';
-    const isOnline = (cr.status || '').toLowerCase().includes('run');
-    const cpuP = cr.metrics?.cpuUtilization;
-    const memP = cr.metrics?.memoryUtilization;
+    const isOnline = (cr.status || '').toLowerCase().includes('run') || matchingServer?.status === 'Online';
+    const cpuP = matchingServer?.metrics?.cpu?.usagePercent ?? cr.metrics?.cpuUtilization;
+    const memP = matchingServer?.metrics?.memory?.usagePercent ?? cr.metrics?.memoryUtilization;
+    const diskP = matchingServer?.metrics?.disks?.[0]?.usagePercent ?? cr.metrics?.diskUtilization ?? (cr.metrics as any)?.diskPercent;
+    const uptimeStr = matchingServer?.os?.uptimeFormatted ?? (cr.metadata as any)?.uptime;
+
     const metricsObj: any = {};
     if (typeof cpuP === 'number') metricsObj.cpuPercent = Math.round(cpuP);
     if (typeof memP === 'number') metricsObj.memoryPercent = Math.round(memP);
+    if (typeof diskP === 'number') metricsObj.diskPercent = Math.round(diskP);
+    if (uptimeStr) metricsObj.uptime = uptimeStr;
+
+    if (matchingServer?.metrics?.memory?.totalBytes && matchingServer?.metrics?.memory?.usedBytes) {
+      metricsObj.memoryUsedGb = Number((matchingServer.metrics.memory.usedBytes / (1024 ** 3)).toFixed(1));
+      metricsObj.memoryTotalGb = Number((matchingServer.metrics.memory.totalBytes / (1024 ** 3)).toFixed(1));
+    }
+    if (matchingServer?.metrics?.disks?.[0]?.totalBytes && matchingServer?.metrics?.disks?.[0]?.usedBytes) {
+      metricsObj.diskUsedGb = Number((matchingServer.metrics.disks[0].usedBytes / (1024 ** 3)).toFixed(1));
+      metricsObj.diskTotalGb = Number((matchingServer.metrics.disks[0].totalBytes / (1024 ** 3)).toFixed(1));
+    }
 
     const updateObj: any = {
       $setOnInsert: {
@@ -215,7 +242,7 @@ async function autoImportExistingServers() {
         privateIp: cr.privateIp || '',
         region: cr.region || '',
         instanceId: cr.resourceId || '',
-        osName: (cr.metadata as any)?.os || 'Linux',
+        osName: matchingServer?.os?.name || (cr.metadata as any)?.os || 'Linux',
         ...(Object.keys(metricsObj).length > 0 ? { metrics: metricsObj } : {}),
       },
     };
@@ -284,6 +311,25 @@ async function autoImportExistingServers() {
     const host = (h.ip || '').trim();
     if (!host) continue;
 
+    const matchingServer = (servers as any[]).find((s) => {
+      const sHost = (s.host || s.ip || '').trim().toLowerCase();
+      const sName = (s.name || '').trim().toLowerCase();
+      const hHost = host.toLowerCase();
+      const hName = (h.name || '').trim().toLowerCase();
+      return (sHost && sHost === hHost) || (sName && sName === hName);
+    });
+
+    const cpuP = matchingServer?.metrics?.cpu?.usagePercent;
+    const memP = matchingServer?.metrics?.memory?.usagePercent;
+    const diskP = matchingServer?.metrics?.disks?.[0]?.usagePercent;
+    const uptimeStr = matchingServer?.os?.uptimeFormatted;
+
+    const metricsObj: any = {};
+    if (typeof cpuP === 'number') metricsObj.cpuPercent = Math.round(cpuP);
+    if (typeof memP === 'number') metricsObj.memoryPercent = Math.round(memP);
+    if (typeof diskP === 'number') metricsObj.diskPercent = Math.round(diskP);
+    if (uptimeStr) metricsObj.uptime = uptimeStr;
+
     const updateObj: any = {
       $setOnInsert: {
         host,
@@ -292,11 +338,12 @@ async function autoImportExistingServers() {
       },
       $set: {
         name: h.name || `node-${host}`,
-        connectionStatus: h.status === 'Connected' ? 'Online' : 'Offline',
+        connectionStatus: h.status === 'Connected' || matchingServer?.status === 'Online' ? 'Online' : 'Offline',
         privateIp: h.privateIp || '',
         region: h.region || '',
         instanceId: h.instanceId || '',
-        osName: h.os || 'Linux',
+        osName: matchingServer?.os?.name || h.os || 'Linux',
+        ...(Object.keys(metricsObj).length > 0 ? { metrics: metricsObj } : {}),
       },
     };
 
