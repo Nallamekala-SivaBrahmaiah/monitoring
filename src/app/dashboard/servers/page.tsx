@@ -37,6 +37,7 @@ import {
 import { AwsLogo, AzureLogo, Ec2Icon, AzureVmIcon } from '@/components/icons/CloudIcons';
 import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
 import { ConnectSSHModal, ConnectSSHTarget } from '@/components/dashboard/ConnectSSHModal';
+import { UnifiedServerRow, UnifiedServerItem } from '@/components/dashboard/UnifiedServerRow';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { useMonitoring } from '@/context/MonitoringContext';
@@ -533,298 +534,48 @@ export default function ServersPage() {
 
   const renderServerRows = (serverList: RegisteredServer[]) => {
     return serverList.map((server) => {
-      const hasMetrics = server.status === 'Online' && server.metrics;
-      const cpuVal = server.metrics?.cpu?.usagePercent;
-      const memVal = server.metrics?.memory?.usagePercent;
-      const diskVal = server.metrics?.disks?.[0]?.usagePercent;
-
-      const hasCpu = hasMetrics && typeof cpuVal === 'number' && !isNaN(cpuVal);
-      const hasMem = hasMetrics && typeof memVal === 'number' && !isNaN(memVal);
-      const hasDisk = hasMetrics && typeof diskVal === 'number' && !isNaN(diskVal);
-
-      const pubIp = server.publicIp || server.host;
-      const privIp = server.privateIp;
-      const resourceId = server.cloudResourceId || server._id;
+      const unified: UnifiedServerItem = {
+        id: server._id,
+        serverId: server._id,
+        name: server.name,
+        resourceId: server.cloudResourceId || server._id,
+        cloudProvider: server.cloudProvider,
+        region: server.region,
+        host: server.host,
+        publicIp: server.publicIp,
+        privateIp: server.privateIp,
+        port: server.port,
+        username: server.username,
+        authMethod: server.authMethod,
+        status: server.status,
+        cloudPowerState: (server as any).cloudPowerState,
+        isSSHConnected: Boolean(server.status === 'Online' || (server as any).isSSHConnected),
+        hasSavedKey: Boolean((server as any).hasSavedKey || server.status === 'Online'),
+        lastError: server.lastError,
+        lastConnectedAt: server.lastConnectedAt,
+        lastHeartbeatAt: server.lastHeartbeatAt,
+        os: server.os,
+        hardware: server.hardware,
+        metrics: server.metrics,
+      };
 
       return (
-        <tr key={server._id} className="hover:bg-[#15203A] transition-colors">
-          {/* 1. Server Name & Instance ID / Resource ID */}
-          <td className="py-3.5 px-4">
-            <Link href={`/dashboard/servers/${server._id}`} className="group block">
-              <div className="font-semibold text-white group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
-                <span>{server.name}</span>
-                <ExternalLink className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                <span className="text-[10px] font-mono text-slate-400 truncate max-w-[150px]" title={resourceId}>
-                  {resourceId}
-                </span>
-                {server.status === 'Online' && (
-                  <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <Check className="w-2.5 h-2.5" />
-                    <span>SSH Verified</span>
-                  </span>
-                )}
-              </div>
-            </Link>
-          </td>
-
-          {/* 2. Public IP & Private IP Addresses */}
-          <td className="py-3.5 px-4 font-mono text-xs">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-semibold text-slate-500">PUB:</span>
-              <span className="text-emerald-400 font-semibold">{pubIp || 'N/A'}</span>
-              {pubIp && pubIp !== 'N/A' && pubIp !== '-' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(pubIp);
-                    showNotification('info', 'Copied', 'Public IP address copied to clipboard');
-                  }}
-                  className="text-slate-500 hover:text-white"
-                  title="Copy Public IP"
-                >
-                  <Copy className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-[10px] font-semibold text-slate-500">PRIV:</span>
-              <span className="text-slate-300">{privIp || 'N/A'}</span>
-            </div>
-          </td>
-
-          {/* 3. Cloud Provider & Region */}
-          <td className="py-3.5 px-4">
-            <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                server.cloudProvider === 'azure'
-                  ? 'bg-[#0089D6]/15 text-[#5EA0EF] border-[#0089D6]/30'
-                  : server.cloudProvider === 'aws'
-                  ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                  : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
-              }`}
-            >
-              {server.cloudProvider === 'azure' ? (
-                <AzureLogo className="w-3.5 h-3.5" />
-              ) : server.cloudProvider === 'aws' ? (
-                <AwsLogo className="w-3.5 h-3.5" />
-              ) : (
-                <Terminal className="w-3.5 h-3.5" />
-              )}
-              <span className="uppercase font-bold">{server.cloudProvider}</span>
-              {server.region && <span className="text-slate-400 font-normal">({server.region})</span>}
-            </span>
-          </td>
-
-          {/* 4. Operating System & SSH Username */}
-          <td className="py-3.5 px-4">
-            <div className="text-xs text-white font-medium truncate max-w-[130px]" title={server.os?.name ? `${server.os.name} ${server.os.version || ''}` : 'Linux'}>
-              {server.os?.name ? `${server.os.name} ${server.os.version || ''}` : 'Linux'}
-            </div>
-            <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-              {server.username || 'ubuntu'}:{server.port || 22}
-            </div>
-          </td>
-
-          {/* 5. Connection Status */}
-          <td className="py-3.5 px-4">
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  server.status === 'Online'
-                    ? 'bg-emerald-400 animate-pulse'
-                    : server.status === 'Connecting'
-                    ? 'bg-blue-400'
-                    : 'bg-rose-500'
-                }`}
-              />
-              <span
-                className={`font-semibold ${
-                  server.status === 'Online'
-                    ? 'text-emerald-400'
-                    : server.status === 'Connecting'
-                    ? 'text-blue-400'
-                    : 'text-rose-400'
-                }`}
-              >
-                {server.status}
-              </span>
-            </div>
-            {server.lastError && (
-              <span className="text-[10px] text-rose-400/80 block truncate max-w-[140px]" title={server.lastError}>
-                {server.lastError}
-              </span>
-            )}
-          </td>
-
-          {/* 6. CPU Usage */}
-          <td className="py-3.5 px-4">
-            {hasCpu ? (
-              <div className="w-24 space-y-1">
-                <div className="flex justify-between text-[11px]">
-                  <span className="text-slate-300 font-semibold">{cpuVal}%</span>
-                  <span className="text-slate-500 font-mono">{server.hardware?.cpuCores || 1}c</span>
-                </div>
-                <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      (cpuVal || 0) > 85 ? 'bg-rose-500' : (cpuVal || 0) > 60 ? 'bg-amber-400' : 'bg-emerald-400'
-                    }`}
-                    style={{ width: `${Math.min(100, cpuVal || 0)}%` }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <span className="text-slate-500 text-xs font-mono">N/A</span>
-            )}
-          </td>
-
-          {/* 7. RAM Usage */}
-          <td className="py-3.5 px-4">
-            {hasMem ? (
-              <div className="w-24 space-y-1">
-                <div className="flex justify-between text-[11px]">
-                  <span className="text-slate-300 font-semibold">{memVal}%</span>
-                  <span className="text-slate-500 font-mono">
-                    {formatBytes(server.metrics?.memory?.totalBytes || 0)}
-                  </span>
-                </div>
-                <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      (memVal || 0) > 90 ? 'bg-rose-500' : (memVal || 0) > 70 ? 'bg-amber-400' : 'bg-blue-400'
-                    }`}
-                    style={{ width: `${Math.min(100, memVal || 0)}%` }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <span className="text-slate-500 text-xs font-mono">N/A</span>
-            )}
-          </td>
-
-          {/* 8. Disk Usage */}
-          <td className="py-3.5 px-4">
-            {hasDisk ? (
-              <div className="w-24 space-y-1">
-                <div className="flex justify-between text-[11px]">
-                  <span className="text-slate-300 font-semibold">{diskVal}%</span>
-                  <span className="text-slate-500 font-mono">
-                    {server.metrics?.disks?.[0]?.mount || '/'}
-                  </span>
-                </div>
-                <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      (diskVal || 0) > 85 ? 'bg-rose-500' : 'bg-teal-400'
-                    }`}
-                    style={{ width: `${Math.min(100, diskVal || 0)}%` }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <span className="text-slate-500 text-xs font-mono">N/A</span>
-            )}
-          </td>
-
-          {/* 9. Last Connected Time */}
-          <td className="py-3.5 px-4 text-xs font-mono text-slate-400 whitespace-nowrap">
-            {formatRelativeTime(server.lastConnectedAt || server.lastHeartbeatAt)}
-          </td>
-
-          {/* 10. Actions */}
-          <td className="py-3.5 px-4 text-right">
-            <div className="flex items-center justify-end gap-1.5">
-              {/* Start & Stop Server Button Group */}
-              {(() => {
-                const isOnline =
-                  server.status === 'Online' ||
-                  ((server as any).cloudPowerState && (server as any).cloudPowerState === 'Running');
-                return (
-                  <div className="inline-flex rounded-lg border border-[#1E293B] bg-[#0D1526] p-0.5 shadow-sm shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handlePowerAction(server, 'start')}
-                      disabled={isOnline || powerActionLoadingId === server._id}
-                      className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
-                        isOnline
-                          ? 'text-slate-500 cursor-not-allowed opacity-40'
-                          : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
-                      }`}
-                      title={isOnline ? 'Server is already running in cloud' : 'Start Server in Cloud'}
-                    >
-                      <Play className={`w-3 h-3 fill-current ${powerActionLoadingId === server._id ? 'animate-spin' : ''}`} />
-                      <span>Start</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePowerAction(server, 'stop')}
-                      disabled={!isOnline || powerActionLoadingId === server._id}
-                      className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
-                        !isOnline
-                          ? 'text-slate-500 cursor-not-allowed opacity-40'
-                          : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
-                      }`}
-                      title={!isOnline ? 'Server is currently stopped' : 'Stop Server in Cloud (AWS / Azure)'}
-                    >
-                      <Power className={`w-3 h-3 ${powerActionLoadingId === server._id ? 'animate-spin' : ''}`} />
-                      <span>Stop</span>
-                    </button>
-                  </div>
-                );
-              })()}
-
-              {/* SSH Terminal Login */}
-              <button
-                type="button"
-                onClick={() => handleOpenTerminal(server)}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-md transition-all shadow-sm shrink-0 cursor-pointer whitespace-nowrap"
-                title="Login into Server (Real Interactive SSH Terminal)"
-              >
-                <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Login</span>
-              </button>
-
-              {/* SSH Key configuration */}
-              <button
-                type="button"
-                onClick={() => handleOpenSSHModal(server)}
-                className="p-1.5 text-slate-400 hover:text-amber-400 rounded-lg hover:bg-[#18233C] transition-colors shrink-0 cursor-pointer border border-[#1E293B]"
-                title="Configure / Edit SSH Credentials"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Refresh / Sync Button */}
-              <button
-                onClick={() => handleRefreshServer(server._id)}
-                disabled={syncingId === server._id}
-                title="Refresh Status & Live Telemetry"
-                className="p-1.5 rounded-lg bg-[#0D1526] hover:bg-[#1A2642] text-slate-300 hover:text-white border border-[#1E293B] transition-colors"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${syncingId === server._id ? 'animate-spin text-blue-400' : ''}`} />
-              </button>
-
-              {/* View Details Button */}
-              <Link
-                href={`/dashboard/servers/${server._id}`}
-                className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-[#202E4E] text-slate-200 rounded-lg border border-[#1E293B] transition-colors"
-              >
-                View
-              </Link>
-
-              {/* Delete Button */}
-              <button
-                onClick={() => setDeleteTarget(server)}
-                title="Delete Server"
-                className="p-1.5 rounded-lg bg-[#0D1526] hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-[#1E293B] transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </td>
-        </tr>
+        <UnifiedServerRow
+          key={server._id}
+          server={unified}
+          detailUrlPrefix="/dashboard/servers"
+          powerActionLoadingId={powerActionLoadingId}
+          syncingId={syncingId}
+          onPowerAction={(_, action) => handlePowerAction(server, action)}
+          onOpenTerminal={() => handleOpenTerminal(server)}
+          onOpenSSHModal={() => handleOpenSSHModal(server)}
+          onRefreshServer={() => handleRefreshServer(server._id)}
+          onDeleteServer={() => setDeleteTarget(server)}
+          onCopyIp={(ip) => {
+            navigator.clipboard.writeText(ip);
+            showNotification('info', 'Copied', 'Public IP address copied to clipboard');
+          }}
+        />
       );
     });
   };
