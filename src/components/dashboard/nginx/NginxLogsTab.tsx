@@ -19,7 +19,7 @@ import { INginxServerData } from '@/models/NginxServer';
 
 interface NginxLogsTabProps {
   activeServer: INginxServerData | null;
-  logType: 'access' | 'error';
+  logType: 'access' | 'error' | 'pm2';
 }
 
 export function NginxLogsTab({ activeServer, logType }: NginxLogsTabProps) {
@@ -32,18 +32,32 @@ export function NginxLogsTab({ activeServer, logType }: NginxLogsTabProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const logPath = logType === 'access' ? '/var/log/nginx/access.log' : '/var/log/nginx/error.log';
+  const logPath =
+    logType === 'access'
+      ? '/var/log/nginx/access.log'
+      : logType === 'error'
+      ? '/var/log/nginx/error.log'
+      : 'pm2 logs (all processes)';
 
   const fetchLogs = async () => {
     if (!activeServer) return;
     setLoading(true);
     try {
-      const url = `/api/nginx/servers/${activeServer._id}/logs?type=${logType}&lines=${lineCount}`;
+      const url =
+        logType === 'pm2'
+          ? `/api/nginx/servers/${activeServer._id}/pm2/logs?lines=${lineCount}`
+          : `/api/nginx/servers/${activeServer._id}/logs?type=${logType}&lines=${lineCount}`;
       const res = await fetch(url);
       const data = await res.json();
-      if (res.ok && data.lines) {
-        setLogs(data.lines);
-        setRawText(data.raw || '');
+      if (res.ok) {
+        if (logType === 'pm2') {
+          const text = data.output || '';
+          setRawText(text);
+          setLogs(text ? text.split('\n').filter(Boolean) : []);
+        } else if (data.lines) {
+          setLogs(data.lines);
+          setRawText(data.raw || '');
+        }
       }
     } catch (err) {
       console.error('Failed to fetch logs:', err);

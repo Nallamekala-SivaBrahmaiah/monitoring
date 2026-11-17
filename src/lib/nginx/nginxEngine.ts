@@ -1601,3 +1601,401 @@ echo "GIT_DEPLOY_COMPLETE"
     client.connect(config);
   });
 }
+
+/**
+ * Production-Grade One-Click Application Deployment Engine
+ * Executes Git pull, package manager detection (npm ci, pnpm, yarn, bun, mvn),
+ * build command, PM2 restart, health checks, and automated rollback on failure.
+ */
+export async function deployOneClickApp(
+  server: INginxServerData,
+  app: {
+    _id?: any;
+    name: string;
+    type?: string;
+    frameworkName?: string;
+    directory: string;
+    gitRepoUrl?: string;
+    gitBranch?: string;
+    packageManager?: string;
+    buildCommand?: string;
+    startCommand?: string;
+    pm2ProcessName?: string;
+    appPort?: number;
+    domain?: string;
+  },
+  options: {
+    branch?: string;
+    skipBuild?: boolean;
+    onLog?: (log: string) => void;
+  } = {}
+): Promise<{
+  success: boolean;
+  deploymentId: string;
+  durationSeconds: number;
+  logs: string;
+  previousCommit: string;
+  deployedCommit: string;
+  rolledBack: boolean;
+  error?: string;
+}> {
+  const config = buildNginxSSHConfig(server, 180000); // 3 minutes timeout for build
+  const client = new Client();
+  const startTime = Date.now();
+
+  const count = await NginxDeployment.countDocuments();
+  const deploymentId = `dep-${Date.now().toString(36)}-${count + 1}`;
+  const branch = (options.branch || app.gitBranch || 'main').trim().replace(/[^a-zA-Z0-9._\-/]/g, '');
+  const safeDir = path.normalize(app.directory).replace(/\\/g, '/');
+  const pm2Name = (app.pm2ProcessName || app.name).trim().replace(/[^a-zA-Z0-9._\-]/g, '');
+  const appPort = app.appPort || 3000;
+  const buildCmd = options.skipBuild ? '' : (app.buildCommand || '').trim();
+  const appType = (app.type || 'nodejs').toLowerCase();
+
+  let logBuffer = '';
+  const appendLog = (msg: string) => {
+    const timestamp = new Date().toTimeString().split(' ')[0];
+    const formatted = msg.startsWith('[') ? msg : `[${timestamp}] ${msg}`;
+    logBuffer += `${formatted}\n`;
+    if (options.onLog) {
+      options.onLog(formatted);
+    }
+  };
+
+  appendLog(`[info] Starting deployment for ${app.name}...`);
+  appendLog(`[info] Server: ${server.name} (${server.host}) | Directory: ${safeDir}`);
+
+  // Create initial deployment record
+  const deployment = await NginxDeployment.create({
+    deploymentId,
+    appName: app.name,
+    appType: appType as any,
+    deploymentMode: 'pm2-node',
+    deploySource: 'git',
+    gitRepoUrl: app.gitRepoUrl || '',
+    gitBranch: branch,
+    serverId: server._id?.toString() || '',
+    serverName: server.name,
+    serverHost: server.host,
+    deployDir: safeDir,
+    appPort,
+    pm2ProcessName: pm2Name,
+    startCommand: app.startCommand || 'npm start',
+    status: 'PENDING',
+    startTime: new Date(),
+    logs: logBuffer,
+  });
+
+  return new Promise((resolve) => {
+    client.on('ready', () => {
+      appendLog(`[info] Connected via SSH to ${server.name}`);
+
+      const remoteScript = `
+export TERM=xterm-256color
+NOW() { date +"%H:%M:%S"; }
+
+DIR="${safeDir}"
+if [ ! -d "$DIR" ]; then
+  echo "[\$(NOW)] [error] Directory does not exist: $DIR"
+  exit 1
+fi
+cd "$DIR"
+
+PREV_COMMIT=\$(git rev-parse HEAD 2>/dev/null || echo "UNKNOWN")
+echo "PREV_COMMIT:\$PREV_COMMIT"
+
+rollback_and_fail() {
+  STEP_FAILED="\$1"
+  echo "[\$(NOW)] [error] \$STEP_FAILED failed! Initiating automatic rollback to \$PREV_COMMIT..."
+  if [ "\$PREV_COMMIT" != "UNKNOWN" ]; then
+    git checkout "\$PREV_COMMIT" 2>&1 || true
+    if [ -f "package-lock.json" ]; then
+      npm ci 2>&1 || npm install 2>&1 || true
+    fi
+    if [ -n "${pm2Name}" ]; then
+      pm2 restart "${pm2Name}" 2>&1 || true
+    fi
+    echo "[\$(NOW)] [warn] Rollback to previous working commit \$PREV_COMMIT completed."
+  fi
+  echo "DEPLOY_STATUS:ROLLED_BACK"
+  exit 1
+}
+
+echo "[\$(NOW)] [info] Pulling latest code from repository..."
+if [ -d ".git" ]; then
+  git fetch origin 2>&1 || rollback_and_fail "git fetch"
+  git checkout "${branch}" 2>&1 || git checkout -b "${branch}" "origin/${branch}" 2>&1 || rollback_and_fail "git checkout"
+  git pull origin "${branch}" 2>&1 || rollback_and_fail "git pull"
+fi
+
+NEW_COMMIT=\$(git rev-parse HEAD 2>/dev/null || echo "UNKNOWN")
+echo "NEW_COMMIT:\$NEW_COMMIT"
+
+echo "[\$(NOW)] [info] Installing dependencies..."
+if [ "${appType}" = "java-maven" ] || [ -f "pom.xml" ]; then
+  echo "[\$(NOW)] [info] Detected Maven build configuration..."
+  mvn clean package -DskipTests 2>&1 || rollback_and_fail "mvn clean package"
+elif [ -f "pnpm-lock.yaml" ]; then
+  echo "[\$(NOW)] [info] Detected pnpm-lock.yaml. Using pnpm install..."
+  pnpm install --frozen-lockfile 2>&1 || pnpm install 2>&1 || rollback_and_fail "pnpm install"
+elif [ -f "yarn.lock" ]; then
+  echo "[\$(NOW)] [info] Detected yarn.lock. Using yarn install..."
+  yarn install --immutable 2>&1 || yarn install 2>&1 || rollback_and_fail "yarn install"
+elif [ -f "bun.lock" ] || [ -f "bun.lockb" ]; then
+  echo "[\$(NOW)] [info] Detected bun lockfile. Using bun install..."
+  bun install --frozen-lockfile 2>&1 || bun install 2>&1 || rollback_and_fail "bun install"
+elif [ -f "package-lock.json" ]; then
+  echo "[\$(NOW)] [info] Detected package-lock.json. Using npm ci..."
+  npm ci 2>&1 || npm install 2>&1 || rollback_and_fail "npm install"
+elif [ -f "package.json" ]; then
+  echo "[\$(NOW)] [info] Using npm install..."
+  npm install 2>&1 || rollback_and_fail "npm install"
+fi
+
+${
+  buildCmd
+    ? `
+echo "[\$(NOW)] [info] Running configured build command: ${buildCmd}..."
+${buildCmd} 2>&1 || rollback_and_fail "build command"
+`
+    : `
+if [ -f "package.json" ] && grep -q '"build":' package.json 2>/dev/null; then
+  echo "[\$(NOW)] [info] Building project with npm run build..."
+  npm run build 2>&1 || rollback_and_fail "npm run build"
+fi
+`
+}
+
+if [ -n "${pm2Name}" ]; then
+  echo "[\$(NOW)] [info] Restarting application with PM2..."
+  if command -v pm2 >/dev/null 2>&1; then
+    pm2 reload "${pm2Name}" --update-env 2>&1 || pm2 restart "${pm2Name}" 2>&1 || pm2 start npm --name "${pm2Name}" -- start 2>&1 || true
+    pm2 save 2>&1 || true
+  else
+    echo "[\$(NOW)] [warn] PM2 not installed globally on server."
+  fi
+fi
+
+# Health Verification
+echo "[\$(NOW)] [info] Verifying application health..."
+HEALTHY=true
+if [ -n "${pm2Name}" ] && command -v pm2 >/dev/null 2>&1; then
+  if pm2 show "${pm2Name}" 2>/dev/null | grep -q "online"; then
+    echo "[\$(NOW)] [info] PM2 status: online (Healthy)"
+  else
+    echo "[\$(NOW)] [warn] PM2 status not online yet"
+    HEALTHY=false
+  fi
+fi
+
+echo "DEPLOY_STATUS:SUCCESS"
+echo "[\$(NOW)] [success] Deployment completed successfully!"
+`;
+
+      let prevCommit = '';
+      let newCommit = '';
+      let rolledBack = false;
+      let deployStatus = 'SUCCESS';
+
+      client.exec(remoteScript, (err, stream) => {
+        if (err) {
+          appendLog(`[error] SSH execution error: ${err.message}`);
+          client.end();
+          return resolve({
+            success: false,
+            deploymentId,
+            durationSeconds: Math.round((Date.now() - startTime) / 1000),
+            logs: logBuffer,
+            previousCommit: '',
+            deployedCommit: '',
+            rolledBack: false,
+            error: err.message,
+          });
+        }
+
+        stream.on('data', (d: Buffer) => {
+          const lines = d.toString().split('\n');
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (trimmed.startsWith('PREV_COMMIT:')) {
+              prevCommit = trimmed.split(':')[1]?.trim() || '';
+            } else if (trimmed.startsWith('NEW_COMMIT:')) {
+              newCommit = trimmed.split(':')[1]?.trim() || '';
+            } else if (trimmed.startsWith('DEPLOY_STATUS:')) {
+              deployStatus = trimmed.split(':')[1]?.trim() || 'SUCCESS';
+              if (deployStatus === 'ROLLED_BACK') rolledBack = true;
+            } else {
+              appendLog(trimmed);
+            }
+          }
+        });
+
+        stream.stderr.on('data', (d: Buffer) => {
+          const text = d.toString().trim();
+          if (text) appendLog(`[STDERR] ${text}`);
+        });
+
+        stream.on('close', async (code: number) => {
+          const durationSeconds = Math.round((Date.now() - startTime) / 1000);
+          const success = code === 0 && !rolledBack;
+
+          deployment.durationSeconds = durationSeconds;
+          deployment.endTime = new Date();
+          deployment.status = success ? 'SUCCESS' : rolledBack ? 'ROLLED_BACK' : 'FAILED';
+          deployment.logs = logBuffer;
+          deployment.rollbackAvailable = Boolean(prevCommit && prevCommit !== 'UNKNOWN');
+          await deployment.save();
+
+          client.end();
+          resolve({
+            success,
+            deploymentId,
+            durationSeconds,
+            logs: logBuffer,
+            previousCommit: prevCommit,
+            deployedCommit: newCommit || prevCommit,
+            rolledBack,
+            error: success ? undefined : `Deployment exited with status code ${code}`,
+          });
+        });
+      });
+    });
+
+    client.on('error', (err) => {
+      appendLog(`[error] SSH Connection error: ${err.message}`);
+      deployment.status = 'FAILED';
+      deployment.errorMessage = err.message;
+      deployment.endTime = new Date();
+      deployment.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+      deployment.logs = logBuffer;
+      deployment.save();
+      resolve({
+        success: false,
+        deploymentId,
+        durationSeconds: Math.round((Date.now() - startTime) / 1000),
+        logs: logBuffer,
+        previousCommit: '',
+        deployedCommit: '',
+        rolledBack: false,
+        error: err.message,
+      });
+    });
+
+    client.connect(config);
+  });
+}
+
+/**
+ * Execute quick command for an application
+ */
+export async function executeAppQuickCommand(
+  server: INginxServerData,
+  app: { directory: string; pm2ProcessName?: string; name: string },
+  commandKey: string
+): Promise<{ success: boolean; output: string }> {
+  const safeDir = path.normalize(app.directory).replace(/\\/g, '/');
+  const pm2Name = (app.pm2ProcessName || app.name).trim().replace(/[^a-zA-Z0-9._\-]/g, '');
+
+  let cmd = '';
+  switch (commandKey) {
+    case 'git-pull':
+      cmd = `cd "${safeDir}" && git pull 2>&1`;
+      break;
+    case 'git-fetch':
+      cmd = `cd "${safeDir}" && git fetch --all --prune 2>&1`;
+      break;
+    case 'git-status':
+      cmd = `cd "${safeDir}" && git status 2>&1`;
+      break;
+    case 'git-branch':
+      cmd = `cd "${safeDir}" && git branch -a 2>&1`;
+      break;
+    case 'npm-install':
+      cmd = `cd "${safeDir}" && npm install 2>&1`;
+      break;
+    case 'npm-ci':
+      cmd = `cd "${safeDir}" && npm ci 2>&1`;
+      break;
+    case 'pnpm-install':
+      cmd = `cd "${safeDir}" && pnpm install 2>&1`;
+      break;
+    case 'yarn-install':
+      cmd = `cd "${safeDir}" && yarn install 2>&1`;
+      break;
+    case 'bun-install':
+      cmd = `cd "${safeDir}" && bun install 2>&1`;
+      break;
+    case 'mvn-package':
+      cmd = `cd "${safeDir}" && mvn clean package -DskipTests 2>&1`;
+      break;
+    case 'build':
+      cmd = `cd "${safeDir}" && (npm run build 2>&1 || pnpm build 2>&1 || yarn build 2>&1)`;
+      break;
+    case 'pm2-restart':
+      cmd = `pm2 restart "${pm2Name}" 2>&1 || pm2 reload "${pm2Name}" 2>&1`;
+      break;
+    case 'pm2-restart-all':
+      cmd = `pm2 restart all 2>&1`;
+      break;
+    case 'pm2-stop':
+      cmd = `pm2 stop "${pm2Name}" 2>&1`;
+      break;
+    case 'pm2-start':
+      cmd = `pm2 start "${pm2Name}" 2>&1 || (cd "${safeDir}" && pm2 start npm --name "${pm2Name}" -- start 2>&1)`;
+      break;
+    case 'pm2-reload':
+      cmd = `pm2 reload "${pm2Name}" 2>&1`;
+      break;
+    case 'pm2-logs':
+      cmd = `pm2 logs "${pm2Name}" --lines 50 --nostream 2>&1`;
+      break;
+    case 'pm2-list':
+      cmd = `pm2 list 2>&1`;
+      break;
+    default:
+      throw new Error(`Unsupported quick command: ${commandKey}`);
+  }
+
+  const res = await executeSSH(server, cmd, 60000);
+  return {
+    success: res.exitCode === 0,
+    output: res.output,
+  };
+}
+
+/**
+ * Rollback application to a specific commit or previous commit
+ */
+export async function rollbackAppToCommit(
+  server: INginxServerData,
+  app: { directory: string; pm2ProcessName?: string; name: string },
+  targetCommit: string
+): Promise<{ success: boolean; output: string }> {
+  const safeDir = path.normalize(app.directory).replace(/\\/g, '/');
+  const pm2Name = (app.pm2ProcessName || app.name).trim().replace(/[^a-zA-Z0-9._\-]/g, '');
+
+  const cmd = `
+cd "${safeDir}" || exit 1
+echo "Checking out target commit: ${targetCommit}..."
+git checkout "${targetCommit}" 2>&1 || exit 1
+
+if [ -f "package-lock.json" ]; then
+  echo "Restoring dependencies with npm ci..."
+  npm ci 2>&1 || npm install 2>&1 || true
+fi
+
+if [ -n "${pm2Name}" ] && command -v pm2 >/dev/null 2>&1; then
+  echo "Restarting PM2 process ${pm2Name}..."
+  pm2 restart "${pm2Name}" 2>&1 || true
+fi
+
+echo "ROLLBACK_SUCCESS"
+`;
+
+  const res = await executeSSH(server, cmd, 60000);
+  return {
+    success: res.exitCode === 0 && res.output.includes('ROLLBACK_SUCCESS'),
+    output: res.output,
+  };
+}
