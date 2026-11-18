@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import {
@@ -36,6 +35,7 @@ import {
   Clock,
   Settings,
   History as HistoryIcon,
+  KeyRound,
 } from 'lucide-react';
 import { NginxLogo, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { NginxServerCard } from '@/components/dashboard/nginx/NginxServerCard';
@@ -89,11 +89,7 @@ function formatServerId(rawId?: string): string {
   return rawId;
 }
 
-export function NginxDashboardContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const serverIdParam = searchParams.get('serverId');
-
+export default function NginxDashboardPage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [servers, setServers] = useState<INginxServerData[]>([]);
   const [activeServer, setActiveServer] = useState<INginxServerData | null>(null);
@@ -270,15 +266,26 @@ export function NginxDashboardContent() {
         setServers(cleanServers);
         setLastUpdatedTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
 
-        // Strictly honor URL serverId if provided and online, otherwise default to null (Fleet Landing Page)
-        setActiveServer(() => {
-          if (serverIdParam) {
-            const requested = cleanServers.find((s) => s._id === serverIdParam);
+        // Check if a specific server was requested in the URL query string
+        let requestedServerId: string | null = null;
+        if (typeof window !== 'undefined') {
+          const urlParams = new URLSearchParams(window.location.search);
+          requestedServerId = urlParams.get('serverId');
+        }
+
+        // STRICT REQUIREMENT: Only select a server if explicitly in URL or already chosen by user.
+        // Never auto-select or force-open any server on main landing page!
+        setActiveServer((prev) => {
+          if (requestedServerId) {
+            const requested = cleanServers.find((s) => s._id === requestedServerId);
             if (requested && requested.connectionStatus === 'Online') {
               return requested;
             }
           }
-          return null;
+          if (prev) {
+            return cleanServers.find((s) => s._id === prev._id) || null;
+          }
+          return null; // Keep null so main landing page opens cleanly!
         });
 
         return cleanServers;
@@ -380,36 +387,47 @@ export function NginxDashboardContent() {
         return;
       }
       setActiveServer(server);
-      router.push(`/dashboard/nginx?serverId=${server._id}`);
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('serverId', server._id);
+        window.history.pushState({ serverId: server._id }, '', url.toString());
+      }
       fetchServerDetails(server);
       fetchProxies(server);
       fetchApps();
     } else {
       setActiveServer(null);
-      router.push('/dashboard/nginx');
-    }
-  }, [router, fetchServerDetails, fetchProxies, fetchApps]);
-
-  // Synchronize activeServer strictly with URL query parameter ?serverId=...
-  // Handles left-sidebar navigation to /dashboard/nginx, browser back/forward, and direct URLs
-  useEffect(() => {
-    if (!serverIdParam) {
-      // Sidebar clicked or URL reset to /dashboard/nginx -> ALWAYS show landing page!
-      setActiveServer(null);
-    } else if (servers.length > 0) {
-      const matched = servers.find((s) => s._id === serverIdParam);
-      if (matched && matched.connectionStatus === 'Online') {
-        setActiveServer(matched);
-        fetchServerDetails(matched);
-        fetchProxies(matched);
-        fetchApps();
-      } else if (matched && matched.connectionStatus !== 'Online') {
-        showToast('error', `Cannot manage "${matched.name}" because it is currently offline or SSH unreachable.`);
-        setActiveServer(null);
-        router.replace('/dashboard/nginx');
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('serverId');
+        window.history.pushState({}, '', url.pathname);
       }
     }
-  }, [serverIdParam, servers, router, fetchServerDetails, fetchProxies, fetchApps]);
+  }, [fetchServerDetails, fetchProxies, fetchApps]);
+
+  // Handle browser Back and Forward navigation via popstate
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(window.location.search);
+      const serverId = params.get('serverId');
+      if (serverId) {
+        const matched = servers.find((s) => s._id === serverId);
+        if (matched && matched.connectionStatus === 'Online') {
+          setActiveServer(matched);
+          fetchServerDetails(matched);
+          fetchProxies(matched);
+        } else {
+          setActiveServer(null);
+        }
+      } else {
+        setActiveServer(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [servers, fetchServerDetails, fetchProxies]);
 
   // Initial Data Load: Verifies real SSH connectivity on mount and loads fresh fleet status
   useEffect(() => {
@@ -465,6 +483,20 @@ export function NginxDashboardContent() {
       region: srv.region,
     });
     setSshModalOpen(true);
+  };
+
+  const handleOpenSSHModal = (server: INginxServerData) => {
+    setSshTarget({
+      id: server._id,
+      name: server.name,
+      host: server.host && server.host !== '-' ? server.host : '',
+      port: server.port || 22,
+      username: server.username || (server.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
+      authMethod: 'privateKey',
+      cloudProvider: (server.cloudProvider as any) || 'other',
+      region: server.region,
+    });
+    setShowSSHModal(true);
   };
 
   // Refresh Metrics for single server
@@ -1141,16 +1173,22 @@ export function NginxDashboardContent() {
 
                               {/* 5. Status */}
                               <td className="py-3.5 px-4 whitespace-nowrap">
-                                <div className="flex items-center gap-1.5">
-                                  <span
-                                    className={`w-2 h-2 rounded-full ${
-                                      isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
-                                    }`}
-                                  />
-                                  <span className={`font-semibold text-xs ${isOnline ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                    {server.connectionStatus}
-                                  </span>
-                                </div>
+                                {isOnline ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                    <span className="font-semibold text-xs text-emerald-400">Online</span>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-0.5">
+                                    <div className="flex items-center gap-1.5 text-xs text-rose-400 font-semibold">
+                                      <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                                      <span>SSH Failed</span>
+                                    </div>
+                                    <span className="text-[10px] text-amber-400/90 block font-normal">
+                                      Running in Cloud • Key Needed
+                                    </span>
+                                  </div>
+                                )}
                               </td>
 
                               {/* 6. CPU */}
@@ -1246,26 +1284,32 @@ export function NginxDashboardContent() {
                                     <span>Test SSH</span>
                                   </button>
 
-                                  <button
-                                    type="button"
-                                    disabled={!isOnline}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (!isOnline) {
-                                        showToast('error', `Cannot manage "${server.name}" because it is currently offline or SSH unreachable.`);
-                                        return;
-                                      }
-                                      handleSelectServer(server);
-                                    }}
-                                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
-                                      isOnline
-                                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30 cursor-pointer'
-                                        : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60'
-                                    }`}
-                                  >
-                                    <span>{isOnline ? 'Select & Manage Server' : 'Offline (Unavailable)'}</span>
-                                    {isOnline && <ChevronRight className="w-3.5 h-3.5 text-blue-200" />}
-                                  </button>
+                                  {isOnline ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSelectServer(server);
+                                      }}
+                                      className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer"
+                                    >
+                                      <span>Select &amp; Manage Server</span>
+                                      <ChevronRight className="w-3.5 h-3.5 text-blue-200" />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenSSHModal(server);
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer shadow-sm hover:border-amber-400"
+                                      title="Provide SSH Key to connect to this running instance"
+                                    >
+                                      <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                                      <span>Connect SSH Key</span>
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -1330,20 +1374,23 @@ export function NginxDashboardContent() {
                                     {server.region}
                                   </span>
                                 )}
-                                <span
-                                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                                    isOnline
-                                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                      : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                                  }`}
-                                >
-                                  <span
-                                    className={`w-1.5 h-1.5 rounded-full ${
-                                      isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
-                                    }`}
-                                  />
-                                  {server.connectionStatus}
-                                </span>
+                                {isOnline ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    <span>Online</span>
+                                  </span>
+                                ) : (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                      <span>Running in Cloud</span>
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                      <span>SSH: Key Required</span>
+                                    </span>
+                                  </div>
+                                )}
                               </div>
 
                               <div className="flex items-center gap-4 text-xs text-slate-400 mt-1 flex-wrap font-mono">
@@ -1407,26 +1454,32 @@ export function NginxDashboardContent() {
                               <span>Test SSH</span>
                             </button>
 
-                            <button
-                              type="button"
-                              disabled={!isOnline}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!isOnline) {
-                                  showToast('error', `Cannot manage "${server.name}" because it is currently offline or SSH unreachable.`);
-                                  return;
-                                }
-                                handleSelectServer(server);
-                              }}
-                              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
-                                isOnline
-                                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30 cursor-pointer'
-                                  : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60'
-                              }`}
-                            >
-                              <span>{isOnline ? 'Select & Manage Server' : 'Offline (Unavailable)'}</span>
-                              {isOnline && <ChevronRight className="w-4 h-4" />}
-                            </button>
+                            {isOnline ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectServer(server);
+                                }}
+                                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition flex items-center gap-2 cursor-pointer shrink-0"
+                              >
+                                <span>Select &amp; Manage Server</span>
+                                <ChevronRight className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenSSHModal(server);
+                                }}
+                                className="px-4 py-2.5 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-sm hover:border-amber-400 shrink-0"
+                                title="Provide SSH Key to connect to this running instance"
+                              >
+                                <KeyRound className="w-4 h-4 text-amber-400" />
+                                <span>Connect SSH Key</span>
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -1511,50 +1564,6 @@ export function NginxDashboardContent() {
             /* 3. SERVER IS SELECTED: DISPLAY ALL WORKSPACE FEATURES FOR THIS SERVER */
             /* ========================================================================= */
             <div className="space-y-4">
-              {/* Top Navigation Strip: Return to Fleet & Server Switcher */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#111A2E] border border-[#1E293B] rounded-2xl px-5 py-3 shadow-xl shadow-black/20">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectServer(null)}
-                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-bold transition-all cursor-pointer shadow-sm group"
-                  >
-                    <ArrowLeft className="w-4 h-4 text-blue-400 group-hover:-translate-x-0.5 transition-transform" />
-                    <span>Back to Servers</span>
-                  </button>
-                  <span className="text-slate-600">|</span>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-400">Managing:</span>
-                    <span className="text-white font-bold">{activeServer.name}</span>
-                    <span className="text-slate-500 font-mono">({activeServer.host})</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 uppercase">
-                      {activeServer.cloudProvider}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">Switch Server:</span>
-                  <select
-                    value={activeServer._id}
-                    onChange={(e) => {
-                      if (e.target.value === 'all') handleSelectServer(null);
-                      else {
-                        const s = servers.find((srv) => srv._id === e.target.value);
-                        if (s) handleSelectServer(s);
-                      }
-                    }}
-                    className="bg-[#0B1120] border border-[#1E293B] rounded-xl px-3 py-1.5 text-xs text-slate-200 font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
-                  >
-                    <option value="all">← Return to All Servers</option>
-                    {servers.filter(s => s.connectionStatus === 'Online').map((s) => (
-                      <option key={s._id} value={s._id}>
-                        {s.name} ({s.host}) - {s.cloudProvider.toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
               {/* Selected Server Banner Card (Matching Screenshot Exact UI) */}
               <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 {/* Left: Provider Icon + Server Name + Details */}
@@ -1624,11 +1633,10 @@ export function NginxDashboardContent() {
                   <button
                     type="button"
                     onClick={() => handleSelectServer(null)}
-                    className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition cursor-pointer"
-                    title="Return to Nginx Server Fleet"
+                    className="p-2.5 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-400 hover:text-white border border-[#1E293B] text-xs transition cursor-pointer"
+                    title="All Servers Fleet View"
                   >
-                    <ArrowLeft className="w-4 h-4 text-blue-400" />
-                    <span>Back to Servers</span>
+                    <ArrowLeft className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -1869,19 +1877,5 @@ export function NginxDashboardContent() {
         />
       )}
     </div>
-  );
-}
-
-export default function NginxDashboardPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-[#0A0F1D] flex items-center justify-center text-slate-400 text-xs">
-          Loading Nginx Management...
-        </div>
-      }
-    >
-      <NginxDashboardContent />
-    </Suspense>
   );
 }
