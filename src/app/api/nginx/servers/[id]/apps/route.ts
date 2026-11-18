@@ -18,11 +18,11 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Server not found' }, { status: 404 });
     }
 
+    const scan = req.nextUrl?.searchParams?.get('scan') === 'true';
     let apps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
 
-    // If no apps registered yet for this server, attempt live SSH discovery on the server
-    if (!apps || apps.length === 0) {
-      // Check if there are real discovered apps on the machine
+    // If scan requested or no apps registered yet, attempt live SSH discovery on the server
+    if (scan || !apps || apps.length === 0) {
       let discovered: any[] = [];
       try {
         discovered = await discoverApplications(server.toObject());
@@ -31,36 +31,40 @@ export async function GET(
       }
 
       if (discovered && discovered.length > 0) {
-        const discoveredList: Partial<INginxAppData>[] = [];
         for (const da of discovered) {
           if (!da.directory) continue;
-          discoveredList.push({
-            serverId: id,
-            serverName: server.name,
-            serverHost: server.host,
-            name: da.name || path.basename(da.directory),
-            type: (da.type as any) || 'nodejs',
-            frameworkName: da.frameworkName || 'Discovered Application',
-            directory: da.directory,
-            gitRepoUrl: da.gitRepoUrl || '',
-            gitBranch: da.gitBranch || 'main',
-            packageManager: (da.packageManager?.toLowerCase() as any) || 'auto',
-            buildCommand: da.buildConfig || 'npm run build',
-            startCommand: da.startCommand || 'npm start',
-            pm2ProcessName: da.pm2Name || '',
-            appPort: da.port || 3000,
-            status: da.pm2Status === 'online' ? 'Deployed' : 'Stopped',
-            healthStatus: da.pm2Status === 'online' ? 'Healthy' : 'Unknown',
-            iconType: da.type === 'maven' ? 'cart' : da.type === 'nextjs' ? 'globe' : 'layers',
-            lastDeployedAt: undefined,
-            lastDeploymentDuration: undefined,
-          });
-        }
+          const rawPkg = (da.packageManager?.toLowerCase() as string) || 'auto';
+          const validPkg = ['auto', 'npm', 'pnpm', 'yarn', 'bun', 'maven', 'gradle', 'docker', 'pip', 'other'].includes(rawPkg)
+            ? rawPkg
+            : 'auto';
 
-        if (discoveredList.length > 0) {
-          await NginxApp.insertMany(discoveredList);
-          apps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
+          await NginxApp.findOneAndUpdate(
+            { serverId: id, directory: da.directory },
+            {
+              $set: {
+                serverId: id,
+                serverName: server.name,
+                serverHost: server.host,
+                name: da.name || path.basename(da.directory),
+                type: (da.type as any) || 'nodejs',
+                frameworkName: da.frameworkName || 'Discovered Application',
+                directory: da.directory,
+                gitRepoUrl: da.gitRepoUrl || '',
+                gitBranch: da.gitBranch || 'main',
+                packageManager: validPkg,
+                buildCommand: da.buildConfig || 'npm run build',
+                startCommand: da.startCommand || 'npm start',
+                pm2ProcessName: da.pm2Name || '',
+                appPort: da.port || 3000,
+                status: da.pm2Status === 'online' ? 'Deployed' : 'Stopped',
+                healthStatus: da.pm2Status === 'online' ? 'Healthy' : 'Unknown',
+                iconType: da.type === 'maven' ? 'cart' : da.type === 'nextjs' ? 'globe' : 'layers',
+              },
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
         }
+        apps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
       }
     }
 
@@ -115,6 +119,11 @@ export async function POST(
       );
     }
 
+    const rawPkg = (packageManager?.toLowerCase() as string) || 'auto';
+    const validPkg = ['auto', 'npm', 'pnpm', 'yarn', 'bun', 'maven', 'gradle', 'docker', 'pip', 'other'].includes(rawPkg)
+      ? rawPkg
+      : 'auto';
+
     let appDoc;
     if (_id) {
       appDoc = await NginxApp.findByIdAndUpdate(
@@ -126,7 +135,7 @@ export async function POST(
           directory,
           gitRepoUrl,
           gitBranch,
-          packageManager,
+          packageManager: validPkg,
           buildCommand,
           startCommand,
           pm2ProcessName: pm2ProcessName || name.toLowerCase().replace(/[^a-z0-9-_]/g, '-'),
@@ -147,7 +156,7 @@ export async function POST(
         directory,
         gitRepoUrl,
         gitBranch,
-        packageManager,
+        packageManager: validPkg,
         buildCommand,
         startCommand,
         pm2ProcessName: pm2ProcessName || name.toLowerCase().replace(/[^a-z0-9-_]/g, '-'),

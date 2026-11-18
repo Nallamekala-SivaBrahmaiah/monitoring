@@ -11,7 +11,7 @@ export interface INginxAppData {
   directory: string;
   gitRepoUrl: string;
   gitBranch: string;
-  packageManager: 'auto' | 'npm' | 'pnpm' | 'yarn' | 'bun' | 'maven' | 'gradle';
+  packageManager: 'auto' | 'npm' | 'pnpm' | 'yarn' | 'bun' | 'maven' | 'gradle' | 'docker' | 'pip' | 'other' | string;
   buildCommand?: string;
   startCommand?: string;
   pm2ProcessName?: string;
@@ -48,7 +48,7 @@ const NginxAppSchema = new Schema<INginxAppDocument>(
     gitBranch: { type: String, default: 'main', trim: true },
     packageManager: {
       type: String,
-      enum: ['auto', 'npm', 'pnpm', 'yarn', 'bun', 'maven', 'gradle'],
+      enum: ['auto', 'npm', 'pnpm', 'yarn', 'bun', 'maven', 'gradle', 'docker', 'pip', 'other'],
       default: 'auto',
     },
     buildCommand: { type: String, default: '' },
