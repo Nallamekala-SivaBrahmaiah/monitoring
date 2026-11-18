@@ -24,9 +24,10 @@ export async function GET(
       const pkg = (a.packageManager || '').toLowerCase();
       const f = (a.frameworkName || '').toLowerCase();
       const n = (a.name || '').toLowerCase();
-      const excluded = ['docker', 'maven', 'gradle', 'kubernetes', 'jenkins'];
+      const d = (a.directory || '').toLowerCase();
+      const excluded = ['docker', 'maven', 'gradle', 'kubernetes', 'jenkins', 'java-web-application'];
       if (n.startsWith('.')) return false;
-      if (excluded.some((ex) => t.includes(ex) || pkg.includes(ex) || f.includes(ex) || n.includes(ex))) {
+      if (excluded.some((ex) => t.includes(ex) || pkg.includes(ex) || f.includes(ex) || n.includes(ex) || d.includes(ex))) {
         return false;
       }
       return true;

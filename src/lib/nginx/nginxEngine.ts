@@ -622,7 +622,12 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
           dir.includes('/.nvm') ||
           dir.includes('/.next') ||
           dir.includes('/.git') ||
-          dir.includes('/.cache')
+          dir.includes('/.cache') ||
+          dir.includes('/java-web-application') ||
+          dir.includes('/docker') ||
+          dir.includes('/maven') ||
+          dir.includes('/jenkins') ||
+          dir.includes('/kubernetes')
         ) {
           continue;
         }
