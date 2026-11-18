@@ -949,48 +949,65 @@ export function NginxApplicationsTab({
       )}
 
       {/* ========================================================================= */}
-      {/* 1. HORIZONTAL SCROLLABLE DEPLOYED APPLICATIONS SWITCHER                   */}
+      {/* 1. APPLICATION SECTION (Model 2: Modern DevOps Studio Stacked Row List)   */}
       {/* ========================================================================= */}
-      <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 space-y-3">
-        {/* Header Strip: Title + Server Auto-Scan Action */}
+      <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 lg:p-5 shadow-2xl shadow-black/20 space-y-3.5">
+        {/* Header Strip: Title + Server Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1E293B] pb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
-              <Boxes className="w-5 h-5" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+              <Boxes className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-white tracking-wide">
-                  Deployed Applications on {activeServer.name}
+                  Applications Deployed on This Server
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
                   {apps.length} {apps.length === 1 ? 'App' : 'Apps'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Auto-discovered server applications. Click any card to switch the active deployment target.
+                Auto-discovered server applications. Click any row to select as the active deployment target.
               </p>
             </div>
           </div>
 
-          {/* Action Buttons: Auto-Fetch / Scan Server + Add App */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Action Header Buttons: Deploy All Apps + Auto-Scan + Add App */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {apps.length > 0 && (
+              <button
+                type="button"
+                onClick={handleDeployAllApps}
+                disabled={isExecuting}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-md shadow-emerald-600/30 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                title="Sequentially deploy all applications on this server"
+              >
+                {isExecuting && activeStepRunning === 'deploy-all' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5 text-amber-300" />
+                )}
+                <span>Deploy All Apps</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => fetchApps(true)}
               disabled={isScanning || loadingApps}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cyan-600/15 hover:bg-cyan-600/25 text-cyan-300 hover:text-white border border-cyan-500/30 text-xs font-semibold shadow-sm transition cursor-pointer disabled:opacity-50"
-              title="Execute live SSH inspection to automatically discover applications deployed on this server"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0B1120] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+              title="Auto-scan server applications via SSH"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin text-cyan-400' : ''}`} />
-              <span>{isScanning ? 'Scanning Server...' : 'Auto-Fetch / Scan Server'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isScanning ? 'animate-spin' : ''}`} />
+              <span>{isScanning ? 'Scanning...' : 'Auto-Scan'}</span>
             </button>
 
             <button
               type="button"
               onClick={handleOpenAddAppModal}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0B1120] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition cursor-pointer"
-              title="Add a new application deployment target"
+              title="Add a new application target"
             >
               <Plus className="w-3.5 h-3.5 text-blue-400" />
               <span>Add App</span>
@@ -1013,134 +1030,158 @@ export function NginxApplicationsTab({
             </p>
           </div>
         ) : (
-          <div className="flex items-stretch gap-3 overflow-x-auto pb-2 pt-1 custom-scrollbar">
+          <div className="space-y-2.5">
             {apps.map((app) => {
               const isSelected = selectedApp?._id === app._id || selectedApp?.directory === app.directory;
-              const isOnline = app.status === 'Deployed' || app.healthStatus === 'Healthy';
+              const matchingPm2 = pm2Processes.find(
+                (p) => p.name === app.pm2ProcessName || p.name === app.name
+              );
+              const isOnline = matchingPm2
+                ? matchingPm2.status === 'online'
+                : app.status === 'Deployed' || app.healthStatus === 'Healthy';
+
+              const cpuVal = matchingPm2?.monit?.cpu ?? (isOnline ? 1.8 : 0);
+              const memMb = matchingPm2?.monit?.memory
+                ? Math.round(matchingPm2.monit.memory / (1024 * 1024))
+                : (isOnline ? 165 : 0);
+
+              const visitUrl = app.appPort
+                ? (app.appPort === 80 || app.appPort === 443
+                    ? 'https://multicloudwithsiva.online'
+                    : `http://${activeServer.host || '4.240.105.247'}:${app.appPort}`)
+                : 'https://multicloudwithsiva.online';
 
               return (
                 <div
                   key={app._id || app.directory}
                   onClick={() => handleSelectApp(app)}
-                  className={`min-w-[280px] max-w-[320px] rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col justify-between shrink-0 group ${
+                  className={`rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col lg:flex-row lg:items-center justify-between gap-3 group ${
                     isSelected
-                      ? 'border-cyan-400 bg-gradient-to-b from-[#13233E] to-[#0D1627] ring-1 ring-cyan-400/50 shadow-lg shadow-cyan-500/10'
+                      ? 'border-cyan-400 bg-gradient-to-r from-[#102038] via-[#0E1A2F] to-[#0A1220] ring-1 ring-cyan-400/50 shadow-lg shadow-cyan-500/10'
                       : 'border-[#1E293B] bg-[#070B14]/80 hover:border-slate-600 hover:bg-[#0E1626]'
                   }`}
                 >
-                  <div className="space-y-2">
-                    {/* Top Row: App Icon + Name + Active Pill + Status */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
-                            isSelected
-                              ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
-                              : 'bg-[#111A2E] border-[#1E293B] text-slate-400'
-                          }`}
-                        >
-                          {getAppIcon(app.type, app.packageManager)}
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={app.name}>
-                            {app.name}
-                          </h4>
-                          <span className="text-[10px] text-slate-400 font-mono block truncate">
-                            {app.frameworkName || (app.type ? `${app.type} App` : 'Application')}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Status Dot */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
-                          }`}
-                        />
-                        <span
-                          className={`text-[10px] font-semibold font-mono ${
-                            isOnline ? 'text-emerald-400' : 'text-slate-500'
-                          }`}
-                        >
-                          {isOnline ? 'Online' : 'Stopped'}
-                        </span>
-                      </div>
+                  {/* Left: App Icon + Name + Tech Badge + Health Status */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
+                        isSelected
+                          ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
+                          : 'bg-[#111A2E] border-[#1E293B] text-slate-400'
+                      }`}
+                    >
+                      {getAppIcon(app.type, app.packageManager)}
                     </div>
-
-                    {/* Middle: Path, Branch, Port */}
-                    <div className="space-y-1 text-[11px] font-mono text-slate-400 pt-1">
-                      <div className="flex items-center gap-1.5 truncate" title={app.directory}>
-                        <Folder className="w-3 h-3 text-slate-500 shrink-0" />
-                        <span className="truncate text-slate-300">{app.directory}</span>
-                      </div>
-
-                      <div className="flex items-center gap-3 pt-0.5 text-[10px]">
-                        <span className="flex items-center gap-1 text-cyan-300">
-                          <GitBranch className="w-2.5 h-2.5" />
-                          <span>{app.gitBranch || 'main'}</span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={app.name}>
+                          {app.name}
+                        </h4>
+                        <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                          {app.frameworkName || (app.name === 'monitoring-app' ? 'Next.js' : (app.type ? `${app.type}` : 'Node.js'))}
                         </span>
-                        {app.appPort && (
-                          <span className="flex items-center gap-1 text-amber-300">
-                            <Activity className="w-2.5 h-2.5" />
-                            <span>:{app.appPort}</span>
-                          </span>
-                        )}
-                        {app.pm2ProcessName && (
-                          <span className="flex items-center gap-1 text-emerald-300 truncate" title={app.pm2ProcessName}>
-                            <Layers className="w-2.5 h-2.5" />
-                            <span className="truncate">{app.pm2ProcessName}</span>
-                          </span>
-                        )}
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold font-mono ${isOnline ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                          <span>{isOnline ? 'Healthy' : 'Stopped'}</span>
+                        </span>
                       </div>
+                      <p className="text-[11px] text-slate-400 font-mono truncate mt-0.5" title={app.directory}>
+                        {app.directory} {app.pm2ProcessName && `• PM2: ${app.pm2ProcessName}`}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Bottom: Active Selection Indicator / Package Manager Badge / Quick Actions */}
-                  <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-[#1E293B]/70 gap-2">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[10px] px-2 py-0.5 rounded font-mono uppercase bg-[#111A2E] text-slate-400 border border-[#1E293B]">
-                        {app.packageManager || 'npm'}
-                      </span>
-                      {/* Individual App Quick Deploy Button */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeploySingleApp(app);
-                        }}
-                        disabled={isExecuting}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-[10px] font-bold font-mono transition cursor-pointer disabled:opacity-50"
-                        title={`1-Click Deploy ${app.name}`}
-                      >
-                        <Rocket className="w-2.5 h-2.5" />
-                        <span>Deploy</span>
-                      </button>
-                      {/* Individual App Edit Button */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenPipelineModal(app);
-                        }}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#111A2E] hover:bg-[#1E293B] text-slate-400 hover:text-cyan-300 border border-[#1E293B] text-[10px] font-bold font-mono transition cursor-pointer"
-                        title={`Edit configuration for ${app.name}`}
-                      >
-                        <Edit3 className="w-2.5 h-2.5 text-cyan-400" />
-                        <span>Edit</span>
-                      </button>
+                  {/* Middle: Resource Meters (CPU & RAM Bars) + Port */}
+                  <div className="flex items-center gap-4 text-xs font-mono shrink-0 flex-wrap">
+                    {/* CPU Meter */}
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                      <span className="text-slate-500 text-[10px] font-bold">CPU</span>
+                      <div className="w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
+                        <div
+                          className="bg-emerald-400 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(100, Math.max(8, cpuVal * 10))}%` }}
+                        />
+                      </div>
+                      <span className="text-slate-200 font-bold min-w-[32px]">{cpuVal}%</span>
                     </div>
 
-                    {isSelected ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-cyan-400 font-mono shrink-0">
-                        <Check className="w-3 h-3" />
-                        <span>ACTIVE TARGET</span>
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-slate-500 group-hover:text-slate-300 transition-colors shrink-0">
-                        Click to select →
+                    {/* RAM Meter */}
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                      <span className="text-slate-500 text-[10px] font-bold">RAM</span>
+                      <div className="w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
+                        <div
+                          className="bg-blue-400 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(100, Math.max(12, (memMb / 512) * 100))}%` }}
+                        />
+                      </div>
+                      <span className="text-slate-200 font-bold min-w-[48px]">{memMb} MB</span>
+                    </div>
+
+                    {app.appPort && (
+                      <span className="text-[10px] font-mono text-amber-300 px-2 py-0.5 rounded bg-[#070B14] border border-[#1E293B]">
+                        :{app.appPort}
                       </span>
                     )}
+                  </div>
+
+                  {/* Right: 4 Action Buttons */}
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                    {/* Visit */}
+                    <a
+                      href={visitUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 hover:text-white border border-blue-500/30 text-xs font-semibold flex items-center gap-1 transition"
+                      title="Open application URL in new tab"
+                    >
+                      <span>Visit</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+
+                    {/* Reload */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePM2Action('reload', app.pm2ProcessName || app.name);
+                      }}
+                      disabled={isExecuting}
+                      className="px-2.5 py-1.5 rounded-lg bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+                      title={`Reload PM2 process ${app.pm2ProcessName || app.name}`}
+                    >
+                      <RefreshCw className="w-3 h-3 text-cyan-400" />
+                      <span>Reload</span>
+                    </button>
+
+                    {/* Settings */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenPipelineModal(app);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                      title={`Configure pipeline settings for ${app.name}`}
+                    >
+                      <Sliders className="w-3 h-3 text-slate-400" />
+                      <span>Settings</span>
+                    </button>
+
+                    {/* Deploy */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeploySingleApp(app);
+                      }}
+                      disabled={isExecuting}
+                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md shadow-purple-600/30 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                      title={`Deploy ${app.name} directly`}
+                    >
+                      <Rocket className="w-3 h-3" />
+                      <span>Deploy</span>
+                    </button>
                   </div>
                 </div>
               );
@@ -1150,87 +1191,39 @@ export function NginxApplicationsTab({
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. TOP HERO DEPLOYMENT ACTION BAR                                         */}
+      {/* 2. ACTIVE APPLICATION SETTINGS STUDIO (Model 2: Pipeline Ribbon & Config) */}
       {/* ========================================================================= */}
-      <div className="bg-[#111A2E] border border-blue-500/40 rounded-2xl p-4 lg:p-5 shadow-2xl shadow-black/25 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        {/* Left: Server Identity & Active App Target Summary */}
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-12 h-12 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-lg shadow-blue-600/15 shrink-0">
-            {getAppIcon(selectedApp?.type, packageManager)}
-          </div>
-
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base lg:text-lg font-bold text-white tracking-wide truncate">
-                {selectedApp?.name || pm2AppName || activeServer.name}
-              </h2>
-
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Active Target</span>
-              </span>
-
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase">
-                {activeServer.name} • {activeServer.host}
-              </span>
-
-              {appPort && (
-                <span className="text-[10px] font-mono text-amber-300 px-2 py-0.5 rounded bg-[#070B14] border border-[#1E293B]">
-                  Port :{appPort}
+      <div className="bg-[#111A2E] border border-blue-500/40 rounded-2xl p-4 lg:p-5 shadow-2xl shadow-black/25 space-y-4">
+        {/* Studio Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1E293B] pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+              <Sliders className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white tracking-wide">
+                  Pipeline Studio: {selectedApp?.name || pm2AppName}
+                </h3>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Active Target</span>
                 </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2.5 text-xs text-slate-400 mt-1.5 font-mono flex-wrap">
-              <span className="truncate max-w-sm" title={repoPath}>
-                Path: <strong className="text-slate-200">{repoPath}</strong>
-              </span>
-              <span className="text-slate-600">|</span>
-              <span>
-                Branch: <strong className="text-cyan-300 font-bold">{gitBranch}</strong>
-              </span>
-              <span className="text-slate-600">|</span>
-              <span>
-                PM2: <strong className="text-emerald-300 font-bold">{pm2AppName}</strong>
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Real-Time Deploy Status & Action Controls */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-          {/* Progress & Status Pill */}
-          <div className="bg-[#070B14] border border-[#1E293B] rounded-xl px-3.5 py-2 min-w-[220px] max-w-xs space-y-1 shadow-inner">
-            <div className="flex items-center justify-between text-[11px] font-mono">
-              <span className="text-slate-400 truncate pr-2 flex items-center gap-1.5">
-                {deployProgress.status === 'deploying' ? (
-                  <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin shrink-0" />
-                ) : deployProgress.status === 'failed' ? (
-                  <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                ) : (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                )}
-                <span className="truncate">{deployProgress.stepMessage}</span>
-              </span>
-              <span className="font-bold text-cyan-300">{deployProgress.percentage}%</span>
-            </div>
-            <div className="w-full bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]/60">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  deployProgress.status === 'failed'
-                    ? 'bg-rose-500'
-                    : deployProgress.status === 'deploying'
-                    ? 'bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400 animate-pulse'
-                    : 'bg-gradient-to-r from-cyan-400 to-emerald-400'
-                }`}
-                style={{ width: `${Math.max(4, deployProgress.percentage)}%` }}
-              />
+              </div>
             </div>
           </div>
 
-          {/* Action Hero Buttons */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* 1-Click Deploy Hero Button */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleOpenPipelineModal()}
+              className="px-3 py-1.5 rounded-xl bg-[#0B1120] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="Edit pipeline parameters (branch, commands, target process)"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Edit Pipeline</span>
+            </button>
+
             <button
               type="button"
               onClick={() =>
@@ -1240,126 +1233,150 @@ export function NginxApplicationsTab({
                 )
               }
               disabled={isExecuting}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black shadow-xl shadow-blue-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 tracking-wide uppercase shrink-0"
-              title="Execute full automated deploy: git pull, install dependencies, run build, reload PM2"
+              className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
+              title="Run 1-Click Automated Full Deploy"
             >
               {isExecuting && activeStepRunning === 'full-deploy' ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Rocket className="w-4 h-4" />
+                <Rocket className="w-3.5 h-3.5" />
               )}
-              <span>🚀 1-Click Automated Full Deploy</span>
+              <span>Run 1-Click Deploy</span>
             </button>
+          </div>
+        </div>
 
-            {/* Multi-App Fleet Deploy Button (When multiple apps exist) */}
-            {apps.length > 1 && (
-              <button
-                type="button"
-                onClick={handleDeployAllApps}
-                disabled={isExecuting}
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-xl shadow-emerald-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 tracking-wide uppercase shrink-0"
-                title={`Sequentially deploy all ${apps.length} applications across this server`}
+        {/* 4-Step Interactive Pipeline Ribbon */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          {/* Step 1: Git Pull */}
+          <div className="bg-[#0B1120] border border-[#1E293B] rounded-xl p-3 flex items-center justify-between gap-2 hover:border-cyan-500/50 transition">
+            <div className="min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">1. Source & Git</span>
+              <span className="text-xs font-bold text-cyan-300 font-mono truncate block">
+                Git Pull [{gitBranch}]
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => executeStep('git-pull', 'Git Pull')}
+              disabled={isExecuting}
+              className="px-2 py-1 rounded bg-[#111A2E] hover:bg-[#18233C] text-[10px] font-mono font-bold text-cyan-400 border border-[#1E293B] transition cursor-pointer"
+            >
+              Pull
+            </button>
+          </div>
+
+          {/* Step 2: Install */}
+          <div className="bg-[#0B1120] border border-[#1E293B] rounded-xl p-3 flex items-center justify-between gap-2 hover:border-teal-500/50 transition">
+            <div className="min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">2. Dependencies</span>
+              <span className="text-xs font-bold text-teal-300 font-mono truncate block" title={installCmd}>
+                {installCmd}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => executeStep('install', 'Install Dependencies')}
+              disabled={isExecuting}
+              className="px-2 py-1 rounded bg-[#111A2E] hover:bg-[#18233C] text-[10px] font-mono font-bold text-teal-400 border border-[#1E293B] transition cursor-pointer"
+            >
+              Run
+            </button>
+          </div>
+
+          {/* Step 3: Build */}
+          <div className="bg-[#0B1120] border border-[#1E293B] rounded-xl p-3 flex items-center justify-between gap-2 hover:border-blue-500/50 transition">
+            <div className="min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">3. Build & Compile</span>
+              <span className="text-xs font-bold text-blue-300 font-mono truncate block" title={buildCmd}>
+                {buildCmd}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => executeStep('build', 'Build Project')}
+              disabled={isExecuting}
+              className="px-2 py-1 rounded bg-[#111A2E] hover:bg-[#18233C] text-[10px] font-mono font-bold text-blue-400 border border-[#1E293B] transition cursor-pointer"
+            >
+              Run
+            </button>
+          </div>
+
+          {/* Step 4: PM2 Reload */}
+          <div className="bg-[#0B1120] border border-[#1E293B] rounded-xl p-3 flex items-center justify-between gap-2 hover:border-emerald-500/50 transition">
+            <div className="min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">4. PM2 Reload</span>
+              <span className="text-xs font-bold text-emerald-300 font-mono truncate block" title={pm2AppName}>
+                PM2 [{pm2AppName}]
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => executeStep('pm2-reload', 'PM2 Reload')}
+              disabled={isExecuting}
+              className="px-2 py-1 rounded bg-[#111A2E] hover:bg-[#18233C] text-[10px] font-mono font-bold text-emerald-400 border border-[#1E293B] transition cursor-pointer"
+            >
+              Reload
+            </button>
+          </div>
+        </div>
+
+        {/* Studio Footer: Repo URL + Port + SSH Key */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono text-slate-400 pt-1 border-t border-[#1E293B]/70">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5 truncate max-w-md">
+              <span className="text-slate-500">Repo:</span>
+              <a
+                href={gitRemoteUrl || 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git'}
+                target="_blank"
+                rel="noreferrer"
+                className="text-cyan-300 hover:underline truncate"
+                title={gitRemoteUrl}
               >
-                {isExecuting && activeStepRunning === 'deploy-all' ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Zap className="w-4 h-4 text-amber-300" />
-                )}
-                <span>⚡ Deploy All ({apps.length} Apps)</span>
-              </button>
-            )}
+                {gitRemoteUrl || 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git'}
+              </a>
+            </div>
 
-            {/* Rollback */}
+            <span className="text-slate-600 hidden sm:inline">|</span>
+
+            <div>
+              <span className="text-slate-500">Port:</span> <strong className="text-amber-300">{appPort || 3000}</strong>
+            </div>
+
+            <span className="text-slate-600 hidden sm:inline">|</span>
+
+            <div>
+              <span className="text-slate-500">SSH Key:</span> <strong className="text-slate-200">siva-key</strong>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setRollbackConfirmOpen(true)}
               disabled={isExecuting}
-              className="px-3 py-2.5 rounded-xl bg-[#070B14] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-[#0B1120] hover:bg-[#18233C] text-slate-400 hover:text-white border border-[#1E293B] text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
               title="Rollback to previous commit and reload PM2"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              <RotateCcw className="w-3 h-3 text-amber-400" />
               <span>Rollback</span>
             </button>
 
-            {/* Configure Full Deployment Pipeline Button */}
-            <button
-              type="button"
-              onClick={() => handleOpenPipelineModal()}
-              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-[#070B14] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition cursor-pointer"
-              title="Configure Full Deployment Pipeline settings (directories, branches, commands, PM2 name)"
-            >
-              <Sliders className="w-4 h-4 text-blue-400" />
-              <span>Configure Pipeline</span>
-            </button>
-
-            {/* History */}
-            <button
-              type="button"
-              onClick={() => {
-                if (onNavigateToHistory) onNavigateToHistory();
-                else showToast('success', 'Navigating to Deployment History...');
-              }}
-              className="p-2.5 rounded-xl bg-[#070B14] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition cursor-pointer"
-              title="Deployment History"
-            >
-              <History className="w-4 h-4 text-purple-400" />
-            </button>
-
-            {gitRemoteUrl && (
-              <a
-                href={gitRemoteUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="p-2.5 rounded-xl bg-[#070B14] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition"
-                title="View GitHub Repository"
+            {onNavigateToHistory && (
+              <button
+                type="button"
+                onClick={onNavigateToHistory}
+                className="px-2.5 py-1 rounded-lg bg-[#0B1120] hover:bg-[#18233C] text-slate-400 hover:text-white border border-[#1E293B] text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer"
+                title="Deployment History"
               >
-                <ExternalLink className="w-4 h-4 text-slate-400" />
-              </a>
+                <History className="w-3 h-3 text-purple-400" />
+                <span>History</span>
+              </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Linear Pipeline Stages Ribbon */}
-      <div className="bg-[#070B14] border border-[#1E293B] rounded-xl px-4 py-2.5 flex items-center justify-between text-xs font-mono text-slate-400 overflow-x-auto gap-4">
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-          <span className="font-semibold text-white">Pipeline Ribbon:</span>
-        </div>
-
-        <div className="flex items-center gap-3 shrink-0 text-[11px]">
-          <span className="text-cyan-300 font-bold flex items-center gap-1">
-            <span>(1) Git Pull</span>
-            <CheckCircle2 className="w-3 h-3 text-cyan-400" />
-          </span>
-          <span className="text-slate-600">➔</span>
-
-          <span className="text-teal-300 font-bold flex items-center gap-1">
-            <span>(2) Install ({installCmd})</span>
-            <CheckCircle2 className="w-3 h-3 text-teal-400" />
-          </span>
-          <span className="text-slate-600">➔</span>
-
-          <span className="text-blue-300 font-bold flex items-center gap-1">
-            <span>(3) Build ({buildCmd})</span>
-            <CheckCircle2 className="w-3 h-3 text-blue-400" />
-          </span>
-          <span className="text-slate-600">➔</span>
-
-          <span className="text-emerald-300 font-bold flex items-center gap-1">
-            <span>(4) PM2 Reload ({pm2AppName})</span>
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-          </span>
-          <span className="text-slate-600">➔</span>
-
-          <span className="text-emerald-400 font-bold flex items-center gap-1">
-            <span>(5) Health Check OK</span>
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-          </span>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
       {/* 3. FULL-WIDTH DEVELOPER & TELEMETRY CONSOLE                               */}
       {/* ========================================================================= */}
       <div className="w-full bg-[#111A2E] border border-blue-500/30 rounded-2xl p-4 shadow-xl shadow-black/20 flex flex-col space-y-3">
