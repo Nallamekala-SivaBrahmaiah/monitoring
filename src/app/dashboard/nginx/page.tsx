@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import {
@@ -88,7 +89,11 @@ function formatServerId(rawId?: string): string {
   return rawId;
 }
 
-export default function NginxDashboardPage() {
+export function NginxDashboardContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const serverIdParam = searchParams.get('serverId');
+
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [servers, setServers] = useState<INginxServerData[]>([]);
   const [activeServer, setActiveServer] = useState<INginxServerData | null>(null);
@@ -101,7 +106,7 @@ export default function NginxDashboardPage() {
 
   // Search and view filters for All Servers view
   const [searchQuery, setSearchQuery] = useState('');
-  const [cloudFilter, setCloudFilter] = useState<'all' | 'azure' | 'aws' | 'online'>('all');
+  const [cloudFilter, setCloudFilter] = useState<'online' | 'all' | 'azure' | 'aws' | 'offline'>('online');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
 
   // Server-specific details state
@@ -138,12 +143,13 @@ export default function NginxDashboardPage() {
     setTimeout(() => setToast(null), 4500);
   };
 
-  // 1. Fetch Servers from database (merged with live guest OS telemetry)
-  const fetchServers = useCallback(async () => {
+  // 1. Fetch Servers from database (with live SSH availability verification)
+  const fetchServers = useCallback(async (verifySSH: boolean = false) => {
     setIsLoadingServers(true);
     try {
+      const endpoint = verifySSH ? '/api/nginx/servers?verify=true' : '/api/nginx/servers';
       const [resNginx, resServers] = await Promise.all([
-        fetch('/api/nginx/servers'),
+        fetch(endpoint),
         fetch('/api/servers').catch(() => null),
       ]);
       const dataNginx = await resNginx.json();
@@ -161,6 +167,7 @@ export default function NginxDashboardPage() {
         '32.236.173.166',
         '3.106.129.147',
         '4.194.249.85',
+        '3.25.142.55',
       ]);
 
       if (resNginx.ok && dataNginx.servers) {
@@ -233,7 +240,7 @@ export default function NginxDashboardPage() {
 
               return {
                 ...s,
-                connectionStatus: (match.status === 'Online' ? 'Online' : s.connectionStatus) as any,
+                connectionStatus: (s.connectionStatus === 'Online' ? 'Online' : 'Failed') as any,
                 privateIp: match.privateIp || s.privateIp,
                 region: match.region || s.region,
                 instanceId: match.cloudResourceId || match.resourceId || s.instanceId,
@@ -263,15 +270,15 @@ export default function NginxDashboardPage() {
         setServers(cleanServers);
         setLastUpdatedTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
 
-        // If an active server was already selected, update its reference; otherwise auto-select primary server
-        setActiveServer((prev) => {
-          if (!prev) {
-            const preferred = cleanServers.find(
-              (s) => s.name?.toLowerCase().includes('vm01siva') || s.name?.toLowerCase().includes('azure')
-            ) || cleanServers[0] || null;
-            return preferred;
+        // Strictly honor URL serverId if provided and online, otherwise default to null (Fleet Landing Page)
+        setActiveServer(() => {
+          if (serverIdParam) {
+            const requested = cleanServers.find((s) => s._id === serverIdParam);
+            if (requested && requested.connectionStatus === 'Online') {
+              return requested;
+            }
           }
-          return cleanServers.find((s) => s._id === prev._id) || cleanServers[0] || null;
+          return null;
         });
 
         return cleanServers;
@@ -365,19 +372,49 @@ export default function NginxDashboardPage() {
     }
   }, [activeServer?._id]);
 
-  // Select Server & Load its private workbench
+  // Select Server & Load its private workbench (with URL query synchronization & offline guard)
   const handleSelectServer = useCallback((server: INginxServerData | null) => {
-    setActiveServer(server);
     if (server) {
+      if (server.connectionStatus !== 'Online') {
+        showToast('error', `Cannot manage "${server.name}" because it is currently offline or SSH unreachable.`);
+        return;
+      }
+      setActiveServer(server);
+      router.push(`/dashboard/nginx?serverId=${server._id}`);
       fetchServerDetails(server);
       fetchProxies(server);
+      fetchApps();
+    } else {
+      setActiveServer(null);
+      router.push('/dashboard/nginx');
     }
-  }, [fetchServerDetails, fetchProxies]);
+  }, [router, fetchServerDetails, fetchProxies, fetchApps]);
 
-  // Initial Data Load (Loads all servers without auto-forcing a single selection)
+  // Synchronize activeServer strictly with URL query parameter ?serverId=...
+  // Handles left-sidebar navigation to /dashboard/nginx, browser back/forward, and direct URLs
+  useEffect(() => {
+    if (!serverIdParam) {
+      // Sidebar clicked or URL reset to /dashboard/nginx -> ALWAYS show landing page!
+      setActiveServer(null);
+    } else if (servers.length > 0) {
+      const matched = servers.find((s) => s._id === serverIdParam);
+      if (matched && matched.connectionStatus === 'Online') {
+        setActiveServer(matched);
+        fetchServerDetails(matched);
+        fetchProxies(matched);
+        fetchApps();
+      } else if (matched && matched.connectionStatus !== 'Online') {
+        showToast('error', `Cannot manage "${matched.name}" because it is currently offline or SSH unreachable.`);
+        setActiveServer(null);
+        router.replace('/dashboard/nginx');
+      }
+    }
+  }, [serverIdParam, servers, router, fetchServerDetails, fetchProxies, fetchApps]);
+
+  // Initial Data Load: Verifies real SSH connectivity on mount and loads fresh fleet status
   useEffect(() => {
     const init = async () => {
-      await fetchServers();
+      await fetchServers(true);
       fetchDeployments();
     };
     init();
@@ -504,12 +541,27 @@ export default function NginxDashboardPage() {
     }
   };
 
-  // Display ALL servers together (filtered & searchable)
+  // Display servers together (filtered & searchable, online-first)
   const filteredAllServers = useMemo(() => {
     let list = servers;
-    if (cloudFilter === 'azure') list = list.filter((s) => s.cloudProvider === 'azure');
-    else if (cloudFilter === 'aws') list = list.filter((s) => s.cloudProvider === 'aws');
-    else if (cloudFilter === 'online') list = list.filter((s) => s.connectionStatus === 'Online');
+    if (cloudFilter === 'online') {
+      list = list.filter((s) => s.connectionStatus === 'Online');
+    } else if (cloudFilter === 'offline') {
+      list = list.filter((s) => s.connectionStatus !== 'Online');
+    } else if (cloudFilter === 'azure') {
+      list = list.filter((s) => s.cloudProvider === 'azure');
+    } else if (cloudFilter === 'aws') {
+      list = list.filter((s) => s.cloudProvider === 'aws');
+    }
+
+    // Sort: Online & SSH reachable servers first!
+    list = [...list].sort((a, b) => {
+      const aOn = a.connectionStatus === 'Online';
+      const bOn = b.connectionStatus === 'Online';
+      if (aOn && !bOn) return -1;
+      if (!aOn && bOn) return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
 
     if (!searchQuery) return list;
     const q = searchQuery.toLowerCase().trim();
@@ -527,6 +579,7 @@ export default function NginxDashboardPage() {
   const azureCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'azure').length, [servers]);
   const awsCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'aws').length, [servers]);
   const onlineCount = useMemo(() => servers.filter((s) => s.connectionStatus === 'Online').length, [servers]);
+  const offlineCount = useMemo(() => servers.filter((s) => s.connectionStatus !== 'Online').length, [servers]);
 
   const handleCopy = (text: string, label: string) => {
     if (navigator?.clipboard) {
@@ -778,6 +831,20 @@ export default function NginxDashboardPage() {
 
                 {/* Cloud & Status Filter Pills */}
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Default Primary Pill: Online & SSH Reachable */}
+                  <button
+                    type="button"
+                    onClick={() => setCloudFilter('online')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                      cloudFilter === 'online'
+                        ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400'
+                        : 'text-emerald-400 hover:bg-emerald-950/30'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Online ({onlineCount})</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setCloudFilter('all')}
@@ -818,15 +885,15 @@ export default function NginxDashboardPage() {
 
                   <button
                     type="button"
-                    onClick={() => setCloudFilter('online')}
+                    onClick={() => setCloudFilter('offline')}
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                      cloudFilter === 'online'
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'text-emerald-400 hover:bg-emerald-950/30'
+                      cloudFilter === 'offline'
+                        ? 'bg-rose-600 text-white shadow-sm'
+                        : 'text-rose-400 hover:bg-rose-950/30'
                     }`}
                   >
-                    <CheckCircle2 className="w-3 h-3" />
-                    <span>Online ({onlineCount})</span>
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Offline ({offlineCount})</span>
                   </button>
                 </div>
 
@@ -887,22 +954,51 @@ export default function NginxDashboardPage() {
 
               {/* All Servers Content: Table vs Cards */}
               {filteredAllServers.length === 0 ? (
-                <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-12 text-center text-slate-400 space-y-3">
-                  <Server className="w-10 h-10 mx-auto text-slate-500" />
-                  <h4 className="text-base font-bold text-white">No Servers Match Filter</h4>
-                  <p className="text-xs text-slate-400 max-w-md mx-auto">
-                    No servers match your current filter or search criteria.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCloudFilter('all');
-                      setSearchQuery('');
-                    }}
-                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition inline-flex items-center gap-2 cursor-pointer"
-                  >
-                    <span>Reset Filters</span>
-                  </button>
+                <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-12 text-center text-slate-400 space-y-4">
+                  {cloudFilter === 'online' ? (
+                    <>
+                      <AlertTriangle className="w-12 h-12 mx-auto text-amber-400 opacity-80" />
+                      <h4 className="text-base font-bold text-white">No online servers available for Nginx management.</h4>
+                      <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                        Currently, no registered servers are online and SSH reachable. Start an AWS EC2 instance or Azure VM, or test SSH connectivity.
+                      </p>
+                      <div className="flex items-center justify-center gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => fetchServers(true)}
+                          className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition inline-flex items-center gap-2 cursor-pointer shadow-md shadow-blue-600/30"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Verify Server Availability</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCloudFilter('all')}
+                          className="px-4 py-2 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition cursor-pointer"
+                        >
+                          View All Servers ({servers.length})
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Server className="w-12 h-12 mx-auto text-slate-500" />
+                      <h4 className="text-base font-bold text-white">No Servers Match Filter</h4>
+                      <p className="text-xs text-slate-400 max-w-md mx-auto">
+                        No servers match your current filter or search criteria.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCloudFilter('online');
+                          setSearchQuery('');
+                        }}
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition inline-flex items-center gap-2 cursor-pointer"
+                      >
+                        <span>Reset to Online Servers</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : viewMode === 'table' ? (
                 /* TABLE VIEW: Unified One-By-One Table Matching The App Standard */
@@ -937,8 +1033,18 @@ export default function NginxDashboardPage() {
                           return (
                             <tr
                               key={server._id}
-                              onClick={() => handleSelectServer(server)}
-                              className="hover:bg-[#142038] transition-colors group cursor-pointer"
+                              onClick={() => {
+                                if (!isOnline) {
+                                  showToast('error', `Cannot manage "${server.name}" because it is currently offline or SSH unreachable.`);
+                                  return;
+                                }
+                                handleSelectServer(server);
+                              }}
+                              className={`transition-colors group ${
+                                isOnline
+                                  ? 'hover:bg-[#142038] cursor-pointer'
+                                  : 'opacity-60 hover:bg-[#0F172A] cursor-not-allowed'
+                              }`}
                             >
                               {/* 1. Server Name & ID */}
                               <td className="py-3.5 px-4">
@@ -1142,14 +1248,23 @@ export default function NginxDashboardPage() {
 
                                   <button
                                     type="button"
+                                    disabled={!isOnline}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (!isOnline) {
+                                        showToast('error', `Cannot manage "${server.name}" because it is currently offline or SSH unreachable.`);
+                                        return;
+                                      }
                                       handleSelectServer(server);
                                     }}
-                                    className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer whitespace-nowrap"
+                                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+                                      isOnline
+                                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30 cursor-pointer'
+                                        : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60'
+                                    }`}
                                   >
-                                    <span>Select &amp; Manage Server</span>
-                                    <ChevronRight className="w-3.5 h-3.5 text-blue-200" />
+                                    <span>{isOnline ? 'Select & Manage Server' : 'Offline (Unavailable)'}</span>
+                                    {isOnline && <ChevronRight className="w-3.5 h-3.5 text-blue-200" />}
                                   </button>
                                 </div>
                               </td>
@@ -1176,8 +1291,18 @@ export default function NginxDashboardPage() {
                     return (
                       <div
                         key={server._id}
-                        onClick={() => handleSelectServer(server)}
-                        className="bg-[#111A2E] hover:bg-[#142038] border border-[#1E293B] hover:border-blue-500/50 rounded-2xl p-5 shadow-lg shadow-black/20 transition-all space-y-4 cursor-pointer group"
+                        onClick={() => {
+                          if (!isOnline) {
+                            showToast('error', `Cannot manage "${server.name}" because it is currently offline or SSH unreachable.`);
+                            return;
+                          }
+                          handleSelectServer(server);
+                        }}
+                        className={`bg-[#111A2E] border border-[#1E293B] rounded-2xl p-5 shadow-lg shadow-black/20 transition-all space-y-4 group ${
+                          isOnline
+                            ? 'hover:bg-[#142038] hover:border-blue-500/50 cursor-pointer'
+                            : 'opacity-65 cursor-not-allowed'
+                        }`}
                       >
                         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                           {/* Left: Server Identity */}
@@ -1284,14 +1409,23 @@ export default function NginxDashboardPage() {
 
                             <button
                               type="button"
+                              disabled={!isOnline}
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (!isOnline) {
+                                  showToast('error', `Cannot manage "${server.name}" because it is currently offline or SSH unreachable.`);
+                                  return;
+                                }
                                 handleSelectServer(server);
                               }}
-                              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition flex items-center gap-2 cursor-pointer shrink-0"
+                              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+                                isOnline
+                                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30 cursor-pointer'
+                                  : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60'
+                              }`}
                             >
-                              <span>Select &amp; Manage Server</span>
-                              <ChevronRight className="w-4 h-4" />
+                              <span>{isOnline ? 'Select & Manage Server' : 'Offline (Unavailable)'}</span>
+                              {isOnline && <ChevronRight className="w-4 h-4" />}
                             </button>
                           </div>
                         </div>
@@ -1377,6 +1511,50 @@ export default function NginxDashboardPage() {
             /* 3. SERVER IS SELECTED: DISPLAY ALL WORKSPACE FEATURES FOR THIS SERVER */
             /* ========================================================================= */
             <div className="space-y-4">
+              {/* Top Navigation Strip: Return to Fleet & Server Switcher */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#111A2E] border border-[#1E293B] rounded-2xl px-5 py-3 shadow-xl shadow-black/20">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectServer(null)}
+                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-bold transition-all cursor-pointer shadow-sm group"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-blue-400 group-hover:-translate-x-0.5 transition-transform" />
+                    <span>Back to Servers</span>
+                  </button>
+                  <span className="text-slate-600">|</span>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-slate-400">Managing:</span>
+                    <span className="text-white font-bold">{activeServer.name}</span>
+                    <span className="text-slate-500 font-mono">({activeServer.host})</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 uppercase">
+                      {activeServer.cloudProvider}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">Switch Server:</span>
+                  <select
+                    value={activeServer._id}
+                    onChange={(e) => {
+                      if (e.target.value === 'all') handleSelectServer(null);
+                      else {
+                        const s = servers.find((srv) => srv._id === e.target.value);
+                        if (s) handleSelectServer(s);
+                      }
+                    }}
+                    className="bg-[#0B1120] border border-[#1E293B] rounded-xl px-3 py-1.5 text-xs text-slate-200 font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="all">← Return to All Servers</option>
+                    {servers.filter(s => s.connectionStatus === 'Online').map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.name} ({s.host}) - {s.cloudProvider.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               {/* Selected Server Banner Card (Matching Screenshot Exact UI) */}
               <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 {/* Left: Provider Icon + Server Name + Details */}
@@ -1446,10 +1624,11 @@ export default function NginxDashboardPage() {
                   <button
                     type="button"
                     onClick={() => handleSelectServer(null)}
-                    className="p-2.5 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-400 hover:text-white border border-[#1E293B] text-xs transition cursor-pointer"
-                    title="All Servers Fleet View"
+                    className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition cursor-pointer"
+                    title="Return to Nginx Server Fleet"
                   >
-                    <ArrowLeft className="w-4 h-4" />
+                    <ArrowLeft className="w-4 h-4 text-blue-400" />
+                    <span>Back to Servers</span>
                   </button>
                 </div>
               </div>
@@ -1690,5 +1869,19 @@ export default function NginxDashboardPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function NginxDashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#0A0F1D] flex items-center justify-center text-slate-400 text-xs">
+          Loading Nginx Management...
+        </div>
+      }
+    >
+      <NginxDashboardContent />
+    </Suspense>
   );
 }

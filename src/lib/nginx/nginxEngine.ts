@@ -197,11 +197,12 @@ export async function executeSSH(
  * Test real SSH connection and verify server details
  */
 export async function testNginxServerConnection(
-  server: INginxServerData
+  server: INginxServerData,
+  timeoutMs: number = 8000
 ): Promise<{ success: boolean; latencyMs: number; osInfo?: string; error?: string }> {
   const start = Date.now();
   try {
-    const res = await executeSSH(server, 'uname -srm; cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | head -n 1', 8000);
+    const res = await executeSSH(server, 'uname -srm; cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | head -n 1', timeoutMs);
     const latencyMs = Date.now() - start;
 
     let osInfo = 'Linux';

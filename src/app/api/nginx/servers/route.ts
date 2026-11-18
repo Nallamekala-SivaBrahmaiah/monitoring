@@ -6,6 +6,7 @@ import CloudResource from '@/models/CloudResource';
 import AnsibleController from '@/models/AnsibleController';
 import AnsibleHost from '@/models/AnsibleHost';
 import { encryptSecret } from '@/lib/serverMonitoring/crypto';
+import { testNginxServerConnection } from '@/lib/nginx/nginxEngine';
 
 const KNOWN_FAKE_HOSTS = [
   '44.199.21.34',
@@ -525,6 +526,47 @@ export async function GET(req: NextRequest) {
 
       return isPresentInCloud;
     });
+
+    const verifyRequested = req.nextUrl.searchParams.get('verify') === 'true';
+    const onlineOnly = req.nextUrl.searchParams.get('onlineOnly') === 'true';
+
+    // If verification requested, verify SSH reachability live across servers
+    if (verifyRequested && finalServers.length > 0) {
+      const serverIds = finalServers.map((s: any) => s._id);
+      const fullServers = await NginxServer.find({ _id: { $in: serverIds } });
+
+      await Promise.allSettled(
+        fullServers.map(async (doc) => {
+          try {
+            const check = await testNginxServerConnection(doc.toObject(), 3500);
+            if (check.success) {
+              doc.connectionStatus = 'Online';
+              doc.lastConnectedAt = new Date();
+              if (check.osInfo) doc.osName = check.osInfo;
+            } else {
+              doc.connectionStatus = 'Failed';
+            }
+            await doc.save();
+
+            // Update in-memory finalServers object
+            const target: any = finalServers.find((fs: any) => fs._id.toString() === doc._id.toString());
+            if (target) {
+              target.connectionStatus = doc.connectionStatus;
+              if (check.osInfo) target.osName = check.osInfo;
+            }
+          } catch {
+            doc.connectionStatus = 'Failed';
+            await doc.save().catch(() => {});
+            const target: any = finalServers.find((fs: any) => fs._id.toString() === doc._id.toString());
+            if (target) target.connectionStatus = 'Failed';
+          }
+        })
+      );
+    }
+
+    if (onlineOnly) {
+      finalServers = finalServers.filter((s: any) => s.connectionStatus === 'Online');
+    }
 
     return NextResponse.json({
       success: true,
