@@ -20,20 +20,16 @@ export async function GET(
 
     const isNginxAppDoc = (a: any) => {
       if (!a) return false;
-      const t = (a.type || '').toLowerCase();
-      const pkg = (a.packageManager || '').toLowerCase();
-      const f = (a.frameworkName || '').toLowerCase();
       const n = (a.name || '').toLowerCase();
       const d = (a.directory || '').toLowerCase();
-      const excluded = ['docker', 'maven', 'gradle', 'kubernetes', 'jenkins', 'java-web-application'];
       if (n.startsWith('.')) return false;
-      if (excluded.some((ex) => t.includes(ex) || pkg.includes(ex) || f.includes(ex) || n.includes(ex) || d.includes(ex))) {
+      if (d.includes('/.nvm') || d.includes('/.next') || d.includes('/node_modules')) {
         return false;
       }
       return true;
     };
 
-    // Clean up any stale docker/maven/kubernetes/jenkins apps from Nginx collection
+    // Clean up any internal cache docs from Nginx collection
     const existingServerApps = await NginxApp.find({ serverId: id }).lean();
     const staleIds = existingServerApps
       .filter((a: any) => !isNginxAppDoc(a))
@@ -62,14 +58,6 @@ export async function GET(
           if (appName.startsWith('.') || da.directory.includes('/.nvm') || da.directory.includes('/.next')) {
             continue;
           }
-          // Strictly exclude Docker, Maven, Gradle, Kubernetes, Jenkins
-          const isExcluded = ['docker', 'maven', 'gradle', 'kubernetes', 'jenkins'].some((ex) =>
-            (da.type || '').toLowerCase().includes(ex) ||
-            (da.packageManager || '').toLowerCase().includes(ex) ||
-            (da.frameworkName || '').toLowerCase().includes(ex) ||
-            appName.toLowerCase().includes(ex)
-          );
-          if (isExcluded) continue;
 
           const rawPkg = (da.packageManager?.toLowerCase() as string) || 'npm';
           const validPkg = ['npm', 'pnpm', 'yarn', 'bun'].includes(rawPkg)
@@ -136,6 +124,11 @@ export async function GET(
       const disk = diskMetricsMap[safeDir];
       return {
         ...app,
+        cpu: disk?.cpuPercent !== undefined ? disk.cpuPercent : (app.cpu || 0),
+        memoryMb: disk?.memoryMb !== undefined ? disk.memoryMb : (app.memoryMb || 0),
+        pm2ProcessName: disk?.pm2Name || app.pm2ProcessName || '',
+        status: disk?.pm2Status === 'online' ? 'Deployed' : (app.status === 'Deployed' ? 'Deployed' : 'Stopped'),
+        healthStatus: disk?.pm2Status === 'online' ? 'Healthy' : (app.healthStatus === 'Healthy' ? 'Healthy' : 'Stopped'),
         diskMetrics: disk || {
           status: 'unavailable',
           total: 'Unavailable',

@@ -525,13 +525,15 @@ export async function fetchPM2LogOutput(
  */
 export async function discoverApplications(server: INginxServerData): Promise<DiscoveredApp[]> {
   const script = `
+git config --global --add safe.directory "*" 2>/dev/null || true
+
 # 1. PM2 JSON
 echo "===PM2_APPS==="
 pm2 jlist 2>/dev/null || echo "[]"
 
 # 2. Search for Nginx web applications and repos inside the server
 echo "===APP_MARKERS==="
-find /var/www /opt /home /srv -maxdepth 4 \\( -name "package.json" -o -name "nginx.conf" -o -name "index.html" -o -name ".git" \\) 2>/dev/null | head -n 50 || true
+find /var/www /opt /home /srv -maxdepth 4 \\( -name "package.json" -o -name "nginx.conf" -o -name "index.html" -o -name ".git" -o -name "pom.xml" \\) 2>/dev/null | head -n 50 || true
 
 # 3. Git Remotes and branches inside the server
 echo "===GIT_REMOTES==="
@@ -640,43 +642,91 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
     } catch {}
 
     // 2. Parse Discovered Application directories & Git repositories inside the server
-    if (markersRaw) {
-      const markerLines = markersRaw.split('\n').map((l) => l.trim()).filter(Boolean);
-      for (const mPath of markerLines) {
-        const dir = path.dirname(mPath);
-        const dirBase = path.basename(dir);
-        // Skip hidden directories, dependencies, and internal build caches
-        if (
-          dirBase.startsWith('.') ||
-          dir.includes('/node_modules') ||
-          dir.includes('/.nvm') ||
-          dir.includes('/.next') ||
-          dir.includes('/.cache') ||
-          dir.includes('/java-web-application') ||
-          dir.includes('/docker') ||
-          dir.includes('/maven') ||
-          dir.includes('/jenkins') ||
-          dir.includes('/kubernetes')
-        ) {
+    if (markersRaw || gitRemotesRaw) {
+      const dirMarkers = new Map<string, Set<string>>();
+      if (markersRaw) {
+        const markerLines = markersRaw.split('\n').map((l) => l.trim()).filter(Boolean);
+        for (const mPath of markerLines) {
+          const dir = path.dirname(mPath);
+          const dirBase = path.basename(dir);
+          // Skip hidden directories, dependencies, and internal build caches
+          if (
+            dirBase.startsWith('.') ||
+            dir.includes('/node_modules') ||
+            dir.includes('/.nvm') ||
+            dir.includes('/.next') ||
+            dir.includes('/.cache') ||
+            dir.includes('/.git')
+          ) {
+            continue;
+          }
+          if (!dirMarkers.has(dir)) {
+            dirMarkers.set(dir, new Set());
+          }
+          dirMarkers.get(dir)!.add(path.basename(mPath));
+        }
+      }
+
+      // Add all discovered git repository root directories
+      for (const [repoDir] of gitRemoteMap.entries()) {
+        const base = path.basename(repoDir);
+        if (base.startsWith('.') || repoDir.includes('/.nvm') || repoDir.includes('/node_modules')) {
           continue;
         }
+        if (!dirMarkers.has(repoDir)) {
+          dirMarkers.set(repoDir, new Set());
+        }
+        dirMarkers.get(repoDir)!.add('.git');
+      }
+
+      // Filter to top-level app directories (exclude subdirectories of an already known parent repo/app)
+      const allDirs = Array.from(dirMarkers.keys()).sort((a, b) => a.length - b.length);
+      const topDirs = allDirs.filter((d, idx) => {
+        return !allDirs.slice(0, idx).some((parent) => d.startsWith(parent + '/'));
+      });
+
+      for (const dir of topDirs) {
         if (seenDirs.has(dir)) continue;
         seenDirs.add(dir);
 
-        const fileName = path.basename(mPath);
+        const dirBase = path.basename(dir);
+        const markers = dirMarkers.get(dir) || new Set();
         const gitInfo = gitRemoteMap.get(dir) || {
           url: '',
           branch: 'main',
         };
 
-        if (fileName === 'package.json') {
+        // Check if directory or any subfolder has pom.xml
+        let hasPom = markers.has('pom.xml');
+        if (!hasPom) {
+          for (const [otherDir, otherMarkers] of dirMarkers.entries()) {
+            if (otherDir.startsWith(dir + '/') && otherMarkers.has('pom.xml')) {
+              hasPom = true;
+              break;
+            }
+          }
+        }
+
+        if (hasPom) {
+          apps.push({
+            name: dirBase,
+            type: 'nodejs',
+            frameworkName: 'Java Web App',
+            directory: dir,
+            packageManager: 'npm',
+            runtimeVersion: 'Java / Maven',
+            buildConfig: 'mvn clean package 2>&1 || npm run build 2>&1',
+            gitRepoUrl: gitInfo.url,
+            gitBranch: gitInfo.branch,
+          });
+        } else if (markers.has('package.json')) {
           const isNext = dirBase.toLowerCase().includes('next');
           const isVite = dirBase.toLowerCase().includes('vite');
 
           apps.push({
             name: dirBase,
             type: isNext ? 'nextjs' : isVite ? 'vite' : 'nodejs',
-            frameworkName: isNext ? 'Next.js App' : isVite ? 'Vite Web App' : 'Nginx Web App',
+            frameworkName: isNext ? 'Next.js App' : isVite ? 'Vite Web App' : 'Node.js App',
             directory: dir,
             packageManager: 'npm',
             runtimeVersion: nodeVer || 'Node.js',
@@ -684,7 +734,7 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
             gitRepoUrl: gitInfo.url,
             gitBranch: gitInfo.branch,
           });
-        } else if (fileName === 'index.html' || fileName === 'nginx.conf') {
+        } else if (markers.has('index.html') || markers.has('nginx.conf')) {
           apps.push({
             name: dirBase,
             type: 'nodejs',
@@ -696,12 +746,11 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
             gitRepoUrl: gitInfo.url,
             gitBranch: gitInfo.branch,
           });
-        } else if (fileName === '.git') {
-          // General Git repository found inside the server
+        } else {
           apps.push({
             name: dirBase,
             type: 'nodejs',
-            frameworkName: 'Nginx Web Application',
+            frameworkName: 'Web Application',
             directory: dir,
             packageManager: 'npm',
             runtimeVersion: 'Server Native',
@@ -1258,6 +1307,10 @@ export interface AppDiskMetric {
   appSize: string;
   status: 'available' | 'unavailable';
   updatedAt: string;
+  cpuPercent?: number;
+  memoryMb?: number;
+  pm2Status?: string;
+  pm2Name?: string;
 }
 
 /**
@@ -1276,18 +1329,38 @@ export async function queryAppDiskMetrics(
     return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
   };
 
-  const script = validDirs
+  const dirScript = validDirs
     .map((d) => {
       const safe = path.normalize(d).replace(/\\/g, '/');
       return `echo "===DIR:${safe}==="; df -P -B1 "${safe}" 2>&1 || true; echo "---DU---"; du -sh "${safe}" 2>/dev/null | cut -f1 || echo "0B"`;
     })
     .join('\n');
 
+  const script = `
+echo "===PM2_LIST==="
+pm2 jlist 2>/dev/null || echo "[]"
+
+echo "===DIR_START==="
+${dirScript}
+`;
+
   const results: Record<string, AppDiskMetric> = {};
 
   try {
-    const res = await executeSSH(server, script, 15000);
+    const res = await executeSSH(server, script, 18000);
     const out = res.stdout || '';
+
+    let pm2List: any[] = [];
+    const pm2Idx = out.indexOf('===PM2_LIST===');
+    const dirStartIdx = out.indexOf('===DIR_START===');
+    if (pm2Idx !== -1 && dirStartIdx !== -1) {
+      const pm2Raw = out.slice(pm2Idx + 14, dirStartIdx).trim();
+      if (pm2Raw.startsWith('[') && pm2Raw.endsWith(']')) {
+        try {
+          pm2List = JSON.parse(pm2Raw);
+        } catch {}
+      }
+    }
 
     const nowFormatted = new Date().toLocaleTimeString('en-US', {
       hour: '2-digit',
@@ -1297,6 +1370,20 @@ export async function queryAppDiskMetrics(
 
     for (const d of validDirs) {
       const safe = path.normalize(d).replace(/\\/g, '/');
+      const dirBase = path.basename(safe).toLowerCase();
+
+      // Find matching PM2 process
+      const matchingPm2 = pm2List.find((p: any) => {
+        const pCwd = path.normalize(p.pm2_env?.pm_cwd || '').replace(/\\/g, '/');
+        const pName = (p.name || '').toLowerCase();
+        return pCwd === safe || pName === dirBase || safe.endsWith('/' + pName);
+      });
+
+      const cpuPercent = typeof matchingPm2?.monit?.cpu === 'number' ? matchingPm2.monit.cpu : 0;
+      const memoryMb = matchingPm2?.monit?.memory ? Math.round(matchingPm2.monit.memory / (1024 * 1024)) : 0;
+      const pm2Status = matchingPm2?.pm2_env?.status || (matchingPm2 ? 'online' : 'stopped');
+      const pm2Name = matchingPm2?.name || '';
+
       const marker = `===DIR:${safe}===`;
       const idx = out.indexOf(marker);
 
@@ -1352,6 +1439,10 @@ export async function queryAppDiskMetrics(
               appSize,
               status: 'available',
               updatedAt: nowFormatted,
+              cpuPercent,
+              memoryMb,
+              pm2Status,
+              pm2Name,
             };
             parsed = true;
             break;
@@ -1373,6 +1464,10 @@ export async function queryAppDiskMetrics(
             appSize: 'Unavailable',
             status: 'unavailable',
             updatedAt: nowFormatted,
+            cpuPercent,
+            memoryMb,
+            pm2Status,
+            pm2Name,
           };
         }
       } else {
@@ -1394,6 +1489,10 @@ export async function queryAppDiskMetrics(
             minute: '2-digit',
             second: '2-digit',
           }),
+          cpuPercent,
+          memoryMb,
+          pm2Status,
+          pm2Name,
         };
       }
     }

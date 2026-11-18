@@ -215,15 +215,13 @@ export function NginxApplicationsTab({
     else setInstallCmd('npm install');
   }, []);
 
-  // Filter strictly for Nginx web applications (exclude Docker, Maven, Gradle, Kubernetes, Jenkins)
+  // Filter strictly for valid applications (exclude internal hidden paths and node_modules)
   const isNginxApp = useCallback((a: INginxAppData) => {
     if (!a) return false;
-    const t = (a.type || '').toLowerCase();
-    const pkg = (a.packageManager || '').toLowerCase();
-    const f = (a.frameworkName || '').toLowerCase();
     const n = (a.name || '').toLowerCase();
-    const excluded = ['docker', 'maven', 'gradle', 'kubernetes', 'jenkins'];
-    if (excluded.some((ex) => t.includes(ex) || pkg.includes(ex) || f.includes(ex) || n.includes(ex))) {
+    const d = (a.directory || '').toLowerCase();
+    if (n.startsWith('.')) return false;
+    if (d.includes('/.nvm') || d.includes('/node_modules') || d.includes('/.next')) {
       return false;
     }
     return true;
@@ -517,6 +515,13 @@ export function NginxApplicationsTab({
     else if (activeConsoleTab === 'access-logs') fetchAccessLogs();
     else if (activeConsoleTab === 'error-logs') fetchErrorLogs();
   }, [activeConsoleTab, fetchPM2List, fetchPM2Logs, fetchAccessLogs, fetchErrorLogs]);
+
+  // Initial and server-change PM2 process list fetch
+  useEffect(() => {
+    if (activeServer?._id) {
+      fetchPM2List();
+    }
+  }, [activeServer?._id, fetchPM2List]);
 
   // Auto-refresh timers
   useEffect(() => {
@@ -1065,16 +1070,17 @@ export function NginxApplicationsTab({
               .map((app) => {
               const isSelected = selectedApp?._id === app._id || selectedApp?.directory === app.directory;
               const matchingPm2 = pm2Processes.find(
-                (p) => p.name === app.pm2ProcessName || p.name === app.name
+                (p) => p.name === app.pm2ProcessName || p.name === app.name || p.pm2_env?.pm_cwd === app.directory
               );
               const isOnline = matchingPm2
                 ? matchingPm2.status === 'online'
-                : app.status === 'Deployed' || app.healthStatus === 'Healthy';
+                : (app as any).status === 'Deployed' || (app as any).healthStatus === 'Healthy';
 
-              const cpuVal = matchingPm2?.monit?.cpu ?? 0;
+              const rawCpu = matchingPm2?.monit?.cpu ?? ((app as any).cpu ?? 0);
+              const cpuVal = typeof rawCpu === 'number' ? (rawCpu % 1 === 0 ? rawCpu : rawCpu.toFixed(1)) : rawCpu;
               const memMb = matchingPm2?.monit?.memory
                 ? Math.round(matchingPm2.monit.memory / (1024 * 1024))
-                : 0;
+                : ((app as any).memoryMb ?? 0);
 
               // Real disk telemetry from SSH df -P -B1 command
               const disk = (app as any).diskMetrics;
@@ -1171,10 +1177,10 @@ export function NginxApplicationsTab({
                           </div>
                           <div className="flex flex-col text-right">
                             <span className="text-slate-200 font-bold text-[11px] leading-tight whitespace-nowrap">
-                              {disk.used} / {disk.total}
+                              {disk.percentage}% <span className="text-slate-400 text-[10px] font-normal">({disk.used} / {disk.total})</span>
                             </span>
                             <span className="text-[9px] text-slate-400 leading-tight whitespace-nowrap">
-                              {disk.percentage}% • {disk.available} free {disk.appSize && `• App: ${disk.appSize}`}
+                              {disk.available} free {disk.appSize && `• App: ${disk.appSize}`}
                             </span>
                           </div>
                         </>
