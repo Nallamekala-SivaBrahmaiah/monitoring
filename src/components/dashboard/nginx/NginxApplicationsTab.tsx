@@ -1044,12 +1044,10 @@ export function NginxApplicationsTab({
               const memMb = matchingPm2?.monit?.memory
                 ? Math.round(matchingPm2.monit.memory / (1024 * 1024))
                 : (isOnline ? 165 : 0);
-
-              const visitUrl = app.appPort
-                ? (app.appPort === 80 || app.appPort === 443
-                    ? 'https://multicloudwithsiva.online'
-                    : `http://${activeServer.host || '4.240.105.247'}:${app.appPort}`)
-                : 'https://multicloudwithsiva.online';
+              const diskUsed = activeServer?.metrics?.diskUsedGb
+                ? `${activeServer.metrics.diskUsedGb} GB`
+                : '12.8 GB';
+              const diskPct = activeServer?.metrics?.diskPercent ?? 28;
 
               return (
                 <div
@@ -1091,7 +1089,7 @@ export function NginxApplicationsTab({
                     </div>
                   </div>
 
-                  {/* Middle: Resource Meters (CPU & RAM Bars) + Port */}
+                  {/* Middle: Resource Meters (CPU, RAM, DISK Bars) */}
                   <div className="flex items-center gap-4 text-xs font-mono shrink-0 flex-wrap">
                     {/* CPU Meter */}
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
@@ -1117,27 +1115,21 @@ export function NginxApplicationsTab({
                       <span className="text-slate-200 font-bold min-w-[48px]">{memMb} MB</span>
                     </div>
 
-                    {app.appPort && (
-                      <span className="text-[10px] font-mono text-amber-300 px-2 py-0.5 rounded bg-[#070B14] border border-[#1E293B]">
-                        :{app.appPort}
-                      </span>
-                    )}
+                    {/* DISK Meter */}
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                      <span className="text-slate-500 text-[10px] font-bold">DISK</span>
+                      <div className="w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
+                        <div
+                          className="bg-amber-400 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(100, Math.max(12, diskPct))}%` }}
+                        />
+                      </div>
+                      <span className="text-slate-200 font-bold min-w-[48px]">{diskUsed}</span>
+                    </div>
                   </div>
 
-                  {/* Right: 4 Action Buttons */}
+                  {/* Right: Action Buttons */}
                   <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                    {/* Visit */}
-                    <a
-                      href={visitUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 hover:text-white border border-blue-500/30 text-xs font-semibold flex items-center gap-1 transition"
-                      title="Open application URL in new tab"
-                    >
-                      <span>Visit</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
 
                     {/* Reload */}
                     <button
