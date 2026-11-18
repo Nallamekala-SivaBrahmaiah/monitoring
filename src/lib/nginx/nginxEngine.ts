@@ -1246,6 +1246,169 @@ echo ">>> Deployment completed successfully."
   };
 }
 
+export interface AppDiskMetric {
+  directory: string;
+  filesystem: string;
+  totalBytes: number;
+  usedBytes: number;
+  availableBytes: number;
+  total: string;
+  used: string;
+  available: string;
+  percentage: number;
+  mountPoint: string;
+  status: 'available' | 'unavailable';
+  updatedAt: string;
+}
+
+/**
+ * Retrieve real disk metrics via SSH for specified application directories
+ * Uses `df -P -B1 /dir` to identify actual filesystem and capacity
+ */
+export async function queryAppDiskMetrics(
+  server: INginxServerData,
+  directories: string[]
+): Promise<Record<string, AppDiskMetric>> {
+  const validDirs = directories.map((d) => d?.trim()).filter(Boolean);
+  if (validDirs.length === 0) return {};
+
+  const formatGb = (bytes: number) => {
+    if (!bytes || bytes <= 0) return '0 GB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+  };
+
+  const script = validDirs
+    .map((d) => {
+      const safe = path.normalize(d).replace(/\\/g, '/');
+      return `echo "===DIR:${safe}==="; df -P -B1 "${safe}" 2>&1 || true`;
+    })
+    .join('\n');
+
+  const results: Record<string, AppDiskMetric> = {};
+
+  try {
+    const res = await executeSSH(server, script, 15000);
+    const out = res.stdout || '';
+
+    const nowFormatted = new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    for (const d of validDirs) {
+      const safe = path.normalize(d).replace(/\\/g, '/');
+      const marker = `===DIR:${safe}===`;
+      const idx = out.indexOf(marker);
+
+      if (idx !== -1) {
+        const after = out.slice(idx + marker.length);
+        const nextIdx = after.indexOf('===DIR:');
+        const section = nextIdx === -1 ? after : after.slice(0, nextIdx);
+
+        const lines = section.trim().split('\n').filter(Boolean);
+        let parsed = false;
+
+        for (const line of lines) {
+          if (line.startsWith('Filesystem') || line.includes('1-blocks')) continue;
+          if (line.startsWith('df:') || line.includes('No such file')) continue;
+
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 6) {
+            const filesystem = parts[0];
+            const totalBytes = parseInt(parts[1], 10) || 0;
+            const usedBytes = parseInt(parts[2], 10) || 0;
+            const availableBytes = parseInt(parts[3], 10) || 0;
+            const capStr = parts[4] || '0%';
+            const percentage =
+              parseInt(capStr.replace('%', ''), 10) ||
+              (totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0);
+            const mountPoint = parts[5];
+
+            results[safe] = {
+              directory: safe,
+              filesystem,
+              totalBytes,
+              usedBytes,
+              availableBytes,
+              total: formatGb(totalBytes),
+              used: formatGb(usedBytes),
+              available: formatGb(availableBytes),
+              percentage,
+              mountPoint,
+              status: 'available',
+              updatedAt: nowFormatted,
+            };
+            parsed = true;
+            break;
+          }
+        }
+
+        if (!parsed) {
+          results[safe] = {
+            directory: safe,
+            filesystem: 'Unknown',
+            totalBytes: 0,
+            usedBytes: 0,
+            availableBytes: 0,
+            total: 'Unavailable',
+            used: 'Unavailable',
+            available: 'Unavailable',
+            percentage: 0,
+            mountPoint: 'Unknown',
+            status: 'unavailable',
+            updatedAt: nowFormatted,
+          };
+        }
+      } else {
+        results[safe] = {
+          directory: safe,
+          filesystem: 'Unknown',
+          totalBytes: 0,
+          usedBytes: 0,
+          availableBytes: 0,
+          total: 'Unavailable',
+          used: 'Unavailable',
+          available: 'Unavailable',
+          percentage: 0,
+          mountPoint: 'Unknown',
+          status: 'unavailable',
+          updatedAt: new Date().toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          }),
+        };
+      }
+    }
+  } catch (err: any) {
+    const nowFormatted = new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    for (const d of validDirs) {
+      const safe = path.normalize(d).replace(/\\/g, '/');
+      results[safe] = {
+        directory: safe,
+        filesystem: 'Unknown',
+        totalBytes: 0,
+        usedBytes: 0,
+        availableBytes: 0,
+        total: 'Unavailable',
+        used: 'Unavailable',
+        available: 'Unavailable',
+        percentage: 0,
+        mountPoint: 'Unknown',
+        status: 'unavailable',
+        updatedAt: nowFormatted,
+      };
+    }
+  }
+
+  return results;
+}
+
 /**
  * File browser restricted to authorized directories
  */

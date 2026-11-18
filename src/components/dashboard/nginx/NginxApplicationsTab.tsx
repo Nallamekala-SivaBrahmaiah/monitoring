@@ -1084,23 +1084,23 @@ export function NginxApplicationsTab({
               const memMb = matchingPm2?.monit?.memory
                 ? Math.round(matchingPm2.monit.memory / (1024 * 1024))
                 : 0;
-              const diskUsed = activeServer?.metrics?.diskUsedGb
-                ? `${activeServer.metrics.diskUsedGb} GB`
-                : '12.8 GB';
-              const diskPct = activeServer?.metrics?.diskPercent ?? 28;
+
+              // Real disk telemetry from SSH df -P -B1 command
+              const disk = (app as any).diskMetrics;
+              const hasRealDisk = disk && disk.status === 'available';
 
               return (
                 <div
                   key={app._id || app.directory}
                   onClick={() => handleSelectApp(app)}
-                  className={`rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col lg:flex-row lg:items-center justify-between gap-4 group ${
+                  className={`rounded-xl p-3 sm:p-3.5 border transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 group ${
                     isSelected
                       ? 'border-cyan-400 bg-gradient-to-r from-[#102038] via-[#0E1A2F] to-[#0A1220] ring-1 ring-cyan-400/50 shadow-lg shadow-cyan-500/10'
                       : 'border-[#1E293B] bg-[#070B14]/80 hover:border-slate-600 hover:bg-[#0E1626]'
                   }`}
                 >
-                  {/* Column 1: App Identity (Fixed width on desktop with full name visibility without truncation) */}
-                  <div className="flex items-center gap-3 min-w-0 w-full lg:w-[480px] xl:w-[520px] shrink-0">
+                  {/* Column 1: App Identity (Flex-1 responsive width so buttons never overflow) */}
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div
                       className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
                         isSelected
@@ -1113,7 +1113,7 @@ export function NginxApplicationsTab({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                         <h4
-                          className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors whitespace-nowrap"
+                          className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors truncate"
                           title={app.name}
                         >
                           {app.name}
@@ -1126,53 +1126,77 @@ export function NginxApplicationsTab({
                           <span>{isOnline ? 'Healthy' : 'Stopped'}</span>
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-400 font-mono truncate mt-0.5 max-w-[460px]" title={app.directory}>
+                      <p className="text-[11px] text-slate-400 font-mono truncate mt-0.5" title={app.directory}>
                         {app.directory} {app.pm2ProcessName && `• PM2: ${app.pm2ProcessName}`}
                       </p>
                     </div>
                   </div>
 
-                  {/* Column 2: Resource Telemetry (Centered, fixed meter sizes for strict vertical alignment across all rows) */}
-                  <div className="flex-1 flex items-center justify-start lg:justify-center gap-5 text-xs font-mono shrink-0 flex-wrap sm:flex-nowrap">
+                  {/* Column 2: Resource Telemetry (CPU & RAM unchanged, real SSH DISK metrics) */}
+                  <div className="flex items-center gap-3 sm:gap-4 text-xs font-mono shrink-0 flex-wrap sm:flex-nowrap">
                     {/* CPU Meter */}
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
                       <span className="text-slate-500 text-[10px] font-bold w-6">CPU</span>
-                      <div className="w-14 sm:w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
+                      <div className="w-12 sm:w-14 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
                         <div
                           className="bg-emerald-400 h-full rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(100, Math.max(8, cpuVal * 10))}%` }}
                         />
                       </div>
-                      <span className="text-slate-200 font-bold w-10 text-right">{cpuVal}%</span>
+                      <span className="text-slate-200 font-bold w-9 text-right">{cpuVal}%</span>
                     </div>
 
                     {/* RAM Meter */}
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
                       <span className="text-slate-500 text-[10px] font-bold w-6">RAM</span>
-                      <div className="w-14 sm:w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
+                      <div className="w-12 sm:w-14 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
                         <div
                           className="bg-blue-400 h-full rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(100, Math.max(12, (memMb / 512) * 100))}%` }}
                         />
                       </div>
-                      <span className="text-slate-200 font-bold w-14 text-right">{memMb} MB</span>
+                      <span className="text-slate-200 font-bold w-12 text-right">{memMb} MB</span>
                     </div>
 
-                    {/* DISK Meter */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
+                    {/* Real DISK Meter (Actual SSH df Telemetry) */}
+                    <div
+                      className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0"
+                      title={
+                        hasRealDisk
+                          ? `Filesystem: ${disk.filesystem} (${disk.mountPoint})\nUsed: ${disk.used} / Total: ${disk.total}\nAvailable: ${disk.available} (${disk.percentage}% used)\nUpdated: ${disk.updatedAt}`
+                          : 'Disk telemetry unavailable via SSH'
+                      }
+                    >
                       <span className="text-slate-500 text-[10px] font-bold w-7">DISK</span>
-                      <div className="w-14 sm:w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
-                        <div
-                          className="bg-amber-400 h-full rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, Math.max(12, diskPct))}%` }}
-                        />
-                      </div>
-                      <span className="text-slate-200 font-bold w-14 text-right">{diskUsed}</span>
+                      {hasRealDisk ? (
+                        <>
+                          <div className="w-12 sm:w-14 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                disk.percentage > 85 ? 'bg-rose-500' : disk.percentage > 70 ? 'bg-amber-400' : 'bg-emerald-400'
+                              }`}
+                              style={{ width: `${Math.min(100, Math.max(8, disk.percentage))}%` }}
+                            />
+                          </div>
+                          <div className="flex flex-col text-right">
+                            <span className="text-slate-200 font-bold text-[11px] leading-tight whitespace-nowrap">
+                              {disk.used} / {disk.total}
+                            </span>
+                            <span className="text-[9px] text-slate-400 leading-tight whitespace-nowrap">
+                              {disk.percentage}% • {disk.available} free
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-amber-400/90 font-bold text-[10px] px-1.5 py-0.5 rounded bg-amber-400/10 border border-amber-400/20">
+                          Unavailable
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  {/* Column 3: Action Buttons (Right-aligned, fixed compact cluster) */}
-                  <div className="flex items-center justify-end gap-1.5 shrink-0 lg:w-[250px]">
+                  {/* Column 3: Action Buttons (Right-aligned, fully contained inside card with zero cut-off) */}
+                  <div className="flex items-center justify-end gap-1.5 shrink-0 ml-auto md:ml-0">
                     {/* Reload */}
                     <button
                       type="button"
@@ -1181,7 +1205,7 @@ export function NginxApplicationsTab({
                         handlePM2Action('reload', app.pm2ProcessName || app.name);
                       }}
                       disabled={isExecuting}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+                      className="px-2.5 py-1.5 rounded-lg bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold flex items-center gap-1 transition cursor-pointer disabled:opacity-50 shrink-0"
                       title={`Reload PM2 process ${app.pm2ProcessName || app.name}`}
                     >
                       <RefreshCw className="w-3 h-3 text-cyan-400" />
@@ -1195,7 +1219,7 @@ export function NginxApplicationsTab({
                         e.stopPropagation();
                         handleOpenPipelineModal(app);
                       }}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-lg bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold flex items-center gap-1 transition cursor-pointer shrink-0"
                       title={`Configure pipeline settings for ${app.name}`}
                     >
                       <Sliders className="w-3 h-3 text-slate-400" />
@@ -1210,7 +1234,7 @@ export function NginxApplicationsTab({
                         handleDeploySingleApp(app);
                       }}
                       disabled={isExecuting}
-                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md shadow-purple-600/30 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md shadow-purple-600/30 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50 shrink-0 whitespace-nowrap"
                       title={`Deploy ${app.name} directly`}
                     >
                       <Rocket className="w-3 h-3" />

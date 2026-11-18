@@ -3,7 +3,7 @@ import path from 'path';
 import connectToDatabase from '@/lib/mongodb';
 import NginxServer from '@/models/NginxServer';
 import NginxApp, { INginxAppData } from '@/models/NginxApp';
-import { discoverApplications } from '@/lib/nginx/nginxEngine';
+import { discoverApplications, queryAppDiskMetrics } from '@/lib/nginx/nginxEngine';
 
 export async function GET(
   req: NextRequest,
@@ -110,9 +110,42 @@ export async function GET(
     server.discoveredAppCount = apps.length;
     await server.save();
 
+    // Retrieve actual disk information from the currently selected server using the existing SSH connection
+    let diskMetricsMap: Record<string, any> = {};
+    try {
+      const dirs = apps.map((a: any) => a.directory).filter(Boolean);
+      if (dirs.length > 0) {
+        diskMetricsMap = await queryAppDiskMetrics(server.toObject(), dirs);
+      }
+    } catch (diskErr: any) {
+      console.warn(`[NginxApps] Disk metrics query notice for ${server.name}:`, diskErr.message);
+    }
+
+    const appsWithDisk = apps.map((app: any) => {
+      const safeDir = path.normalize(app.directory || '').replace(/\\/g, '/');
+      const disk = diskMetricsMap[safeDir];
+      return {
+        ...app,
+        diskMetrics: disk || {
+          status: 'unavailable',
+          total: 'Unavailable',
+          used: 'Unavailable',
+          available: 'Unavailable',
+          percentage: 0,
+          filesystem: 'Unknown',
+          mountPoint: 'Unknown',
+          updatedAt: new Date().toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          }),
+        },
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      apps,
+      apps: appsWithDisk,
       count: apps.length,
     });
   } catch (err: any) {
