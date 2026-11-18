@@ -992,6 +992,7 @@ export async function executePipelineStep(
   options: {
     repoPath: string;
     branch?: string;
+    gitRepoUrl?: string;
     step:
       | 'git-status'
       | 'git-fetch'
@@ -1014,29 +1015,73 @@ export async function executePipelineStep(
   const safePath = path.normalize(options.repoPath).replace(/\\/g, '/');
   const branch = (options.branch || 'main').trim().replace(/[^a-zA-Z0-9._\-/]/g, '');
   const pm2App = (options.pm2AppName || '').trim().replace(/[^a-zA-Z0-9._\-]/g, '');
+  const repoName = path.basename(safePath);
+  const inferredGitUrl =
+    (options.gitRepoUrl || '').trim() ||
+    `https://github.com/Nallamekala-SivaBrahmaiah/${repoName}.git`;
 
   let cmd = '';
   let timeoutMs = 90000;
 
   switch (options.step) {
     case 'git-status':
-      cmd = `cd "${safePath}" && git status 2>&1`;
+      cmd = `
+if [ ! -d "${safePath}/.git" ]; then
+  if [ -n "${inferredGitUrl}" ]; then
+    echo ">>> [Auto-Clone] Repository not found at ${safePath}. Initializing from ${inferredGitUrl} (${branch})..."
+    mkdir -p "$(dirname "${safePath}")"
+    git clone -b "${branch}" "${inferredGitUrl}" "${safePath}" 2>&1 || git clone "${inferredGitUrl}" "${safePath}" 2>&1 || true
+  fi
+fi
+cd "${safePath}" 2>/dev/null && git status 2>&1 || echo "Directory ${safePath} is not a git repository."
+`;
       break;
     case 'git-fetch':
-      cmd = `cd "${safePath}" && git fetch --all --prune 2>&1`;
+      cmd = `
+if [ ! -d "${safePath}/.git" ]; then
+  echo ">>> [Auto-Clone] Repository not found at ${safePath}. Cloning from ${inferredGitUrl} (${branch})..."
+  mkdir -p "$(dirname "${safePath}")"
+  git clone -b "${branch}" "${inferredGitUrl}" "${safePath}" 2>&1 || git clone "${inferredGitUrl}" "${safePath}" 2>&1 || exit 1
+  cd "${safePath}" || exit 1
+else
+  cd "${safePath}" || { echo "Directory not found: ${safePath}" >&2; exit 1; }
+  git fetch --all --prune 2>&1 || exit 1
+fi
+`;
       break;
     case 'git-pull':
-      cmd = `cd "${safePath}" && git fetch --all && git checkout "${branch}" && git pull origin "${branch}" 2>&1`;
+      cmd = `
+if [ ! -d "${safePath}/.git" ]; then
+  echo ">>> [Auto-Clone] Repository not found at ${safePath}. Cloning from ${inferredGitUrl} (${branch})..."
+  mkdir -p "$(dirname "${safePath}")"
+  git clone -b "${branch}" "${inferredGitUrl}" "${safePath}" 2>&1 || git clone "${inferredGitUrl}" "${safePath}" 2>&1 || exit 1
+  cd "${safePath}" || exit 1
+  echo ">>> Repository cloned successfully."
+else
+  cd "${safePath}" || { echo "Directory not found: ${safePath}" >&2; exit 1; }
+  git fetch --all && git checkout "${branch}" && git pull origin "${branch}" 2>&1 || exit 1
+fi
+`;
       break;
     case 'install': {
       const installCmd = options.installCmd?.trim() || 'npm install';
-      cmd = `cd "${safePath}" && ${installCmd} 2>&1`;
+      cmd = `
+cd "${safePath}" || { echo "Directory not found: ${safePath}" >&2; exit 1; }
+if [ -f "package.json" ]; then
+  ${installCmd} 2>&1
+else
+  echo ">>> Notice: Static project (no package.json). Nothing to install."
+fi
+`;
       timeoutMs = 180000;
       break;
     }
     case 'build': {
       const buildCmd = options.buildCmd?.trim() || 'npm run build';
-      cmd = `cd "${safePath}" && ${buildCmd} 2>&1`;
+      cmd = `
+cd "${safePath}" || { echo "Directory not found: ${safePath}" >&2; exit 1; }
+${buildCmd} 2>&1
+`;
       timeoutMs = 240000;
       break;
     }
@@ -1070,7 +1115,11 @@ echo ">>> [1/3] Resetting git repository to previous commit (HEAD~1)..."
 git reset --hard HEAD~1 || exit 1
 
 echo ">>> [2/3] Installing dependencies (${installCmd})..."
-${installCmd} || exit 1
+if [ -f "package.json" ]; then
+  ${installCmd} || exit 1
+else
+  echo ">>> Static project. Skipping dependency installation."
+fi
 
 echo ">>> [3/3] Compiling / running build (${buildCmd})..."
 ${buildCmd} || exit 1
@@ -1089,15 +1138,31 @@ echo ">>> Rollback completed successfully."
       const buildCmd = options.buildCmd?.trim() || 'npm run build';
       timeoutMs = 300000;
       cmd = `
-cd "${safePath}" || { echo "Directory not found: ${safePath}" >&2; exit 1; }
-echo ">>> [1/4] Git Pull (${branch})..."
-git fetch --all && git checkout "${branch}" && git pull origin "${branch}" || exit 1
+if [ ! -d "${safePath}/.git" ]; then
+  echo ">>> [1/4] Target repository not found locally. Auto-cloning from ${inferredGitUrl} (${branch})..."
+  mkdir -p "$(dirname "${safePath}")"
+  git clone -b "${branch}" "${inferredGitUrl}" "${safePath}" 2>&1 || git clone "${inferredGitUrl}" "${safePath}" 2>&1 || exit 1
+  cd "${safePath}" || exit 1
+  echo ">>> Cloned successfully."
+else
+  cd "${safePath}" || { echo "Directory not found: ${safePath}" >&2; exit 1; }
+  echo ">>> [1/4] Git Pull (${branch})..."
+  git fetch --all && git checkout "${branch}" && git pull origin "${branch}" || exit 1
+fi
 
 echo ">>> [2/4] Installing dependencies (${installCmd})..."
-${installCmd} || exit 1
+if [ -f "package.json" ]; then
+  ${installCmd} || exit 1
+else
+  echo ">>> Static project / no package.json. Skipping dependency installation."
+fi
 
 echo ">>> [3/4] Building application (${buildCmd})..."
-${buildCmd} || exit 1
+if [ -f "package.json" ] || [ "${buildCmd}" = "nginx -t" ]; then
+  ${buildCmd} || exit 1
+else
+  echo ">>> Static project. Skipping build step."
+fi
 
 if [ -n "${pm2App}" ]; then
   echo ">>> [4/4] Reloading PM2 process (${pm2App})..."
@@ -1105,7 +1170,7 @@ if [ -n "${pm2App}" ]; then
     (sleep 1 && pm2 reload "${pm2App}") >/dev/null 2>&1 &
     echo ">>> PM2 zero-downtime reload scheduled in background for clean HTTP response."
   else
-    pm2 reload "${pm2App}" || pm2 restart "${pm2App}" || (cd "${safePath}" && pm2 start npm --name "${pm2App}" -- start)
+    pm2 reload "${pm2App}" 2>&1 || pm2 restart "${pm2App}" 2>&1 || (cd "${safePath}" && pm2 start npm --name "${pm2App}" -- start 2>&1) || true
     echo ">>> PM2 Status:"
     pm2 list
   fi

@@ -183,7 +183,12 @@ export function NginxApplicationsTab({
     setSelectedApp(app);
     if (app.directory) setRepoPath(app.directory);
     if (app.gitBranch) setGitBranch(app.gitBranch);
-    if (app.gitRepoUrl) setGitRemoteUrl(app.gitRepoUrl);
+    const resolvedGitUrl =
+      app.gitRepoUrl ||
+      (app.name
+        ? `https://github.com/Nallamekala-SivaBrahmaiah/${app.name}.git`
+        : '');
+    setGitRemoteUrl(resolvedGitUrl);
     if (app.buildCommand) setBuildCmd(app.buildCommand);
     if (app.pm2ProcessName) {
       setPm2AppName(app.pm2ProcessName);
@@ -194,9 +199,14 @@ export function NginxApplicationsTab({
     }
     if (app.appPort) setAppPort(app.appPort);
 
+    const isStatic =
+      (app.frameworkName || '').toLowerCase().includes('static') ||
+      app.buildCommand === 'nginx -t';
+
     const pkg = (app.packageManager?.toLowerCase() as string) || 'npm';
     setPackageManager(pkg);
-    if (pkg === 'pnpm') setInstallCmd('pnpm install');
+    if (isStatic) setInstallCmd('echo "Static site (no package.json)"');
+    else if (pkg === 'pnpm') setInstallCmd('pnpm install');
     else if (pkg === 'yarn') setInstallCmd('yarn install');
     else if (pkg === 'bun') setInstallCmd('bun install');
     else if (pkg === 'maven') setInstallCmd('mvn clean compile');
@@ -595,6 +605,12 @@ export function NginxApplicationsTab({
       `[${now()}] [info] Target: ${currentRepo} | Branch: ${currentBranch} | PM2: ${currentPM2} | Server: ${activeServer.name}`,
     ]);
 
+    const currentGitUrl = (
+      selectedApp?.gitRepoUrl ||
+      gitRemoteUrl ||
+      `https://github.com/Nallamekala-SivaBrahmaiah/${selectedApp?.name || 'app'}.git`
+    ).trim();
+
     try {
       const res = await fetch(`/api/nginx/servers/${activeServer._id}/pipeline`, {
         method: 'POST',
@@ -602,6 +618,7 @@ export function NginxApplicationsTab({
         body: JSON.stringify({
           repoPath: currentRepo,
           branch: currentBranch,
+          gitRepoUrl: currentGitUrl,
           step: stepKey,
           installCmd: currentInstall,
           buildCmd: currentBuild,
@@ -1031,7 +1048,14 @@ export function NginxApplicationsTab({
           </div>
         ) : (
           <div className="space-y-2.5">
-            {apps.map((app) => {
+            {[...apps]
+              .sort((a, b) => {
+                const isAOnline = a.status === 'Deployed' || a.healthStatus === 'Healthy';
+                const isBOnline = b.status === 'Deployed' || b.healthStatus === 'Healthy';
+                if (isAOnline !== isBOnline) return isAOnline ? -1 : 1;
+                return (a.name || '').localeCompare(b.name || '');
+              })
+              .map((app) => {
               const isSelected = selectedApp?._id === app._id || selectedApp?.directory === app.directory;
               const matchingPm2 = pm2Processes.find(
                 (p) => p.name === app.pm2ProcessName || p.name === app.name
@@ -1053,14 +1077,14 @@ export function NginxApplicationsTab({
                 <div
                   key={app._id || app.directory}
                   onClick={() => handleSelectApp(app)}
-                  className={`rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col lg:flex-row lg:items-center justify-between gap-3 group ${
+                  className={`rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col lg:flex-row lg:items-center justify-between gap-4 group ${
                     isSelected
                       ? 'border-cyan-400 bg-gradient-to-r from-[#102038] via-[#0E1A2F] to-[#0A1220] ring-1 ring-cyan-400/50 shadow-lg shadow-cyan-500/10'
                       : 'border-[#1E293B] bg-[#070B14]/80 hover:border-slate-600 hover:bg-[#0E1626]'
                   }`}
                 >
-                  {/* Left: App Icon + Name + Tech Badge + Health Status */}
-                  <div className="flex items-center gap-3 min-w-0">
+                  {/* Column 1: App Identity (Fixed width on desktop so short/long names maintain perfect grid alignment) */}
+                  <div className="flex items-center gap-3 min-w-0 w-full lg:w-[410px] xl:w-[440px] shrink-0">
                     <div
                       className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
                         isSelected
@@ -1070,67 +1094,69 @@ export function NginxApplicationsTab({
                     >
                       {getAppIcon(app.type, app.packageManager)}
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={app.name}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-nowrap">
+                        <h4
+                          className="text-xs font-bold text-white truncate max-w-[170px] sm:max-w-[210px] group-hover:text-cyan-300 transition-colors"
+                          title={app.name}
+                        >
                           {app.name}
                         </h4>
-                        <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                        <span className="text-[10px] px-2 py-0.5 rounded font-mono shrink-0 whitespace-nowrap bg-blue-500/15 text-blue-300 border border-blue-500/30">
                           {app.frameworkName || (app.name === 'monitoring-app' ? 'Next.js' : (app.type ? `${app.type}` : 'Node.js'))}
                         </span>
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold font-mono ${isOnline ? 'text-emerald-400' : 'text-slate-400'}`}>
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold font-mono shrink-0 whitespace-nowrap ${isOnline ? 'text-emerald-400' : 'text-slate-400'}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
                           <span>{isOnline ? 'Healthy' : 'Stopped'}</span>
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-400 font-mono truncate mt-0.5" title={app.directory}>
+                      <p className="text-[11px] text-slate-400 font-mono truncate mt-0.5 max-w-[380px]" title={app.directory}>
                         {app.directory} {app.pm2ProcessName && `• PM2: ${app.pm2ProcessName}`}
                       </p>
                     </div>
                   </div>
 
-                  {/* Middle: Resource Meters (CPU, RAM, DISK Bars) */}
-                  <div className="flex items-center gap-4 text-xs font-mono shrink-0 flex-wrap">
+                  {/* Column 2: Resource Telemetry (Centered, fixed meter sizes for strict vertical alignment across all rows) */}
+                  <div className="flex-1 flex items-center justify-start lg:justify-center gap-5 text-xs font-mono shrink-0 flex-wrap sm:flex-nowrap">
                     {/* CPU Meter */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                      <span className="text-slate-500 text-[10px] font-bold">CPU</span>
-                      <div className="w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
+                      <span className="text-slate-500 text-[10px] font-bold w-6">CPU</span>
+                      <div className="w-14 sm:w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
                         <div
                           className="bg-emerald-400 h-full rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(100, Math.max(8, cpuVal * 10))}%` }}
                         />
                       </div>
-                      <span className="text-slate-200 font-bold min-w-[32px]">{cpuVal}%</span>
+                      <span className="text-slate-200 font-bold w-10 text-right">{cpuVal}%</span>
                     </div>
 
                     {/* RAM Meter */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                      <span className="text-slate-500 text-[10px] font-bold">RAM</span>
-                      <div className="w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
+                      <span className="text-slate-500 text-[10px] font-bold w-6">RAM</span>
+                      <div className="w-14 sm:w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
                         <div
                           className="bg-blue-400 h-full rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(100, Math.max(12, (memMb / 512) * 100))}%` }}
                         />
                       </div>
-                      <span className="text-slate-200 font-bold min-w-[48px]">{memMb} MB</span>
+                      <span className="text-slate-200 font-bold w-14 text-right">{memMb} MB</span>
                     </div>
 
                     {/* DISK Meter */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                      <span className="text-slate-500 text-[10px] font-bold">DISK</span>
-                      <div className="w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
+                      <span className="text-slate-500 text-[10px] font-bold w-7">DISK</span>
+                      <div className="w-14 sm:w-16 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
                         <div
                           className="bg-amber-400 h-full rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(100, Math.max(12, diskPct))}%` }}
                         />
                       </div>
-                      <span className="text-slate-200 font-bold min-w-[48px]">{diskUsed}</span>
+                      <span className="text-slate-200 font-bold w-14 text-right">{diskUsed}</span>
                     </div>
                   </div>
 
-                  {/* Right: Action Buttons */}
-                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-
+                  {/* Column 3: Action Buttons (Right-aligned, fixed compact cluster) */}
+                  <div className="flex items-center justify-end gap-1.5 shrink-0 lg:w-[250px]">
                     {/* Reload */}
                     <button
                       type="button"
@@ -1296,17 +1322,19 @@ export function NginxApplicationsTab({
 
           {/* Step 4: PM2 Reload */}
           <div className="bg-[#0B1120] border border-[#1E293B] rounded-xl p-3 flex items-center justify-between gap-2 hover:border-emerald-500/50 transition">
-            <div className="min-w-0">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">4. PM2 Reload</span>
-              <span className="text-xs font-bold text-emerald-300 font-mono truncate block" title={pm2AppName}>
-                PM2 [{pm2AppName}]
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">
+                {pm2AppName ? '4. PM2 Reload' : '4. Process Reload'}
+              </span>
+              <span className="text-xs font-bold text-emerald-300 font-mono truncate block" title={pm2AppName || selectedApp?.name || 'monitoring-app'}>
+                {pm2AppName ? `PM2 [${pm2AppName}]` : `Reload [${selectedApp?.name || 'app'}]`}
               </span>
             </div>
             <button
               type="button"
               onClick={() => executeStep('pm2-reload', 'PM2 Reload')}
               disabled={isExecuting}
-              className="px-2 py-1 rounded bg-[#111A2E] hover:bg-[#18233C] text-[10px] font-mono font-bold text-emerald-400 border border-[#1E293B] transition cursor-pointer"
+              className="px-2 py-1 rounded bg-[#111A2E] hover:bg-[#18233C] text-[10px] font-mono font-bold text-emerald-400 border border-[#1E293B] transition cursor-pointer shrink-0"
             >
               Reload
             </button>
@@ -1319,13 +1347,23 @@ export function NginxApplicationsTab({
             <div className="flex items-center gap-1.5 truncate max-w-md">
               <span className="text-slate-500">Repo:</span>
               <a
-                href={gitRemoteUrl || 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git'}
+                href={
+                  gitRemoteUrl ||
+                  selectedApp?.gitRepoUrl ||
+                  (selectedApp?.name
+                    ? `https://github.com/Nallamekala-SivaBrahmaiah/${selectedApp.name}.git`
+                    : 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git')
+                }
                 target="_blank"
                 rel="noreferrer"
                 className="text-cyan-300 hover:underline truncate"
-                title={gitRemoteUrl}
+                title={gitRemoteUrl || selectedApp?.gitRepoUrl}
               >
-                {gitRemoteUrl || 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git'}
+                {gitRemoteUrl ||
+                  selectedApp?.gitRepoUrl ||
+                  (selectedApp?.name
+                    ? `https://github.com/Nallamekala-SivaBrahmaiah/${selectedApp.name}.git`
+                    : 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git')}
               </a>
             </div>
 

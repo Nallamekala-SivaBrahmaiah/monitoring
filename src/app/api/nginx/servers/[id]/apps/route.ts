@@ -87,7 +87,7 @@ export async function GET(
                 type: (da.type as any) || 'nodejs',
                 frameworkName: da.frameworkName || 'Nginx Web Application',
                 directory: da.directory,
-                gitRepoUrl: da.gitRepoUrl || '',
+                gitRepoUrl: da.gitRepoUrl || `https://github.com/Nallamekala-SivaBrahmaiah/${appName}.git`,
                 gitBranch: da.gitBranch || 'main',
                 packageManager: validPkg,
                 buildCommand: da.buildConfig || 'npm run build',
