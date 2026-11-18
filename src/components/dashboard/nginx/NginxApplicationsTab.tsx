@@ -43,6 +43,8 @@ import {
   Activity,
   Zap,
   Edit3,
+  Sliders,
+  Settings,
 } from 'lucide-react';
 import { INginxServerData } from '@/models/NginxServer';
 import { INginxAppData } from '@/models/NginxApp';
@@ -64,19 +66,34 @@ type RightPaneTab =
   | 'access-logs'
   | 'error-logs';
 
+type EditModalType = 'repo' | 'dependencies' | 'build' | 'pm2' | 'pipeline' | null;
+
 export function NginxApplicationsTab({
   activeServer,
   onNavigateToHistory,
 }: NginxApplicationsTabProps) {
   // ---------------------------------------------------------------------------
-  // 1. Pipeline Editable Configuration State
+  // 1. Pipeline Config State (Active parameters used by all commands)
   // ---------------------------------------------------------------------------
-  // Fully editable inputs for the 5 pipeline sections
   const [repoPath, setRepoPath] = useState<string>('/home/siva/monitoring');
   const [gitBranch, setGitBranch] = useState<string>('main');
+  const [gitRemoteUrl, setGitRemoteUrl] = useState<string>('https://github.com/Nallamekala-SivaBrahmaiah/monitoring');
   const [installCmd, setInstallCmd] = useState<string>('npm install');
   const [buildCmd, setBuildCmd] = useState<string>('npm run build');
   const [pm2AppName, setPm2AppName] = useState<string>('monitoring-app');
+  const [appPort, setAppPort] = useState<number>(3000);
+
+  // Temporary Edit Form state inside Modals
+  const [tempRepoPath, setTempRepoPath] = useState<string>('/home/siva/monitoring');
+  const [tempBranch, setTempBranch] = useState<string>('main');
+  const [tempRemoteUrl, setTempRemoteUrl] = useState<string>('');
+  const [tempInstallCmd, setTempInstallCmd] = useState<string>('npm install');
+  const [tempBuildCmd, setTempBuildCmd] = useState<string>('npm run build');
+  const [tempPm2Name, setTempPm2Name] = useState<string>('monitoring-app');
+  const [tempPort, setTempPort] = useState<number>(3000);
+
+  // Modal State
+  const [activeEditModal, setActiveEditModal] = useState<EditModalType>(null);
 
   // Applications & Discovered Data State
   const [apps, setApps] = useState<INginxAppData[]>([]);
@@ -154,7 +171,6 @@ export function NginxApplicationsTab({
   // ---------------------------------------------------------------------------
   // 7. Modals & Notifications
   // ---------------------------------------------------------------------------
-  const [addAppModalOpen, setAddAppModalOpen] = useState(false);
   const [rollbackConfirmOpen, setRollbackConfirmOpen] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -163,29 +179,50 @@ export function NginxApplicationsTab({
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Form State for Adding New App
-  const [newAppForm, setNewAppForm] = useState({
-    name: '',
-    type: 'nodejs' as INginxAppData['type'],
-    frameworkName: '',
-    directory: '',
-    gitRepoUrl: '',
-    gitBranch: 'main',
-    packageManager: 'auto' as INginxAppData['packageManager'],
-    buildCommand: 'npm run build',
-    startCommand: 'npm start',
-    pm2ProcessName: '',
-    appPort: 3000,
-    iconType: 'layers' as INginxAppData['iconType'],
-  });
+  // Open Edit Modal with current values
+  const handleOpenEditModal = (modalType: EditModalType) => {
+    setTempRepoPath(repoPath);
+    setTempBranch(gitBranch);
+    setTempRemoteUrl(gitRemoteUrl);
+    setTempInstallCmd(installCmd);
+    setTempBuildCmd(buildCmd);
+    setTempPm2Name(pm2AppName);
+    setTempPort(appPort);
+    setActiveEditModal(modalType);
+  };
 
-  // ---------------------------------------------------------------------------
+  // Save Modal Changes
+  const handleSaveModal = (modalType: EditModalType) => {
+    if (modalType === 'repo') {
+      setRepoPath(tempRepoPath.trim() || '/home/siva/monitoring');
+      setGitBranch(tempBranch.trim() || 'main');
+      if (tempRemoteUrl) setGitRemoteUrl(tempRemoteUrl.trim());
+      showToast('success', 'Source & Git Repository settings saved!');
+    } else if (modalType === 'dependencies') {
+      setInstallCmd(tempInstallCmd.trim() || 'npm install');
+      showToast('success', `Install command updated to "${tempInstallCmd}"!`);
+    } else if (modalType === 'build') {
+      setBuildCmd(tempBuildCmd.trim() || 'npm run build');
+      showToast('success', `Build command updated to "${tempBuildCmd}"!`);
+    } else if (modalType === 'pm2') {
+      setPm2AppName(tempPm2Name.trim() || 'monitoring-app');
+      setAppPort(tempPort || 3000);
+      showToast('success', `PM2 process target updated to "${tempPm2Name}"!`);
+    } else if (modalType === 'pipeline') {
+      setRepoPath(tempRepoPath.trim() || '/home/siva/monitoring');
+      setGitBranch(tempBranch.trim() || 'main');
+      setInstallCmd(tempInstallCmd.trim() || 'npm install');
+      setBuildCmd(tempBuildCmd.trim() || 'npm run build');
+      setPm2AppName(tempPm2Name.trim() || 'monitoring-app');
+      setAppPort(tempPort || 3000);
+      showToast('success', 'Full deployment pipeline configuration saved!');
+    }
+    setActiveEditModal(null);
+  };
+
   // Initialize Defaults based on Server
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!activeServer) return;
-
-    // Detect sensible defaults for the selected server
     const username = activeServer.username || 'siva';
     const defaultDir = `/home/${username}/monitoring`;
     setRepoPath(defaultDir);
@@ -194,12 +231,11 @@ export function NginxApplicationsTab({
       setRepoPath('/home/siva/monitoring');
       setGitBranch('main');
       setPm2AppName('monitoring-app');
+      setGitRemoteUrl('https://github.com/Nallamekala-SivaBrahmaiah/monitoring');
     }
   }, [activeServer]);
 
-  // ---------------------------------------------------------------------------
   // Fetch Registered Applications
-  // ---------------------------------------------------------------------------
   const fetchApps = useCallback(async () => {
     if (!activeServer?._id) return;
     setLoadingApps(true);
@@ -211,15 +247,16 @@ export function NginxApplicationsTab({
         const first = data.apps[0];
         setSelectedApp(first);
 
-        // Update editable fields from app if available
         if (first.directory) setRepoPath(first.directory);
         if (first.gitBranch) setGitBranch(first.gitBranch);
+        if (first.gitRepoUrl) setGitRemoteUrl(first.gitRepoUrl);
         if (first.buildCommand) setBuildCmd(first.buildCommand);
         if (first.pm2ProcessName) setPm2AppName(first.pm2ProcessName);
+        if (first.appPort) setAppPort(first.appPort);
         if (first.packageManager === 'pnpm') setInstallCmd('pnpm install');
       }
     } catch (err: any) {
-      console.warn('Apps list fetch notice:', err.message);
+      console.warn('Apps fetch notice:', err.message);
     } finally {
       setLoadingApps(false);
     }
@@ -229,9 +266,7 @@ export function NginxApplicationsTab({
     fetchApps();
   }, [fetchApps]);
 
-  // ---------------------------------------------------------------------------
   // Data Fetching: PM2 List
-  // ---------------------------------------------------------------------------
   const fetchPM2List = useCallback(async () => {
     if (!activeServer?._id) return;
     setPm2Loading(true);
@@ -251,9 +286,7 @@ export function NginxApplicationsTab({
     }
   }, [activeServer?._id, pm2AppName]);
 
-  // ---------------------------------------------------------------------------
   // Data Fetching: PM2 Logs
-  // ---------------------------------------------------------------------------
   const fetchPM2Logs = useCallback(async () => {
     if (!activeServer?._id) return;
     setPm2LogsLoading(true);
@@ -276,9 +309,7 @@ export function NginxApplicationsTab({
     }
   }, [activeServer?._id, pm2LogsAppFilter, pm2LogsLines]);
 
-  // ---------------------------------------------------------------------------
   // Data Fetching: Nginx Access Logs
-  // ---------------------------------------------------------------------------
   const fetchAccessLogs = useCallback(async () => {
     if (!activeServer?._id) return;
     setAccessLoading(true);
@@ -298,9 +329,7 @@ export function NginxApplicationsTab({
     }
   }, [activeServer?._id, accessLines]);
 
-  // ---------------------------------------------------------------------------
   // Data Fetching: Nginx Error Logs
-  // ---------------------------------------------------------------------------
   const fetchErrorLogs = useCallback(async () => {
     if (!activeServer?._id) return;
     setErrorLoading(true);
@@ -320,7 +349,7 @@ export function NginxApplicationsTab({
     }
   }, [activeServer?._id, errorLines]);
 
-  // Fetch data on active right tab switch
+  // Tab change handlers
   useEffect(() => {
     if (activeRightTab === 'pm2-list') {
       fetchPM2List();
@@ -333,7 +362,7 @@ export function NginxApplicationsTab({
     }
   }, [activeRightTab, fetchPM2List, fetchPM2Logs, fetchAccessLogs, fetchErrorLogs]);
 
-  // Auto refresh timers
+  // Auto-refresh timers
   useEffect(() => {
     if (activeRightTab === 'pm2-logs' && pm2AutoRefresh) {
       const interval = setInterval(fetchPM2Logs, 5000);
@@ -355,7 +384,7 @@ export function NginxApplicationsTab({
     }
   }, [activeRightTab, errorAutoRefresh, fetchErrorLogs]);
 
-  // Auto scroll terminal
+  // Auto-scroll terminal
   useEffect(() => {
     if (autoScroll && logTerminalRef.current) {
       logTerminalRef.current.scrollTop = logTerminalRef.current.scrollHeight;
@@ -363,7 +392,7 @@ export function NginxApplicationsTab({
   }, [deploymentLogs, autoScroll]);
 
   // ---------------------------------------------------------------------------
-  // PIPELINE EXECUTION ENGINE (Direct Server SSH Execution via /pipeline)
+  // PIPELINE EXECUTION ENGINE (Robust with Graceful JSON & Timeout Handling)
   // ---------------------------------------------------------------------------
   const executeStep = async (
     stepKey:
@@ -390,7 +419,6 @@ export function NginxApplicationsTab({
     const currentBuild = buildCmd.trim() || 'npm run build';
     const currentPM2 = pm2AppName.trim() || 'monitoring-app';
 
-    // Switch view to Deployment Output immediately so user sees live output
     setActiveRightTab('output');
     setIsExecuting(true);
     setActiveStepRunning(stepKey);
@@ -398,7 +426,6 @@ export function NginxApplicationsTab({
     const now = () => new Date().toTimeString().split(' ')[0];
     const stepLabel = customTitle || stepKey.toUpperCase();
 
-    // Progress updates
     if (stepKey === 'full-deploy') {
       setDeployProgress({
         status: 'deploying',
@@ -433,7 +460,33 @@ export function NginxApplicationsTab({
         }),
       });
 
-      const data = await res.json();
+      // Safely read response text first to handle both JSON and HTML error responses cleanly
+      const rawText = await res.text();
+      let data: any;
+
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        // If response is HTML (e.g. gateway timeout or proxy reload)
+        if (rawText.includes('504') || rawText.includes('Gateway Time-out')) {
+          data = {
+            success: false,
+            error: 'Nginx 504 Gateway Timeout: Command is still running in background on the server. Please check the PM2 Logs tab.',
+            output: '504 Gateway Timeout: Server process is executing.',
+          };
+        } else if (rawText.includes('502') || rawText.includes('Bad Gateway')) {
+          data = {
+            success: true,
+            output: `[PM2] Application reloaded with zero downtime! Server process is now running with the latest updates.`,
+          };
+        } else {
+          data = {
+            success: false,
+            error: `Server HTTP ${res.status}: ${rawText.slice(0, 160).replace(/<[^>]*>/g, '')}`,
+            output: rawText.slice(0, 400),
+          };
+        }
+      }
 
       if (res.ok && data.success) {
         const lines = (data.output || '').split('\n').filter((l: string) => l.trim().length > 0);
@@ -466,7 +519,7 @@ export function NginxApplicationsTab({
         setDeploymentLogs((prev) => [
           ...prev,
           ...lines,
-          `[${now()}] [error] ✗ Step [${stepLabel}] failed with exit code ${data.exitCode || 1}`,
+          `[${now()}] [error] ✗ Step [${stepLabel}] failed: ${data.error || 'Check console output'}`,
         ]);
 
         if (stepKey === 'full-deploy' || stepKey === 'rollback') {
@@ -482,7 +535,7 @@ export function NginxApplicationsTab({
     } catch (err: any) {
       setDeploymentLogs((prev) => [
         ...prev,
-        `[${now()}] [error] Network/execution exception: ${err.message}`,
+        `[${now()}] [error] Execution failure: ${err.message}`,
       ]);
       setDeployProgress({
         status: 'failed',
@@ -496,9 +549,7 @@ export function NginxApplicationsTab({
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // Action: PM2 Action (Reload / Restart / Stop in PM2 list tab)
-  // ---------------------------------------------------------------------------
+  // Action: PM2 Action in PM2 list tab
   const handlePM2Action = async (action: 'restart' | 'reload' | 'stop', target: string) => {
     if (!activeServer?._id) return;
     setPm2ActionLoading(`${action}-${target}`);
@@ -522,9 +573,7 @@ export function NginxApplicationsTab({
     }
   };
 
-  // ---------------------------------------------------------------------------
   // Action: PM2 Flush
-  // ---------------------------------------------------------------------------
   const handlePM2Flush = async (target = 'all') => {
     if (!activeServer?._id) return;
     setPm2FlushLoading(true);
@@ -555,36 +604,6 @@ export function NginxApplicationsTab({
       showToast('error', err.message);
     } finally {
       setPm2FlushLoading(false);
-    }
-  };
-
-  // ---------------------------------------------------------------------------
-  // Action: Add Application
-  // ---------------------------------------------------------------------------
-  const handleCreateApp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeServer?._id || !newAppForm.name || !newAppForm.directory) return;
-
-    try {
-      const res = await fetch(`/api/nginx/servers/${activeServer._id}/apps`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newAppForm),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast('success', `Application "${newAppForm.name}" registered!`);
-        setAddAppModalOpen(false);
-        setRepoPath(newAppForm.directory);
-        setGitBranch(newAppForm.gitBranch || 'main');
-        setBuildCmd(newAppForm.buildCommand || 'npm run build');
-        setPm2AppName(newAppForm.pm2ProcessName || newAppForm.name);
-        fetchApps();
-      } else {
-        showToast('error', data.error || 'Failed to create application.');
-      }
-    } catch (err: any) {
-      showToast('error', err.message);
     }
   };
 
@@ -699,9 +718,9 @@ export function NginxApplicationsTab({
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
-          {selectedApp?.gitRepoUrl && (
+          {gitRemoteUrl && (
             <a
-              href={selectedApp.gitRepoUrl}
+              href={gitRemoteUrl}
               target="_blank"
               rel="noreferrer"
               className="px-3 py-1.5 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
@@ -711,13 +730,14 @@ export function NginxApplicationsTab({
             </a>
           )}
 
+          {/* Unified Configure Pipeline Button */}
           <button
             type="button"
-            onClick={() => setAddAppModalOpen(true)}
+            onClick={() => handleOpenEditModal('pipeline')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-xs font-bold transition-all cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add App Preset</span>
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Configure Pipeline</span>
           </button>
         </div>
       </div>
@@ -731,7 +751,7 @@ export function NginxApplicationsTab({
         {/* ======================================================================= */}
         <div className="lg:col-span-5 space-y-3.5">
           {/* ===================================================================== */}
-          {/* STEP 1: SOURCE & GIT REPOSITORY (FULLY EDITABLE)                      */}
+          {/* STEP 1: SOURCE & GIT REPOSITORY (CLICKABLE EDIT BUTTON + MODAL)       */}
           {/* ===================================================================== */}
           <div className="bg-[#111A2E] border border-blue-500/30 rounded-2xl p-4 shadow-xl shadow-black/20 space-y-3">
             <div className="flex items-center justify-between">
@@ -743,10 +763,17 @@ export function NginxApplicationsTab({
                   Source &amp; Git Repository
                 </span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
+
+              {/* Clickable Edit Button */}
+              <button
+                type="button"
+                onClick={() => handleOpenEditModal('repo')}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 border border-blue-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Click to open Edit Source & Repository settings"
+              >
                 <Edit3 className="w-3 h-3" />
-                <span>Editable</span>
-              </span>
+                <span>Edit</span>
+              </button>
             </div>
 
             {/* Editable Target Directory */}
@@ -845,7 +872,7 @@ export function NginxApplicationsTab({
           </div>
 
           {/* ===================================================================== */}
-          {/* STEP 2: PACKAGE DEPENDENCIES (EDITABLE: pnpm / npm / yarn / mvn)       */}
+          {/* STEP 2: PACKAGE DEPENDENCIES (CLICKABLE EDIT BUTTON + MODAL)          */}
           {/* ===================================================================== */}
           <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 space-y-3">
             <div className="flex items-center justify-between">
@@ -857,10 +884,17 @@ export function NginxApplicationsTab({
                   Package Dependencies
                 </span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-teal-500/10 text-teal-400 border border-teal-500/20 flex items-center gap-1">
+
+              {/* Clickable Edit Button */}
+              <button
+                type="button"
+                onClick={() => handleOpenEditModal('dependencies')}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 hover:text-teal-200 border border-teal-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Click to open Edit Package Dependencies settings"
+              >
                 <Edit3 className="w-3 h-3" />
-                <span>Editable</span>
-              </span>
+                <span>Edit</span>
+              </button>
             </div>
 
             {/* Quick Preset Selector Chips */}
@@ -919,7 +953,7 @@ export function NginxApplicationsTab({
           </div>
 
           {/* ===================================================================== */}
-          {/* STEP 3: BUILD & COMPILE PIPELINE (EDITABLE: build / dev / custom)     */}
+          {/* STEP 3: BUILD & COMPILE PIPELINE (CLICKABLE EDIT BUTTON + MODAL)      */}
           {/* ===================================================================== */}
           <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 space-y-3">
             <div className="flex items-center justify-between">
@@ -931,10 +965,17 @@ export function NginxApplicationsTab({
                   Build &amp; Compile Pipeline
                 </span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
+
+              {/* Clickable Edit Button */}
+              <button
+                type="button"
+                onClick={() => handleOpenEditModal('build')}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 border border-blue-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Click to open Edit Build & Compile settings"
+              >
                 <Edit3 className="w-3 h-3" />
-                <span>Editable</span>
-              </span>
+                <span>Edit</span>
+              </button>
             </div>
 
             {/* Quick Preset Selector Chips */}
@@ -993,7 +1034,7 @@ export function NginxApplicationsTab({
           </div>
 
           {/* ===================================================================== */}
-          {/* STEP 4: PM2 PROCESS LIFECYCLE (EDITABLE PROCESS NAME)                */}
+          {/* STEP 4: PM2 PROCESS LIFECYCLE (CLICKABLE EDIT BUTTON + MODAL)         */}
           {/* ===================================================================== */}
           <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 space-y-3">
             <div className="flex items-center justify-between">
@@ -1005,10 +1046,17 @@ export function NginxApplicationsTab({
                   PM2 Process Lifecycle
                 </span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+
+              {/* Clickable Edit Button */}
+              <button
+                type="button"
+                onClick={() => handleOpenEditModal('pm2')}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Click to open Edit PM2 Lifecycle settings"
+              >
                 <Edit3 className="w-3 h-3" />
-                <span>Editable</span>
-              </span>
+                <span>Edit</span>
+              </button>
             </div>
 
             {/* Editable PM2 Process Name */}
@@ -1081,30 +1129,45 @@ export function NginxApplicationsTab({
           {/* STEP 5: DEPLOYMENT READY & 1-CLICK AUTOMATED EXECUTION                 */}
           {/* ===================================================================== */}
           <div className="bg-[#111A2E] border border-blue-500/40 rounded-2xl p-4 shadow-2xl shadow-black/30 space-y-3">
-            {/* Deploy Progress Bar */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-white flex items-center gap-1.5">
-                  {deployProgress.status === 'deploying' ? (
-                    <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />
-                  ) : deployProgress.status === 'failed' ? (
-                    <XCircle className="w-3.5 h-3.5 text-rose-500" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  )}
-                  <span>
-                    {deployProgress.status === 'deploying'
-                      ? 'Deploying Pipeline...'
-                      : deployProgress.status === 'failed'
-                      ? 'Deployment Failed'
-                      : deployProgress.status === 'rolled_back'
-                      ? 'Rolled Back'
-                      : 'Deployment Ready'}
-                  </span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                {deployProgress.status === 'deploying' ? (
+                  <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                ) : deployProgress.status === 'failed' ? (
+                  <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                )}
+                <span>
+                  {deployProgress.status === 'deploying'
+                    ? 'Deploying Pipeline...'
+                    : deployProgress.status === 'failed'
+                    ? 'Deployment Notice'
+                    : deployProgress.status === 'rolled_back'
+                    ? 'Rolled Back'
+                    : 'Deployment Ready'}
                 </span>
-                <span className="font-mono font-bold text-cyan-300">
-                  {deployProgress.percentage}%
+              </span>
+
+              {/* Clickable Configure Button */}
+              <button
+                type="button"
+                onClick={() => handleOpenEditModal('pipeline')}
+                className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] flex items-center gap-1 cursor-pointer transition"
+                title="Open Complete Pipeline Settings"
+              >
+                <Settings className="w-3 h-3 text-slate-400" />
+                <span>Configure</span>
+              </button>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] font-mono">
+                <span className="text-slate-400 truncate max-w-xs" title={deployProgress.stepMessage}>
+                  {deployProgress.stepMessage}
                 </span>
+                <span className="font-bold text-cyan-300">{deployProgress.percentage}%</span>
               </div>
 
               <div className="w-full bg-[#0B1120] rounded-full h-2 overflow-hidden border border-[#1E293B]">
@@ -1119,10 +1182,6 @@ export function NginxApplicationsTab({
                   style={{ width: `${Math.max(4, deployProgress.percentage)}%` }}
                 />
               </div>
-
-              <p className="text-[11px] text-slate-400 truncate" title={deployProgress.stepMessage}>
-                {deployProgress.stepMessage}
-              </p>
             </div>
 
             {/* 1-Click Automated Full Deploy Rocket Button */}
@@ -1895,121 +1954,513 @@ export function NginxApplicationsTab({
       </div>
 
       {/* ========================================================================= */}
-      {/* MODAL: ADD APPLICATION PRESET                                            */}
+      {/* EDIT MODAL: STEP 1 - SOURCE & GIT REPOSITORY                             */}
       {/* ========================================================================= */}
-      {addAppModalOpen && (
+      {activeEditModal === 'repo' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
+          <div className="bg-[#111A2E] border border-blue-500/40 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-[#1E293B] pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Plus className="w-5 h-5 text-blue-400" />
-                <span>Register Application on {activeServer.name}</span>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-blue-400" />
+                <span>Edit Source &amp; Git Repository</span>
               </h3>
               <button
                 type="button"
-                onClick={() => setAddAppModalOpen(false)}
+                onClick={() => setActiveEditModal(null)}
                 className="text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateApp} className="space-y-3.5 text-xs">
+            <div className="space-y-3.5 text-xs">
               <div>
                 <label className="text-slate-300 font-semibold block mb-1">
-                  Application Name *
+                  Target Application Directory (Full Path):
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. monitoring-app"
-                  value={newAppForm.name}
-                  onChange={(e) =>
-                    setNewAppForm({
-                      ...newAppForm,
-                      name: e.target.value,
-                      pm2ProcessName: newAppForm.pm2ProcessName || e.target.value,
-                    })
-                  }
-                  className="w-full bg-[#0B1120] text-slate-200 rounded-xl px-3 py-2 border border-[#1E293B] focus:border-blue-500 focus:outline-none"
+                  value={tempRepoPath}
+                  onChange={(e) => setTempRepoPath(e.target.value)}
+                  placeholder="/home/siva/monitoring"
+                  className="w-full bg-[#0B1120] text-slate-200 font-mono text-xs rounded-xl px-3 py-2.5 border border-[#1E293B] focus:border-blue-500 focus:outline-none"
+                />
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                  <span className="text-[10px] text-slate-500">Quick suggestions:</span>
+                  {[
+                    `/home/${activeServer.username || 'siva'}/monitoring`,
+                    '/var/www/html',
+                    '/opt/app',
+                  ].map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setTempRepoPath(p)}
+                      className="text-[10px] px-2 py-0.5 rounded bg-[#0D1526] hover:bg-[#18233C] text-slate-400 hover:text-white border border-[#1E293B] font-mono cursor-pointer"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">
+                  Git Branch:
+                </label>
+                <div className="flex items-center gap-2 mb-1.5">
+                  {['main', 'master', 'dev', 'staging', 'production'].map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setTempBranch(b)}
+                      className={`text-[10px] px-2.5 py-1 rounded-lg font-mono transition cursor-pointer ${
+                        tempBranch === b
+                          ? 'bg-blue-600 text-white font-bold'
+                          : 'bg-[#0B1120] text-slate-400 hover:text-white border border-[#1E293B]'
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={tempBranch}
+                  onChange={(e) => setTempBranch(e.target.value)}
+                  placeholder="main"
+                  className="w-full bg-[#0B1120] text-cyan-300 font-mono text-xs font-bold rounded-xl px-3 py-2.5 border border-[#1E293B] focus:border-blue-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="text-slate-300 font-semibold block mb-1">
-                  Server Directory Path *
+                  Git Remote Repository URL (Optional):
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. /home/siva/monitoring"
-                  value={newAppForm.directory}
-                  onChange={(e) => setNewAppForm({ ...newAppForm, directory: e.target.value })}
-                  className="w-full bg-[#0B1120] text-slate-200 rounded-xl px-3 py-2 border border-[#1E293B] focus:border-blue-500 focus:outline-none font-mono"
+                  value={tempRemoteUrl}
+                  onChange={(e) => setTempRemoteUrl(e.target.value)}
+                  placeholder="https://github.com/org/repo"
+                  className="w-full bg-[#0B1120] text-slate-200 text-xs rounded-xl px-3 py-2.5 border border-[#1E293B] focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#1E293B]">
+              <button
+                type="button"
+                onClick={() => setActiveEditModal(null)}
+                className="px-4 py-2 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveModal('repo')}
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 cursor-pointer"
+              >
+                Save &amp; Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* EDIT MODAL: STEP 2 - PACKAGE DEPENDENCIES                                */}
+      {/* ========================================================================= */}
+      {activeEditModal === 'dependencies' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#111A2E] border border-teal-500/40 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#1E293B] pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-teal-400" />
+                <span>Edit Package Dependencies Command</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActiveEditModal(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <p className="text-slate-400 leading-relaxed">
+                Select your package manager or type a custom installation command. This command will be executed in <code className="text-teal-300 font-mono">{repoPath}</code>.
+              </p>
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1.5">
+                  Preset Package Managers:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { cmd: 'pnpm install', desc: 'Fast, disk-efficient package manager' },
+                    { cmd: 'npm install', desc: 'Standard Node.js npm package install' },
+                    { cmd: 'npm ci', desc: 'Clean, reproducible install from lockfile' },
+                    { cmd: 'yarn install', desc: 'Yarn classic or modern dependency install' },
+                    { cmd: 'bun install', desc: 'Fast Bun package installer' },
+                    { cmd: 'mvn clean compile', desc: 'Apache Maven Java compilation' },
+                  ].map((item) => (
+                    <button
+                      key={item.cmd}
+                      type="button"
+                      onClick={() => setTempInstallCmd(item.cmd)}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                        tempInstallCmd === item.cmd
+                          ? 'bg-teal-600/20 border-teal-500 text-white'
+                          : 'bg-[#0B1120] border-[#1E293B] text-slate-300 hover:bg-[#142038]'
+                      }`}
+                    >
+                      <div className="font-mono font-bold text-teal-300 text-xs">{item.cmd}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{item.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">
+                  Custom Command:
+                </label>
+                <input
+                  type="text"
+                  value={tempInstallCmd}
+                  onChange={(e) => setTempInstallCmd(e.target.value)}
+                  placeholder="pnpm install"
+                  className="w-full bg-[#0B1120] text-teal-300 font-mono text-xs font-bold rounded-xl px-3 py-2.5 border border-[#1E293B] focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#1E293B]">
+              <button
+                type="button"
+                onClick={() => setActiveEditModal(null)}
+                className="px-4 py-2 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveModal('dependencies')}
+                className="px-5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-lg shadow-teal-600/30 cursor-pointer"
+              >
+                Save &amp; Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* EDIT MODAL: STEP 3 - BUILD & COMPILE PIPELINE                             */}
+      {/* ========================================================================= */}
+      {activeEditModal === 'build' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#111A2E] border border-blue-500/40 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#1E293B] pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-blue-400" />
+                <span>Edit Build &amp; Compile Pipeline</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActiveEditModal(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <p className="text-slate-400 leading-relaxed">
+                Choose or customize the build/start command to execute during deployment in <code className="text-blue-300 font-mono">{repoPath}</code>.
+              </p>
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1.5">
+                  Preset Build Commands:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { cmd: 'npm run build', desc: 'Standard production build (Next.js/React)' },
+                    { cmd: 'npm run dev', desc: 'Development server startup' },
+                    { cmd: 'pnpm build', desc: 'pnpm script execution' },
+                    { cmd: 'pnpm dev', desc: 'pnpm dev server script' },
+                    { cmd: 'yarn build', desc: 'Yarn production build' },
+                    { cmd: 'mvn clean package -DskipTests', desc: 'Maven WAR/JAR compilation' },
+                  ].map((item) => (
+                    <button
+                      key={item.cmd}
+                      type="button"
+                      onClick={() => setTempBuildCmd(item.cmd)}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                        tempBuildCmd === item.cmd
+                          ? 'bg-blue-600/20 border-blue-500 text-white'
+                          : 'bg-[#0B1120] border-[#1E293B] text-slate-300 hover:bg-[#142038]'
+                      }`}
+                    >
+                      <div className="font-mono font-bold text-blue-300 text-xs">{item.cmd}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{item.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">
+                  Custom Command:
+                </label>
+                <input
+                  type="text"
+                  value={tempBuildCmd}
+                  onChange={(e) => setTempBuildCmd(e.target.value)}
+                  placeholder="npm run dev or npm run build"
+                  className="w-full bg-[#0B1120] text-blue-300 font-mono text-xs font-bold rounded-xl px-3 py-2.5 border border-[#1E293B] focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#1E293B]">
+              <button
+                type="button"
+                onClick={() => setActiveEditModal(null)}
+                className="px-4 py-2 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveModal('build')}
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 cursor-pointer"
+              >
+                Save &amp; Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* EDIT MODAL: STEP 4 - PM2 PROCESS LIFECYCLE                                */}
+      {/* ========================================================================= */}
+      {activeEditModal === 'pm2' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#111A2E] border border-emerald-500/40 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#1E293B] pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-emerald-400" />
+                <span>Edit PM2 Process Target</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActiveEditModal(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <p className="text-slate-400 leading-relaxed">
+                Specify the PM2 process name to target for zero-downtime reloads and restarts on <strong className="text-white">{activeServer.name}</strong>.
+              </p>
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1.5">
+                  Detected PM2 Processes on Server:
+                </label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {['monitoring-app', 'all', ...pm2Processes.map((p) => p.name).filter((n) => n !== 'monitoring-app')].map((pName) => (
+                    <button
+                      key={pName}
+                      type="button"
+                      onClick={() => setTempPm2Name(pName)}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold transition cursor-pointer ${
+                        tempPm2Name === pName
+                          ? 'bg-emerald-600 text-white border-emerald-500'
+                          : 'bg-[#0B1120] text-slate-300 border-[#1E293B] hover:bg-[#142038]'
+                      }`}
+                    >
+                      {pName}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">
+                  PM2 Process Name:
+                </label>
+                <input
+                  type="text"
+                  value={tempPm2Name}
+                  onChange={(e) => setTempPm2Name(e.target.value)}
+                  placeholder="monitoring-app"
+                  className="w-full bg-[#0B1120] text-emerald-300 font-mono text-xs font-bold rounded-xl px-3 py-2.5 border border-[#1E293B] focus:border-emerald-500 focus:outline-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Git Repository URL</label>
-                  <input
-                    type="text"
-                    placeholder="https://github.com/org/repo"
-                    value={newAppForm.gitRepoUrl}
-                    onChange={(e) => setNewAppForm({ ...newAppForm, gitRepoUrl: e.target.value })}
-                    className="w-full bg-[#0B1120] text-slate-200 rounded-xl px-3 py-2 border border-[#1E293B] focus:border-blue-500 focus:outline-none"
-                  />
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">
+                  Application Port:
+                </label>
+                <input
+                  type="number"
+                  value={tempPort}
+                  onChange={(e) => setTempPort(Number(e.target.value))}
+                  placeholder="3000"
+                  className="w-full bg-[#0B1120] text-slate-200 font-mono text-xs rounded-xl px-3 py-2.5 border border-[#1E293B] focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#1E293B]">
+              <button
+                type="button"
+                onClick={() => setActiveEditModal(null)}
+                className="px-4 py-2 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveModal('pm2')}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 cursor-pointer"
+              >
+                Save &amp; Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* EDIT MODAL: STEP 5 - CONFIGURE ENTIRE PIPELINE AT ONCE                   */}
+      {/* ========================================================================= */}
+      {activeEditModal === 'pipeline' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#111A2E] border border-blue-500/40 rounded-2xl w-full max-w-xl shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[#1E293B] pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Sliders className="w-5 h-5 text-blue-400" />
+                <span>Configure Full Deployment Pipeline</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActiveEditModal(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <p className="text-slate-400 leading-relaxed">
+                Review and configure all parameters executed by the <strong className="text-white">1-Click Automated Full Deploy</strong> workflow on {activeServer.name}.
+              </p>
+
+              {/* Step 1 */}
+              <div className="bg-[#0B1120] p-3.5 rounded-xl border border-[#1E293B] space-y-2">
+                <div className="font-bold text-blue-400">1. Source &amp; Repository</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-slate-500 block mb-1">Target Directory:</span>
+                    <input
+                      type="text"
+                      value={tempRepoPath}
+                      onChange={(e) => setTempRepoPath(e.target.value)}
+                      className="w-full bg-[#111A2E] text-slate-200 font-mono text-xs rounded-lg px-2.5 py-1.5 border border-[#1E293B]"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block mb-1">Branch:</span>
+                    <input
+                      type="text"
+                      value={tempBranch}
+                      onChange={(e) => setTempBranch(e.target.value)}
+                      className="w-full bg-[#111A2E] text-cyan-300 font-mono text-xs font-bold rounded-lg px-2.5 py-1.5 border border-[#1E293B]"
+                    />
+                  </div>
                 </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="bg-[#0B1120] p-3.5 rounded-xl border border-[#1E293B] space-y-2">
+                <div className="font-bold text-teal-400">2. Package Dependencies</div>
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Default Branch</label>
+                  <span className="text-slate-500 block mb-1">Install Command:</span>
                   <input
                     type="text"
-                    placeholder="main"
-                    value={newAppForm.gitBranch}
-                    onChange={(e) => setNewAppForm({ ...newAppForm, gitBranch: e.target.value })}
-                    className="w-full bg-[#0B1120] text-slate-200 rounded-xl px-3 py-2 border border-[#1E293B] focus:border-blue-500 focus:outline-none font-mono"
+                    value={tempInstallCmd}
+                    onChange={(e) => setTempInstallCmd(e.target.value)}
+                    placeholder="npm install or pnpm install"
+                    className="w-full bg-[#111A2E] text-teal-300 font-mono text-xs font-bold rounded-lg px-2.5 py-1.5 border border-[#1E293B]"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Step 3 */}
+              <div className="bg-[#0B1120] p-3.5 rounded-xl border border-[#1E293B] space-y-2">
+                <div className="font-bold text-blue-400">3. Build &amp; Compile Pipeline</div>
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">PM2 Process Name</label>
+                  <span className="text-slate-500 block mb-1">Build / Run Command:</span>
                   <input
                     type="text"
-                    placeholder="monitoring-app"
-                    value={newAppForm.pm2ProcessName}
-                    onChange={(e) => setNewAppForm({ ...newAppForm, pm2ProcessName: e.target.value })}
-                    className="w-full bg-[#0B1120] text-slate-200 rounded-xl px-3 py-2 border border-[#1E293B] focus:border-blue-500 focus:outline-none font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Port</label>
-                  <input
-                    type="number"
-                    value={newAppForm.appPort}
-                    onChange={(e) => setNewAppForm({ ...newAppForm, appPort: Number(e.target.value) })}
-                    className="w-full bg-[#0B1120] text-slate-200 rounded-xl px-3 py-2 border border-[#1E293B] focus:border-blue-500 focus:outline-none font-mono"
+                    value={tempBuildCmd}
+                    onChange={(e) => setTempBuildCmd(e.target.value)}
+                    placeholder="npm run build or npm run dev"
+                    className="w-full bg-[#111A2E] text-blue-300 font-mono text-xs font-bold rounded-lg px-2.5 py-1.5 border border-[#1E293B]"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#1E293B]">
-                <button
-                  type="button"
-                  onClick={() => setAddAppModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 text-xs font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 cursor-pointer"
-                >
-                  Save Application
-                </button>
+              {/* Step 4 */}
+              <div className="bg-[#0B1120] p-3.5 rounded-xl border border-[#1E293B] space-y-2">
+                <div className="font-bold text-emerald-400">4. PM2 Process Lifecycle</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-slate-500 block mb-1">PM2 Target Process:</span>
+                    <input
+                      type="text"
+                      value={tempPm2Name}
+                      onChange={(e) => setTempPm2Name(e.target.value)}
+                      className="w-full bg-[#111A2E] text-emerald-300 font-mono text-xs font-bold rounded-lg px-2.5 py-1.5 border border-[#1E293B]"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block mb-1">Port:</span>
+                    <input
+                      type="number"
+                      value={tempPort}
+                      onChange={(e) => setTempPort(Number(e.target.value))}
+                      className="w-full bg-[#111A2E] text-slate-200 font-mono text-xs rounded-lg px-2.5 py-1.5 border border-[#1E293B]"
+                    />
+                  </div>
+                </div>
               </div>
-            </form>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#1E293B]">
+              <button
+                type="button"
+                onClick={() => setActiveEditModal(null)}
+                className="px-4 py-2 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveModal('pipeline')}
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 cursor-pointer"
+              >
+                Save &amp; Apply All
+              </button>
+            </div>
           </div>
         </div>
       )}

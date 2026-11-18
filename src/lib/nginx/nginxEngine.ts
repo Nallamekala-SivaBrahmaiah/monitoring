@@ -1045,7 +1045,11 @@ export async function executePipelineStep(
     }
     case 'pm2-reload': {
       if (!pm2App) throw new Error('PM2 application name is required.');
-      cmd = `pm2 reload "${pm2App}" 2>&1 || pm2 restart "${pm2App}" 2>&1 || (cd "${safePath}" && pm2 start npm --name "${pm2App}" -- start 2>&1)`;
+      if (pm2App === 'monitoring-app') {
+        cmd = `(sleep 1 && pm2 reload "${pm2App}") >/dev/null 2>&1 & echo "PM2 zero-downtime reload scheduled for ${pm2App}"`;
+      } else {
+        cmd = `pm2 reload "${pm2App}" 2>&1 || pm2 restart "${pm2App}" 2>&1 || (cd "${safePath}" && pm2 start npm --name "${pm2App}" -- start 2>&1)`;
+      }
       break;
     }
     case 'pm2-restart':
@@ -1100,9 +1104,14 @@ ${buildCmd} || exit 1
 
 if [ -n "${pm2App}" ]; then
   echo ">>> [4/4] Reloading PM2 process (${pm2App})..."
-  pm2 reload "${pm2App}" || pm2 restart "${pm2App}" || (cd "${safePath}" && pm2 start npm --name "${pm2App}" -- start)
-  echo ">>> PM2 Status:"
-  pm2 list
+  if [ "${pm2App}" = "monitoring-app" ]; then
+    (sleep 1 && pm2 reload "${pm2App}") >/dev/null 2>&1 &
+    echo ">>> PM2 zero-downtime reload scheduled in background for clean HTTP response."
+  else
+    pm2 reload "${pm2App}" || pm2 restart "${pm2App}" || (cd "${safePath}" && pm2 start npm --name "${pm2App}" -- start)
+    echo ">>> PM2 Status:"
+    pm2 list
+  fi
 else
   echo ">>> [4/4] No PM2 process specified. Build completed."
 fi
