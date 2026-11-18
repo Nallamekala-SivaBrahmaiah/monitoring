@@ -19,7 +19,7 @@ export async function GET(
     }
 
     const scan = req.nextUrl?.searchParams?.get('scan') === 'true';
-    let apps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
+    let apps = await NginxApp.find({ serverId: id, name: { $not: /^\./ } }).sort({ createdAt: 1 }).lean();
 
     // If scan requested or no apps registered yet, attempt live SSH discovery on the server
     if (scan || !apps || apps.length === 0) {
@@ -33,6 +33,10 @@ export async function GET(
       if (discovered && discovered.length > 0) {
         for (const da of discovered) {
           if (!da.directory) continue;
+          const appName = da.name || path.basename(da.directory);
+          if (appName.startsWith('.') || da.directory.includes('/.nvm') || da.directory.includes('/.next')) {
+            continue;
+          }
           const rawPkg = (da.packageManager?.toLowerCase() as string) || 'auto';
           const validPkg = ['auto', 'npm', 'pnpm', 'yarn', 'bun', 'maven', 'gradle', 'docker', 'pip', 'other'].includes(rawPkg)
             ? rawPkg
@@ -45,7 +49,7 @@ export async function GET(
                 serverId: id,
                 serverName: server.name,
                 serverHost: server.host,
-                name: da.name || path.basename(da.directory),
+                name: appName,
                 type: (da.type as any) || 'nodejs',
                 frameworkName: da.frameworkName || 'Discovered Application',
                 directory: da.directory,
@@ -64,7 +68,7 @@ export async function GET(
             { upsert: true, new: true, setDefaultsOnInsert: true }
           );
         }
-        apps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
+        apps = await NginxApp.find({ serverId: id, name: { $not: /^\./ } }).sort({ createdAt: 1 }).lean();
       }
     }
 

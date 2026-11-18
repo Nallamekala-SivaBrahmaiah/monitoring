@@ -615,11 +615,20 @@ echo -n "DOCKER:" && (docker -v 2>/dev/null || echo "not installed")
       const markerLines = markersRaw.split('\n').map((l) => l.trim()).filter(Boolean);
       for (const mPath of markerLines) {
         const dir = path.dirname(mPath);
+        const dirBase = path.basename(dir);
+        // Skip hidden directories, dependencies, and internal build caches
+        if (
+          dirBase.startsWith('.') ||
+          dir.includes('/node_modules') ||
+          dir.includes('/.nvm') ||
+          dir.includes('/.next') ||
+          dir.includes('/.git') ||
+          dir.includes('/.cache')
+        ) {
+          continue;
+        }
         if (seenDirs.has(dir)) continue;
         seenDirs.add(dir);
-
-        const fileName = path.basename(mPath);
-        const dirBase = path.basename(dir);
 
         if (fileName === 'pom.xml') {
           apps.push({
