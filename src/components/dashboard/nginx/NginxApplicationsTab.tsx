@@ -183,11 +183,7 @@ export function NginxApplicationsTab({
     setSelectedApp(app);
     if (app.directory) setRepoPath(app.directory);
     if (app.gitBranch) setGitBranch(app.gitBranch);
-    const resolvedGitUrl =
-      app.gitRepoUrl ||
-      (app.name
-        ? `https://github.com/Nallamekala-SivaBrahmaiah/${app.name}.git`
-        : '');
+    const resolvedGitUrl = app.gitRepoUrl || '';
     setGitRemoteUrl(resolvedGitUrl);
 
     const isStatic =
@@ -613,10 +609,7 @@ export function NginxApplicationsTab({
     ]);
 
     const currentGitUrl = (
-      overrideGitUrl ||
-      selectedApp?.gitRepoUrl ||
-      gitRemoteUrl ||
-      `https://github.com/Nallamekala-SivaBrahmaiah/${selectedApp?.name || 'app'}.git`
+      overrideGitUrl !== undefined ? overrideGitUrl : (selectedApp?.gitRepoUrl || gitRemoteUrl || '')
     ).trim();
 
     try {
@@ -725,9 +718,7 @@ export function NginxApplicationsTab({
   // Deploy an Individual Application Directly
   const handleDeploySingleApp = async (app: INginxAppData) => {
     applyAppToTarget(app);
-    const gitUrl =
-      app.gitRepoUrl ||
-      `https://github.com/Nallamekala-SivaBrahmaiah/${app.name}.git`;
+    const gitUrl = app.gitRepoUrl || '';
     await executeStep(
       'full-deploy',
       `1-Click Deploy (${app.name})`,
@@ -1158,12 +1149,12 @@ export function NginxApplicationsTab({
                       <span className="text-slate-200 font-bold w-12 text-right">{memMb} MB</span>
                     </div>
 
-                    {/* Real DISK Meter (Actual SSH df Telemetry) */}
+                    {/* Real DISK Meter (Actual SSH df Telemetry + App Size) */}
                     <div
                       className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0"
                       title={
                         hasRealDisk
-                          ? `Filesystem: ${disk.filesystem} (${disk.mountPoint})\nUsed: ${disk.used} / Total: ${disk.total}\nAvailable: ${disk.available} (${disk.percentage}% used)\nUpdated: ${disk.updatedAt}`
+                          ? `App Directory Size: ${disk.appSize || 'Unknown'}\nPartition (${disk.filesystem} on ${disk.mountPoint}):\nUsed: ${disk.used} / Total: ${disk.total}\nAvailable: ${disk.available} (${disk.percentage}% used)\nUpdated: ${disk.updatedAt}`
                           : 'Disk telemetry unavailable via SSH'
                       }
                     >
@@ -1183,7 +1174,7 @@ export function NginxApplicationsTab({
                               {disk.used} / {disk.total}
                             </span>
                             <span className="text-[9px] text-slate-400 leading-tight whitespace-nowrap">
-                              {disk.percentage}% • {disk.available} free
+                              {disk.percentage}% • {disk.available} free {disk.appSize && `• App: ${disk.appSize}`}
                             </span>
                           </div>
                         </>
@@ -1306,22 +1297,30 @@ export function NginxApplicationsTab({
 
         {/* 4-Step Interactive Pipeline Ribbon */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-          {/* Step 1: Git Pull */}
+          {/* Step 1: Git Pull or Local Source */}
           <div className="bg-[#0B1120] border border-[#1E293B] rounded-xl p-3 flex items-center justify-between gap-2 hover:border-cyan-500/50 transition">
             <div className="min-w-0">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">1. Source & Git</span>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">
+                {gitRemoteUrl ? '1. Source & Git' : '1. Local Source'}
+              </span>
               <span className="text-xs font-bold text-cyan-300 font-mono truncate block">
-                Git Pull [{gitBranch}]
+                {gitRemoteUrl ? `Git Pull [${gitBranch}]` : 'Server Local App'}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => executeStep('git-pull', 'Git Pull')}
-              disabled={isExecuting}
-              className="px-2 py-1 rounded bg-[#111A2E] hover:bg-[#18233C] text-[10px] font-mono font-bold text-cyan-400 border border-[#1E293B] transition cursor-pointer"
-            >
-              Pull
-            </button>
+            {gitRemoteUrl ? (
+              <button
+                type="button"
+                onClick={() => executeStep('git-pull', 'Git Pull')}
+                disabled={isExecuting}
+                className="px-2 py-1 rounded bg-[#111A2E] hover:bg-[#18233C] text-[10px] font-mono font-bold text-cyan-400 border border-[#1E293B] transition cursor-pointer"
+              >
+                Pull
+              </button>
+            ) : (
+              <span className="px-2 py-1 rounded bg-[#111A2E]/50 text-[10px] font-mono text-slate-500 border border-[#1E293B]">
+                Native
+              </span>
+            )}
           </div>
 
           {/* Step 2: Install */}
@@ -1386,25 +1385,19 @@ export function NginxApplicationsTab({
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5 truncate max-w-md">
               <span className="text-slate-500">Repo:</span>
-              <a
-                href={
-                  gitRemoteUrl ||
-                  selectedApp?.gitRepoUrl ||
-                  (selectedApp?.name
-                    ? `https://github.com/Nallamekala-SivaBrahmaiah/${selectedApp.name}.git`
-                    : 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git')
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="text-cyan-300 hover:underline truncate"
-                title={gitRemoteUrl || selectedApp?.gitRepoUrl}
-              >
-                {gitRemoteUrl ||
-                  selectedApp?.gitRepoUrl ||
-                  (selectedApp?.name
-                    ? `https://github.com/Nallamekala-SivaBrahmaiah/${selectedApp.name}.git`
-                    : 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git')}
-              </a>
+              {(gitRemoteUrl || selectedApp?.gitRepoUrl) ? (
+                <a
+                  href={gitRemoteUrl || selectedApp?.gitRepoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-cyan-300 hover:underline truncate"
+                  title={gitRemoteUrl || selectedApp?.gitRepoUrl}
+                >
+                  {gitRemoteUrl || selectedApp?.gitRepoUrl}
+                </a>
+              ) : (
+                <span className="text-slate-400 italic">No Git repository (Local Server Application)</span>
+              )}
             </div>
 
             <span className="text-slate-600 hidden sm:inline">|</span>

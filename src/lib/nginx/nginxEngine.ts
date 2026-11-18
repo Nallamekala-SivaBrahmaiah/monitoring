@@ -617,7 +617,7 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
           }
 
           const gitInfo = gitRemoteMap.get(dir) || {
-            url: `https://github.com/Nallamekala-SivaBrahmaiah/${p.name}.git`,
+            url: '',
             branch: 'main',
           };
 
@@ -665,7 +665,7 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
 
         const fileName = path.basename(mPath);
         const gitInfo = gitRemoteMap.get(dir) || {
-          url: `https://github.com/Nallamekala-SivaBrahmaiah/${dirBase}.git`,
+          url: '',
           branch: 'main',
         };
 
@@ -1064,9 +1064,7 @@ export async function executePipelineStep(
   const branch = (options.branch || 'main').trim().replace(/[^a-zA-Z0-9._\-/]/g, '');
   const pm2App = (options.pm2AppName || '').trim().replace(/[^a-zA-Z0-9._\-]/g, '');
   const repoName = path.basename(safePath);
-  const inferredGitUrl =
-    (options.gitRepoUrl || '').trim() ||
-    `https://github.com/Nallamekala-SivaBrahmaiah/${repoName}.git`;
+  const inferredGitUrl = (options.gitRepoUrl || '').trim();
 
   let cmd = '';
   let timeoutMs = 90000;
@@ -1257,13 +1255,14 @@ export interface AppDiskMetric {
   available: string;
   percentage: number;
   mountPoint: string;
+  appSize: string;
   status: 'available' | 'unavailable';
   updatedAt: string;
 }
 
 /**
  * Retrieve real disk metrics via SSH for specified application directories
- * Uses `df -P -B1 /dir` to identify actual filesystem and capacity
+ * Uses `df -P -B1 /dir` for filesystem partition and `du -sh /dir` for actual app footprint
  */
 export async function queryAppDiskMetrics(
   server: INginxServerData,
@@ -1280,7 +1279,7 @@ export async function queryAppDiskMetrics(
   const script = validDirs
     .map((d) => {
       const safe = path.normalize(d).replace(/\\/g, '/');
-      return `echo "===DIR:${safe}==="; df -P -B1 "${safe}" 2>&1 || true`;
+      return `echo "===DIR:${safe}==="; df -P -B1 "${safe}" 2>&1 || true; echo "---DU---"; du -sh "${safe}" 2>/dev/null | cut -f1 || echo "0B"`;
     })
     .join('\n');
 
@@ -1306,7 +1305,21 @@ export async function queryAppDiskMetrics(
         const nextIdx = after.indexOf('===DIR:');
         const section = nextIdx === -1 ? after : after.slice(0, nextIdx);
 
-        const lines = section.trim().split('\n').filter(Boolean);
+        const duIdx = section.indexOf('---DU---');
+        let appSize = '0 B';
+        let dfText = section;
+        if (duIdx !== -1) {
+          dfText = section.slice(0, duIdx);
+          const rawDu = section.slice(duIdx + 8).trim().split('\n')[0]?.trim();
+          if (rawDu) {
+            if (rawDu.endsWith('G')) appSize = `${rawDu.slice(0, -1)} GB`;
+            else if (rawDu.endsWith('M')) appSize = `${rawDu.slice(0, -1)} MB`;
+            else if (rawDu.endsWith('K')) appSize = `${rawDu.slice(0, -1)} KB`;
+            else appSize = rawDu;
+          }
+        }
+
+        const lines = dfText.trim().split('\n').filter(Boolean);
         let parsed = false;
 
         for (const line of lines) {
@@ -1336,6 +1349,7 @@ export async function queryAppDiskMetrics(
               available: formatGb(availableBytes),
               percentage,
               mountPoint,
+              appSize,
               status: 'available',
               updatedAt: nowFormatted,
             };
@@ -1356,6 +1370,7 @@ export async function queryAppDiskMetrics(
             available: 'Unavailable',
             percentage: 0,
             mountPoint: 'Unknown',
+            appSize: 'Unavailable',
             status: 'unavailable',
             updatedAt: nowFormatted,
           };
@@ -1372,6 +1387,7 @@ export async function queryAppDiskMetrics(
           available: 'Unavailable',
           percentage: 0,
           mountPoint: 'Unknown',
+          appSize: 'Unavailable',
           status: 'unavailable',
           updatedAt: new Date().toLocaleTimeString('en-US', {
             hour: '2-digit',
@@ -1400,6 +1416,7 @@ export async function queryAppDiskMetrics(
         available: 'Unavailable',
         percentage: 0,
         mountPoint: 'Unknown',
+        appSize: 'Unavailable',
         status: 'unavailable',
         updatedAt: nowFormatted,
       };

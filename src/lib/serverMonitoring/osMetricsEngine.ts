@@ -179,7 +179,7 @@ export function getLiveGuestOSMetrics(): OSMetricSnapshot {
 
     diskTotalGB = computedTotalGB;
     diskUsedGB = computedUsedGB;
-    diskPercent = computedPct >= 14 ? 15 : computedPct;
+    diskPercent = computedPct;
     diskTotalBytes = Math.round(diskTotalGB * 1024 ** 3);
     diskUsedBytes = Math.round(diskUsedGB * 1024 ** 3);
 

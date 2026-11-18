@@ -87,7 +87,7 @@ export async function GET(
                 type: (da.type as any) || 'nodejs',
                 frameworkName: da.frameworkName || 'Nginx Web Application',
                 directory: da.directory,
-                gitRepoUrl: da.gitRepoUrl || `https://github.com/Nallamekala-SivaBrahmaiah/${appName}.git`,
+                gitRepoUrl: da.gitRepoUrl || '',
                 gitBranch: da.gitBranch || 'main',
                 packageManager: validPkg,
                 buildCommand: da.buildConfig || 'npm run build',
@@ -102,6 +102,16 @@ export async function GET(
             { upsert: true, new: true, setDefaultsOnInsert: true }
           );
         }
+
+        if (scan) {
+          // Auto-Scan syncs database with server: delete apps that no longer exist on server
+          const discoveredDirs = discovered.map((d: any) => d.directory).filter(Boolean);
+          await NginxApp.deleteMany({
+            serverId: id,
+            directory: { $nin: discoveredDirs },
+          });
+        }
+
         rawApps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
         apps = rawApps.filter(isNginxAppDoc);
       }
@@ -132,6 +142,7 @@ export async function GET(
           used: 'Unavailable',
           available: 'Unavailable',
           percentage: 0,
+          appSize: 'Unavailable',
           filesystem: 'Unknown',
           mountPoint: 'Unknown',
           updatedAt: new Date().toLocaleTimeString('en-US', {
