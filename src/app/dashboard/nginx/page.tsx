@@ -620,17 +620,13 @@ export default function NginxDashboardPage() {
     }
   };
 
-  // Server Workspace Navigation Pills: Exact 10 Tabs matching visual reference
+  // Server Workspace Navigation Pills: Clean Navigation (PM2 and Logs are now integrated in Applications & Deployment)
   const workspaceTabs: { id: NginxServerWorkspaceTab; label: string; icon: any; badge?: string | number }[] = [
     { id: 'overview', label: 'Overview', icon: Activity },
-    { id: 'pm2', label: 'PM2 Manager', icon: Layers },
-    { id: 'pm2-logs', label: 'PM2 Logs', icon: FileText },
-    { id: 'access-logs', label: 'Nginx Access Logs', icon: FileText },
-    { id: 'error-logs', label: 'Nginx Error Logs', icon: AlertTriangle },
+    { id: 'apps', label: 'Applications & Deployment', icon: Package },
     { id: 'proxy', label: 'Sites & Reverse Proxy', icon: Rocket },
     { id: 'config', label: 'Configuration', icon: Settings },
     { id: 'files', label: 'File Manager', icon: Folder },
-    { id: 'apps', label: 'Applications', icon: Package },
     { id: 'history', label: 'Deployment History', icon: HistoryIcon },
   ];
 
