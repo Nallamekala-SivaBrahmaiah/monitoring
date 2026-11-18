@@ -529,15 +529,14 @@ export async function discoverApplications(server: INginxServerData): Promise<Di
 echo "===PM2_APPS==="
 pm2 jlist 2>/dev/null || echo "[]"
 
-# 2. Search for project configuration files in application directories
+# 2. Search for Nginx web applications and reverse proxy targets
 echo "===APP_MARKERS==="
-find /var/www /opt /home /srv -maxdepth 4 \\( -name "package.json" -o -name "pom.xml" -o -name "build.gradle" -o -name "Dockerfile" \\) 2>/dev/null | head -n 40 || true
+find /var/www /opt /home /srv -maxdepth 4 \\( -name "package.json" -o -name "nginx.conf" -o -name "index.html" \\) 2>/dev/null | head -n 40 || true
 
 # 3. System Runtimes
 echo "===RUNTIMES==="
 echo -n "NODE:" && (node -v 2>/dev/null || echo "not installed")
-echo -n "JAVA:" && (java -version 2>&1 | head -n 1 || echo "not installed")
-echo -n "DOCKER:" && (docker -v 2>/dev/null || echo "not installed")
+echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
 `;
 
   try {
@@ -632,48 +631,30 @@ echo -n "DOCKER:" && (docker -v 2>/dev/null || echo "not installed")
 
         const fileName = path.basename(mPath);
 
-        if (fileName === 'pom.xml') {
-          apps.push({
-            name: dirBase,
-            type: 'maven',
-            frameworkName: 'Maven / Java',
-            directory: dir,
-            packageManager: 'Maven',
-            runtimeVersion: javaVer || 'Java Runtime',
-            buildConfig: 'mvn clean package',
-          });
-        } else if (fileName === 'build.gradle') {
-          apps.push({
-            name: dirBase,
-            type: 'gradle',
-            frameworkName: 'Gradle / Java',
-            directory: dir,
-            packageManager: 'Gradle',
-            runtimeVersion: javaVer || 'Java Runtime',
-            buildConfig: 'gradle build',
-          });
-        } else if (fileName === 'Dockerfile') {
-          apps.push({
-            name: dirBase,
-            type: 'docker',
-            frameworkName: 'Docker Containerized App',
-            directory: dir,
-            packageManager: 'Docker',
-            buildConfig: 'docker build -t app .',
-          });
-        } else if (fileName === 'package.json') {
-          // Check if Vite or Next.js
+        // Only discover Nginx web applications and reverse proxy web targets
+        // Explicitly exclude Docker, Maven, Gradle, Kubernetes, and Jenkins apps
+        if (fileName === 'package.json') {
           const isNext = dirBase.toLowerCase().includes('next');
           const isVite = dirBase.toLowerCase().includes('vite');
 
           apps.push({
             name: dirBase,
             type: isNext ? 'nextjs' : isVite ? 'vite' : 'nodejs',
-            frameworkName: isNext ? 'Next.js' : isVite ? 'Vite' : 'Node.js',
+            frameworkName: isNext ? 'Next.js App' : isVite ? 'Vite Web App' : 'Nginx Web App',
             directory: dir,
-            packageManager: 'npm / pnpm',
+            packageManager: 'npm',
             runtimeVersion: nodeVer || 'Node.js',
             buildConfig: 'npm run build',
+          });
+        } else if (fileName === 'index.html' || fileName === 'nginx.conf') {
+          apps.push({
+            name: dirBase,
+            type: 'nodejs',
+            frameworkName: 'Nginx Static Web App',
+            directory: dir,
+            packageManager: 'npm',
+            runtimeVersion: 'Nginx Web Server',
+            buildConfig: 'nginx -t',
           });
         }
       }

@@ -202,6 +202,20 @@ export function NginxApplicationsTab({
     else setInstallCmd('npm install');
   }, []);
 
+  // Filter strictly for Nginx web applications (exclude Docker, Maven, Gradle, Kubernetes, Jenkins)
+  const isNginxApp = useCallback((a: INginxAppData) => {
+    if (!a) return false;
+    const t = (a.type || '').toLowerCase();
+    const pkg = (a.packageManager || '').toLowerCase();
+    const f = (a.frameworkName || '').toLowerCase();
+    const n = (a.name || '').toLowerCase();
+    const excluded = ['docker', 'maven', 'gradle', 'kubernetes', 'jenkins'];
+    if (excluded.some((ex) => t.includes(ex) || pkg.includes(ex) || f.includes(ex) || n.includes(ex))) {
+      return false;
+    }
+    return true;
+  }, []);
+
   // Fetch Applications (with optional live SSH scan)
   const fetchApps = useCallback(
     async (scan = false) => {
@@ -217,28 +231,30 @@ export function NginxApplicationsTab({
         const data = await res.json();
 
         if (res.ok && data.apps && data.apps.length > 0) {
-          setApps(data.apps);
+          const filtered = (data.apps as INginxAppData[]).filter(isNginxApp);
+          setApps(filtered);
 
-          // If current selectedApp matches an existing one, update it; otherwise select the first
-          setSelectedApp((prev) => {
-            if (prev) {
-              const matched = data.apps.find((a: INginxAppData) => a._id === prev._id || a.directory === prev.directory);
-              if (matched) {
-                applyAppToTarget(matched);
-                return matched;
+          if (filtered.length > 0) {
+            setSelectedApp((prev) => {
+              if (prev) {
+                const matched = filtered.find((a: INginxAppData) => a._id === prev._id || a.directory === prev.directory);
+                if (matched) {
+                  applyAppToTarget(matched);
+                  return matched;
+                }
               }
-            }
-            applyAppToTarget(data.apps[0]);
-            return data.apps[0];
-          });
+              applyAppToTarget(filtered[0]);
+              return filtered[0];
+            });
+          }
 
           if (scan) {
-            showToast('success', `Live server scan discovered ${data.apps.length} application(s).`);
+            showToast('success', `Live server scan discovered ${filtered.length} Nginx application(s).`);
           }
         } else if (data.apps && data.apps.length === 0) {
           setApps([]);
           if (scan) {
-            showToast('error', 'No deployed applications discovered on this server via SSH.');
+            showToast('error', 'No deployed Nginx applications discovered on this server.');
           }
         }
       } catch (err: any) {
@@ -251,7 +267,7 @@ export function NginxApplicationsTab({
         setIsScanning(false);
       }
     },
-    [activeServer?._id, applyAppToTarget]
+    [activeServer?._id, applyAppToTarget, isNginxApp]
   );
 
   // Initial load
@@ -767,13 +783,12 @@ export function NginxApplicationsTab({
     return true;
   });
 
-  // App Icon Helper
+  // App Icon Helper - Strictly Nginx Web Applications
   const getAppIcon = (type?: string, pkg?: string) => {
     const t = (type || '').toLowerCase();
     const p = (pkg || '').toLowerCase();
     if (t === 'nextjs' || p === 'next') return <Globe className="w-5 h-5 text-cyan-400" />;
-    if (t === 'maven' || p === 'maven') return <ShoppingCart className="w-5 h-5 text-amber-400" />;
-    if (t === 'docker' || p === 'docker') return <Boxes className="w-5 h-5 text-blue-400" />;
+    if (t === 'vite' || t === 'react') return <Code2 className="w-5 h-5 text-indigo-400" />;
     return <Package className="w-5 h-5 text-emerald-400" />;
   };
 
@@ -2014,7 +2029,6 @@ export function NginxApplicationsTab({
                     { label: 'pnpm install', pkg: 'pnpm' },
                     { label: 'yarn install', pkg: 'yarn' },
                     { label: 'bun install', pkg: 'bun' },
-                    { label: 'mvn clean compile', pkg: 'maven' },
                   ].map((item) => (
                     <button
                       key={item.label}
@@ -2054,7 +2068,7 @@ export function NginxApplicationsTab({
                     'pnpm build',
                     'pnpm dev',
                     'yarn build',
-                    'mvn clean package -DskipTests',
+                    'npm start',
                   ].map((bCmd) => (
                     <button
                       key={bCmd}

@@ -18,11 +18,35 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Server not found' }, { status: 404 });
     }
 
+    const isNginxAppDoc = (a: any) => {
+      if (!a) return false;
+      const t = (a.type || '').toLowerCase();
+      const pkg = (a.packageManager || '').toLowerCase();
+      const f = (a.frameworkName || '').toLowerCase();
+      const n = (a.name || '').toLowerCase();
+      const excluded = ['docker', 'maven', 'gradle', 'kubernetes', 'jenkins'];
+      if (n.startsWith('.')) return false;
+      if (excluded.some((ex) => t.includes(ex) || pkg.includes(ex) || f.includes(ex) || n.includes(ex))) {
+        return false;
+      }
+      return true;
+    };
+
+    // Clean up any stale docker/maven/kubernetes/jenkins apps from Nginx collection
+    const existingServerApps = await NginxApp.find({ serverId: id }).lean();
+    const staleIds = existingServerApps
+      .filter((a: any) => !isNginxAppDoc(a))
+      .map((a: any) => a._id);
+    if (staleIds.length > 0) {
+      await NginxApp.deleteMany({ _id: { $in: staleIds } });
+    }
+
     const scan = req.nextUrl?.searchParams?.get('scan') === 'true';
-    let apps = await NginxApp.find({ serverId: id, name: { $not: /^\./ } }).sort({ createdAt: 1 }).lean();
+    let rawApps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
+    let apps = rawApps.filter(isNginxAppDoc);
 
     // If scan requested or no apps registered yet, attempt live SSH discovery on the server
-    if (scan || !apps || apps.length === 0) {
+    if (scan || apps.length === 0) {
       let discovered: any[] = [];
       try {
         discovered = await discoverApplications(server.toObject());
@@ -37,10 +61,19 @@ export async function GET(
           if (appName.startsWith('.') || da.directory.includes('/.nvm') || da.directory.includes('/.next')) {
             continue;
           }
-          const rawPkg = (da.packageManager?.toLowerCase() as string) || 'auto';
-          const validPkg = ['auto', 'npm', 'pnpm', 'yarn', 'bun', 'maven', 'gradle', 'docker', 'pip', 'other'].includes(rawPkg)
+          // Strictly exclude Docker, Maven, Gradle, Kubernetes, Jenkins
+          const isExcluded = ['docker', 'maven', 'gradle', 'kubernetes', 'jenkins'].some((ex) =>
+            (da.type || '').toLowerCase().includes(ex) ||
+            (da.packageManager || '').toLowerCase().includes(ex) ||
+            (da.frameworkName || '').toLowerCase().includes(ex) ||
+            appName.toLowerCase().includes(ex)
+          );
+          if (isExcluded) continue;
+
+          const rawPkg = (da.packageManager?.toLowerCase() as string) || 'npm';
+          const validPkg = ['npm', 'pnpm', 'yarn', 'bun'].includes(rawPkg)
             ? rawPkg
-            : 'auto';
+            : 'npm';
 
           await NginxApp.findOneAndUpdate(
             { serverId: id, directory: da.directory },
@@ -51,7 +84,7 @@ export async function GET(
                 serverHost: server.host,
                 name: appName,
                 type: (da.type as any) || 'nodejs',
-                frameworkName: da.frameworkName || 'Discovered Application',
+                frameworkName: da.frameworkName || 'Nginx Web Application',
                 directory: da.directory,
                 gitRepoUrl: da.gitRepoUrl || '',
                 gitBranch: da.gitBranch || 'main',
@@ -62,13 +95,14 @@ export async function GET(
                 appPort: da.port || 3000,
                 status: da.pm2Status === 'online' ? 'Deployed' : 'Stopped',
                 healthStatus: da.pm2Status === 'online' ? 'Healthy' : 'Unknown',
-                iconType: da.type === 'maven' ? 'cart' : da.type === 'nextjs' ? 'globe' : 'layers',
+                iconType: da.type === 'nextjs' ? 'globe' : 'layers',
               },
             },
             { upsert: true, new: true, setDefaultsOnInsert: true }
           );
         }
-        apps = await NginxApp.find({ serverId: id, name: { $not: /^\./ } }).sort({ createdAt: 1 }).lean();
+        rawApps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
+        apps = rawApps.filter(isNginxAppDoc);
       }
     }
 
