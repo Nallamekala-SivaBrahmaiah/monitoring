@@ -35,6 +35,7 @@ import {
   Check,
   Server,
   Play,
+  Edit3,
 } from 'lucide-react';
 import { INginxServerData } from '@/models/NginxServer';
 import { INginxAppData } from '@/models/NginxApp';
@@ -287,16 +288,22 @@ export function NginxApplicationsTab({
   // ---------------------------------------------------------------------------
   // 5. Configure Full Deployment Pipeline Modal Handlers
   // ---------------------------------------------------------------------------
-  const handleOpenPipelineModal = () => {
-    setModalAppName(selectedApp?.name || pm2AppName || 'app');
-    setModalRepoPath(repoPath);
-    setModalGitBranch(gitBranch);
-    setModalGitRemoteUrl(gitRemoteUrl);
-    setModalPackageManager(packageManager);
-    setModalInstallCmd(installCmd);
-    setModalBuildCmd(buildCmd);
-    setModalPm2Name(pm2AppName);
-    setModalPort(appPort);
+  const handleOpenPipelineModal = (app?: INginxAppData) => {
+    const targetApp = app || selectedApp;
+    if (app) {
+      applyAppToTarget(app);
+    }
+    setModalAppName(targetApp?.name || pm2AppName || 'app');
+    setModalRepoPath(targetApp?.directory || repoPath);
+    setModalGitBranch(targetApp?.gitBranch || gitBranch);
+    setModalGitRemoteUrl(targetApp?.gitRepoUrl || gitRemoteUrl);
+    setModalPackageManager(targetApp?.packageManager || packageManager);
+    setModalInstallCmd(
+      targetApp?.packageManager === 'pnpm' ? 'pnpm install' : installCmd || 'npm install'
+    );
+    setModalBuildCmd(targetApp?.buildCommand || buildCmd || 'npm run build');
+    setModalPm2Name(targetApp?.pm2ProcessName || pm2AppName || 'monitoring-app');
+    setModalPort(targetApp?.appPort || appPort || 3000);
     setPipelineModalOpen(true);
   };
 
@@ -529,7 +536,7 @@ export function NginxApplicationsTab({
   }, [deploymentLogs, autoScroll]);
 
   // ---------------------------------------------------------------------------
-  // 8. Pipeline Execution Engine (Safe JSON & Robust Terminal Output)
+  // 8. Pipeline Execution Engine (Single & Multi-App Fleet Support)
   // ---------------------------------------------------------------------------
   const executeStep = async (
     stepKey:
@@ -543,18 +550,23 @@ export function NginxApplicationsTab({
       | 'pm2-flush'
       | 'full-deploy'
       | 'rollback',
-    customTitle?: string
+    customTitle?: string,
+    overrideRepo?: string,
+    overrideBranch?: string,
+    overrideInstall?: string,
+    overrideBuild?: string,
+    overridePm2?: string
   ) => {
     if (!activeServer?._id) {
       showToast('error', 'No active server selected.');
       return;
     }
 
-    const currentRepo = repoPath.trim() || '/home/siva/monitoring';
-    const currentBranch = gitBranch.trim() || 'main';
-    const currentInstall = installCmd.trim() || 'npm install';
-    const currentBuild = buildCmd.trim() || 'npm run build';
-    const currentPM2 = pm2AppName.trim() || 'monitoring-app';
+    const currentRepo = (overrideRepo || repoPath).trim() || '/home/siva/monitoring';
+    const currentBranch = (overrideBranch || gitBranch).trim() || 'main';
+    const currentInstall = (overrideInstall || installCmd).trim() || 'npm install';
+    const currentBuild = (overrideBuild || buildCmd).trim() || 'npm run build';
+    const currentPM2 = (overridePm2 || pm2AppName).trim() || 'monitoring-app';
 
     setActiveConsoleTab('output');
     setIsExecuting(true);
@@ -566,7 +578,7 @@ export function NginxApplicationsTab({
     if (stepKey === 'full-deploy') {
       setDeployProgress({
         status: 'deploying',
-        stepMessage: `Executing 1-Click Automated Full Deploy for ${selectedApp?.name || currentPM2}...`,
+        stepMessage: `Executing Full Deploy for ${selectedApp?.name || currentPM2}...`,
         percentage: 15,
       });
     } else if (stepKey === 'rollback') {
@@ -683,6 +695,122 @@ export function NginxApplicationsTab({
       setIsExecuting(false);
       setActiveStepRunning(null);
     }
+  };
+
+  // Deploy an Individual Application Directly
+  const handleDeploySingleApp = async (app: INginxAppData) => {
+    applyAppToTarget(app);
+    await executeStep(
+      'full-deploy',
+      `1-Click Deploy (${app.name})`,
+      app.directory,
+      app.gitBranch || 'main',
+      app.packageManager === 'pnpm' ? 'pnpm install' : 'npm install',
+      app.buildCommand || 'npm run build',
+      app.pm2ProcessName || app.name
+    );
+  };
+
+  // Deploy All Discovered Applications Sequentially
+  const handleDeployAllApps = async () => {
+    if (!activeServer?._id || apps.length === 0) return;
+    setIsExecuting(true);
+    setActiveConsoleTab('output');
+    setActiveStepRunning('deploy-all');
+
+    const now = () => new Date().toTimeString().split(' ')[0];
+    setDeploymentLogs((prev) => [
+      ...prev,
+      `[${now()}] [info] ========================================================`,
+      `[${now()}] [info] 🚀 STARTING MULTI-APP FLEET DEPLOYMENT (${apps.length} Applications)`,
+      `[${now()}] [info] Server: ${activeServer.name} (${activeServer.host})`,
+      `[${now()}] [info] ========================================================`,
+    ]);
+
+    let successCount = 0;
+    for (let i = 0; i < apps.length; i++) {
+      const app = apps[i];
+      const currentInstall = app.packageManager === 'pnpm' ? 'pnpm install' : 'npm install';
+      const currentBuild = app.buildCommand || 'npm run build';
+      const currentPM2 = app.pm2ProcessName || app.name;
+      const currentBranch = app.gitBranch || 'main';
+
+      setDeployProgress({
+        status: 'deploying',
+        stepMessage: `[${i + 1}/${apps.length}] Deploying "${app.name}"...`,
+        percentage: Math.round((i / apps.length) * 100) + 10,
+      });
+
+      setDeploymentLogs((prev) => [
+        ...prev,
+        `[${now()}] [info] >>> [${i + 1}/${apps.length}] Deploying: ${app.name} (${app.directory}) | Branch: ${currentBranch} | PM2: ${currentPM2}`,
+      ]);
+
+      try {
+        const res = await fetch(`/api/nginx/servers/${activeServer._id}/pipeline`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repoPath: app.directory,
+            branch: currentBranch,
+            step: 'full-deploy',
+            installCmd: currentInstall,
+            buildCmd: currentBuild,
+            pm2AppName: currentPM2,
+          }),
+        });
+
+        const rawText = await res.text();
+        let data: any;
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          data = { success: true, output: `[PM2] Application ${app.name} reloaded.` };
+        }
+
+        if (res.ok && data.success) {
+          successCount++;
+          const lines = (data.output || '').split('\n').filter((l: string) => l.trim().length > 0);
+          setDeploymentLogs((prev) => [
+            ...prev,
+            ...lines,
+            `[${now()}] [success] ✓ Successfully deployed application [${app.name}]!`,
+          ]);
+        } else {
+          setDeploymentLogs((prev) => [
+            ...prev,
+            `[${now()}] [error] ✗ Failed deploying [${app.name}]: ${data.error || 'Execution failed'}`,
+          ]);
+        }
+      } catch (err: any) {
+        setDeploymentLogs((prev) => [
+          ...prev,
+          `[${now()}] [error] ✗ Exception deploying [${app.name}]: ${err.message}`,
+        ]);
+      }
+    }
+
+    setIsExecuting(false);
+    setActiveStepRunning(null);
+
+    if (successCount === apps.length) {
+      setDeployProgress({
+        status: 'success',
+        stepMessage: `All ${apps.length} applications deployed successfully!`,
+        percentage: 100,
+      });
+      showToast('success', `All ${apps.length} applications deployed successfully!`);
+    } else {
+      setDeployProgress({
+        status: 'failed',
+        stepMessage: `Deployed ${successCount}/${apps.length} applications.`,
+        percentage: 100,
+      });
+      showToast('error', `Deployed ${successCount} of ${apps.length} applications.`);
+    }
+
+    fetchPM2List();
+    fetchApps();
   };
 
   // Helper actions
@@ -968,19 +1096,48 @@ export function NginxApplicationsTab({
                     </div>
                   </div>
 
-                  {/* Bottom: Active Selection Indicator / Package Manager Badge */}
-                  <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-[#1E293B]/70">
-                    <span className="text-[10px] px-2 py-0.5 rounded font-mono uppercase bg-[#111A2E] text-slate-400 border border-[#1E293B]">
-                      {app.packageManager || 'npm'}
-                    </span>
+                  {/* Bottom: Active Selection Indicator / Package Manager Badge / Quick Actions */}
+                  <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-[#1E293B]/70 gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] px-2 py-0.5 rounded font-mono uppercase bg-[#111A2E] text-slate-400 border border-[#1E293B]">
+                        {app.packageManager || 'npm'}
+                      </span>
+                      {/* Individual App Quick Deploy Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeploySingleApp(app);
+                        }}
+                        disabled={isExecuting}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-[10px] font-bold font-mono transition cursor-pointer disabled:opacity-50"
+                        title={`1-Click Deploy ${app.name}`}
+                      >
+                        <Rocket className="w-2.5 h-2.5" />
+                        <span>Deploy</span>
+                      </button>
+                      {/* Individual App Edit Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenPipelineModal(app);
+                        }}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#111A2E] hover:bg-[#1E293B] text-slate-400 hover:text-cyan-300 border border-[#1E293B] text-[10px] font-bold font-mono transition cursor-pointer"
+                        title={`Edit configuration for ${app.name}`}
+                      >
+                        <Edit3 className="w-2.5 h-2.5 text-cyan-400" />
+                        <span>Edit</span>
+                      </button>
+                    </div>
 
                     {isSelected ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-cyan-400 font-mono">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-cyan-400 font-mono shrink-0">
                         <Check className="w-3 h-3" />
                         <span>ACTIVE TARGET</span>
                       </span>
                     ) : (
-                      <span className="text-[10px] text-slate-500 group-hover:text-slate-300 transition-colors">
+                      <span className="text-[10px] text-slate-500 group-hover:text-slate-300 transition-colors shrink-0">
                         Click to select →
                       </span>
                     )}
@@ -1094,6 +1251,24 @@ export function NginxApplicationsTab({
               <span>🚀 1-Click Automated Full Deploy</span>
             </button>
 
+            {/* Multi-App Fleet Deploy Button (When multiple apps exist) */}
+            {apps.length > 1 && (
+              <button
+                type="button"
+                onClick={handleDeployAllApps}
+                disabled={isExecuting}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-xl shadow-emerald-600/30 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 tracking-wide uppercase shrink-0"
+                title={`Sequentially deploy all ${apps.length} applications across this server`}
+              >
+                {isExecuting && activeStepRunning === 'deploy-all' ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Zap className="w-4 h-4 text-amber-300" />
+                )}
+                <span>⚡ Deploy All ({apps.length} Apps)</span>
+              </button>
+            )}
+
             {/* Rollback */}
             <button
               type="button"
@@ -1109,7 +1284,7 @@ export function NginxApplicationsTab({
             {/* Configure Full Deployment Pipeline Button */}
             <button
               type="button"
-              onClick={handleOpenPipelineModal}
+              onClick={() => handleOpenPipelineModal()}
               className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-[#070B14] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition cursor-pointer"
               title="Configure Full Deployment Pipeline settings (directories, branches, commands, PM2 name)"
             >

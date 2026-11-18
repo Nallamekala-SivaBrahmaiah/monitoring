@@ -620,14 +620,9 @@ export default function NginxDashboardPage() {
     }
   };
 
-  // Server Workspace Navigation: Streamlined & clean tabs matching user design
+  // Server Workspace Navigation: Only Applications & Deployment (Default)
   const workspaceTabs: { id: NginxServerWorkspaceTab; label: string; icon: any; badge?: string | number }[] = [
-    { id: 'overview', label: 'Overview', icon: Activity },
     { id: 'apps', label: 'Applications & Deployment', icon: Package },
-    { id: 'proxy', label: 'Sites & Reverse Proxy', icon: Rocket },
-    { id: 'config', label: 'Configuration', icon: Settings },
-    { id: 'files', label: 'File Manager', icon: Folder },
-    { id: 'history', label: 'Deployment History', icon: HistoryIcon },
   ];
 
   return (
