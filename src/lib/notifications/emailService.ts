@@ -215,6 +215,19 @@ export async function sendAlertEmail(
   payload: EmailAlertPayload,
   recipients?: string[]
 ): Promise<EmailResult> {
+  if (
+    process.env.ENABLE_EMAIL_ALERTS === 'false' ||
+    process.env.DISABLE_EMAIL_NOTIFICATIONS === 'true' ||
+    process.env.DISABLE_DEPLOYMENT_EMAILS === 'true'
+  ) {
+    console.log('[EmailService] 🔕 Email sending is disabled by configuration.');
+    return {
+      success: false,
+      error: 'Email sending is disabled by configuration (ENABLE_EMAIL_ALERTS=false).',
+      recipients: [],
+    };
+  }
+
   const toList = await resolveRecipients(recipients);
   if (toList.length === 0) {
     return { success: false, error: 'No enabled recipients configured', recipients: [] };
@@ -444,6 +457,18 @@ export async function sendResolvedEmail(
   payload: EmailAlertPayload,
   recipients?: string[]
 ): Promise<EmailResult> {
+  if (
+    process.env.ENABLE_EMAIL_ALERTS === 'false' ||
+    process.env.DISABLE_EMAIL_NOTIFICATIONS === 'true' ||
+    process.env.DISABLE_DEPLOYMENT_EMAILS === 'true'
+  ) {
+    return {
+      success: false,
+      error: 'Email sending is disabled by configuration.',
+      recipients: [],
+    };
+  }
+
   const toList = await resolveRecipients(recipients);
   if (toList.length === 0) {
     return { success: false, error: 'No enabled recipients configured', recipients: [] };

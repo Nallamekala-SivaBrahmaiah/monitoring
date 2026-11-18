@@ -97,7 +97,7 @@ export default function NginxDashboardPage() {
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<NginxServerWorkspaceTab>('apps');
   const [autoDeployEnabled, setAutoDeployEnabled] = useState(true);
   const [regionFilter, setRegionFilter] = useState('all');
-  const [lastUpdatedTime, setLastUpdatedTime] = useState('11:45:32 AM');
+  const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('Just now');
 
   // Search and view filters for All Servers view
   const [searchQuery, setSearchQuery] = useState('');
@@ -667,7 +667,7 @@ export default function NginxDashboardPage() {
           </div>
 
           {/* ========================================================================= */}
-          {/* 2. SUMMARY METRICS ROW (Exact match to Screenshot) */}
+          {/* 2. SUMMARY METRICS ROW (Actual Connected Server Data Only) */}
           {/* ========================================================================= */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Card 1: Total Servers */}
@@ -675,7 +675,7 @@ export default function NginxDashboardPage() {
               <div className="space-y-1">
                 <span className="text-xs font-semibold text-slate-400">Total Servers</span>
                 <h3 className="text-2xl font-bold text-white tracking-wide">
-                  {servers.length > 0 ? servers.length : 12}
+                  {servers.length}
                 </h3>
               </div>
               <div className="w-11 h-11 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shadow-inner">
@@ -688,9 +688,9 @@ export default function NginxDashboardPage() {
               <div className="space-y-1">
                 <span className="text-xs font-semibold text-slate-400">Online Servers</span>
                 <h3 className="text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-                  <span>{onlineCount > 0 ? onlineCount : 10}</span>
+                  <span>{onlineCount}</span>
                   <span className="text-xs font-semibold text-emerald-400 font-mono">
-                    ({servers.length > 0 ? Math.round((onlineCount / servers.length) * 100) : 83}%)
+                    ({servers.length > 0 ? Math.round((onlineCount / servers.length) * 100) : 0}%)
                   </span>
                 </h3>
               </div>
@@ -704,9 +704,9 @@ export default function NginxDashboardPage() {
               <div className="space-y-1">
                 <span className="text-xs font-semibold text-slate-400">Offline Servers</span>
                 <h3 className="text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-                  <span>{servers.length > onlineCount ? servers.length - onlineCount : 2}</span>
+                  <span>{Math.max(0, servers.length - onlineCount)}</span>
                   <span className="text-xs font-semibold text-rose-400 font-mono">
-                    ({servers.length > 0 ? Math.round(((servers.length - onlineCount) / servers.length) * 100) : 17}%)
+                    ({servers.length > 0 ? Math.round((Math.max(0, servers.length - onlineCount) / servers.length) * 100) : 0}%)
                   </span>
                 </h3>
               </div>
@@ -1401,11 +1401,11 @@ export default function NginxDashboardPage() {
                     </div>
 
                     <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-mono flex-wrap">
-                      <span>Provider: <strong className="text-slate-200 capitalize">{activeServer.cloudProvider || 'Azure'}</strong></span>
+                      <span>Provider: <strong className="text-slate-200 capitalize">{activeServer.cloudProvider || 'Cloud'}</strong></span>
                       <span className="text-slate-600">|</span>
-                      <span>Region: <strong className="text-slate-200">{activeServer.region || 'eastus'}</strong></span>
+                      <span>Region: <strong className="text-slate-200">{activeServer.region || 'global'}</strong></span>
                       <span className="text-slate-600">|</span>
-                      <span>IP: <strong className="text-slate-200">{activeServer.host || activeServer.privateIp || '172.16.0.4'}</strong></span>
+                      <span>IP: <strong className="text-slate-200">{activeServer.host || activeServer.publicIp || activeServer.privateIp || '-'}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -1419,16 +1419,16 @@ export default function NginxDashboardPage() {
                     </div>
                     <div>
                       <span className="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Uptime</span>
-                      <span className="text-sm font-bold text-white font-mono">{activeServer.metrics?.uptime || '34d 12h 25m'}</span>
+                      <span className="text-sm font-bold text-white font-mono">{activeServer.metrics?.uptime || (activeServer.connectionStatus === 'Online' ? 'Active' : 'Offline')}</span>
                     </div>
                   </div>
 
                   {/* Last Seen */}
                   <div className="flex items-center gap-2.5">
-                    <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+                    <span className={`w-3 h-3 rounded-full ${activeServer.connectionStatus === 'Online' ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-rose-500'}`} />
                     <div>
-                      <span className="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Last Seen</span>
-                      <span className="text-sm font-bold text-white">Just now</span>
+                      <span className="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Status</span>
+                      <span className="text-sm font-bold text-white">{activeServer.connectionStatus === 'Online' ? 'Online' : 'Offline'}</span>
                     </div>
                   </div>
 

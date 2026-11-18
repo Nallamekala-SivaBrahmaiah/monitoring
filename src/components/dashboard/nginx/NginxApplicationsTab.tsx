@@ -120,22 +120,32 @@ export function NginxApplicationsTab({
           return data.apps[0] || null;
         });
 
-        // Initialize default logs for first app if logs are empty
-        if (data.apps.length > 0 && logs.length === 0) {
+        // Initialize deployment state for first app based on real data
+        if (data.apps.length > 0) {
           const first = data.apps[0];
-          setLogs([
-            `[11:45:20] [info] Application workspace ready for ${first.name}...`,
-            `[11:45:21] [info] Server: ${activeServer.name} (${activeServer.host}) | Branch: ${first.gitBranch || 'main'}`,
-            `[11:45:22] [info] Application directory: ${first.directory}`,
-            `[11:45:23] [info] Package manager: ${first.packageManager || 'auto'}`,
-            `[11:45:24] [success] Ready for 1-Click deployment and quick commands.`,
-          ]);
+          if (first.lastDeployedAt) {
+            setDeployProgress({
+              status: first.status === 'Failed' ? 'failed' : 'success',
+              stepMessage: first.status === 'Failed'
+                ? `Last deployment failed for ${first.name}`
+                : `${first.name} deployed successfully on ${first.gitBranch || 'main'}${first.lastDeploymentDuration ? ` in ${first.lastDeploymentDuration}` : ''}`,
+              percentage: 100,
+              duration: first.lastDeploymentDuration,
+            });
+          } else {
+            setDeployProgress({
+              status: 'idle',
+              stepMessage: 'Ready to deploy',
+              percentage: 0,
+            });
+          }
+        } else {
           setDeployProgress({
-            status: first.status === 'Failed' ? 'failed' : 'success',
-            stepMessage: `${first.name} ready on ${first.gitBranch || 'main'}`,
-            percentage: 100,
-            duration: first.lastDeploymentDuration || '2m 18s',
+            status: 'idle',
+            stepMessage: '',
+            percentage: 0,
           });
+          setLogs([]);
         }
       }
     } catch (err: any) {
@@ -143,7 +153,7 @@ export function NginxApplicationsTab({
     } finally {
       setLoadingApps(false);
     }
-  }, [activeServer?._id, activeServer?.name, activeServer?.host]);
+  }, [activeServer?._id]);
 
   useEffect(() => {
     fetchApps();
@@ -156,22 +166,25 @@ export function NginxApplicationsTab({
     }
   }, [logs, autoScroll]);
 
-  // When selected app changes, update logs preview
+  // When selected app changes, update logs preview based on real status
   const handleSelectApp = (app: INginxAppData) => {
     setSelectedApp(app);
-    setLogs([
-      `[info] Switched workspace to ${app.name}...`,
-      `[info] Repository: ${app.gitRepoUrl || 'Not configured'} (Branch: ${app.gitBranch || 'main'})`,
-      `[info] Directory: ${app.directory}`,
-      `[info] PM2 Process: ${app.pm2ProcessName || app.name}`,
-      `[${app.status === 'Failed' ? 'warn' : 'success'}] Status: ${app.status} | Health: ${app.healthStatus}`,
-    ]);
-    setDeployProgress({
-      status: app.status === 'Failed' ? 'failed' : 'success',
-      stepMessage: app.status === 'Failed' ? `${app.name} deployment failed previously` : `${app.name} deployed successfully in ${app.lastDeploymentDuration || '2m 18s'}`,
-      percentage: 100,
-      duration: app.lastDeploymentDuration || '2m 18s',
-    });
+    if (app.lastDeployedAt) {
+      setDeployProgress({
+        status: app.status === 'Failed' ? 'failed' : 'success',
+        stepMessage: app.status === 'Failed'
+          ? `Last deployment failed for ${app.name}`
+          : `${app.name} deployed successfully on ${app.gitBranch || 'main'}${app.lastDeploymentDuration ? ` in ${app.lastDeploymentDuration}` : ''}`,
+        percentage: 100,
+        duration: app.lastDeploymentDuration,
+      });
+    } else {
+      setDeployProgress({
+        status: 'idle',
+        stepMessage: 'Ready to deploy',
+        percentage: 0,
+      });
+    }
   };
 
   // 2. ONE-CLICK DEPLOY LATEST CODE
@@ -188,37 +201,11 @@ export function NginxApplicationsTab({
 
     const now = () => new Date().toTimeString().split(' ')[0];
     const initialLogs = [
-      `[${now()}] [info] Starting deployment for ${selectedApp.name}...`,
-      `[${now()}] [info] Pulling latest code from repository (${branchToDeploy})...`,
+      `[${now()}] [info] Starting deployment workflow for ${selectedApp.name}...`,
+      `[${now()}] [info] Target Server: ${activeServer.name} (${activeServer.host}) | Branch: ${branchToDeploy}`,
+      `[${now()}] [info] Establishing secure SSH connection to execute deployment pipeline...`,
     ];
     setLogs(initialLogs);
-
-    // Progressive UI feedback while SSH executes
-    const stepTimer = setTimeout(() => {
-      setDeployProgress((prev) => ({
-        ...prev,
-        stepMessage: 'Installing application dependencies...',
-        percentage: 45,
-      }));
-      setLogs((prev) => [
-        ...prev,
-        `From ${selectedApp.gitRepoUrl || 'https://github.com/repository'}`,
-        ` * branch            ${branchToDeploy}       -> FETCH_HEAD`,
-        `[${now()}] [info] Installing dependencies...`,
-      ]);
-    }, 1800);
-
-    const buildTimer = setTimeout(() => {
-      setDeployProgress((prev) => ({
-        ...prev,
-        stepMessage: 'Building application and restarting PM2...',
-        percentage: 75,
-      }));
-      setLogs((prev) => [
-        ...prev,
-        `[${now()}] [info] Restarting application with PM2...`,
-      ]);
-    }, 4000);
 
     try {
       const res = await fetch(`/api/nginx/servers/${activeServer._id}/apps/${selectedApp._id}/deploy`, {
@@ -226,20 +213,18 @@ export function NginxApplicationsTab({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ branch: branchToDeploy }),
       });
-      clearTimeout(stepTimer);
-      clearTimeout(buildTimer);
 
       const data = await res.json();
 
       if (res.ok && data.success) {
         setDeployProgress({
           status: 'success',
-          stepMessage: `Deployment Successful! ${selectedApp.name} deployed successfully in ${data.durationFormatted || '2m 18s'}`,
+          stepMessage: `Deployment Successful! ${selectedApp.name} deployed successfully in ${data.durationFormatted || 'real-time'}`,
           percentage: 100,
           duration: data.durationFormatted,
         });
 
-        // Parse and display real streaming logs
+        // Parse and display real streaming logs from SSH
         if (data.logs) {
           const lines = data.logs.split('\n').filter((l: string) => l.trim().length > 0);
           setLogs(lines);
@@ -276,8 +261,6 @@ export function NginxApplicationsTab({
         fetchApps();
       }
     } catch (err: any) {
-      clearTimeout(stepTimer);
-      clearTimeout(buildTimer);
       setDeployProgress({
         status: 'failed',
         stepMessage: `Deployment error: ${err.message}`,
@@ -522,6 +505,20 @@ export function NginxApplicationsTab({
                 <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
                 <span>Loading server applications...</span>
               </div>
+            ) : apps.length === 0 ? (
+              <div className="py-12 px-3 text-center text-slate-400 text-xs space-y-3">
+                <Package className="w-8 h-8 text-slate-600 mx-auto" />
+                <p className="font-semibold text-slate-300">No applications found on this server.</p>
+                <p className="text-[11px] text-slate-500">Add your first application to configure deployment.</p>
+                <button
+                  type="button"
+                  onClick={() => setAddAppModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/25 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Application</span>
+                </button>
+              </div>
             ) : filteredApps.length === 0 ? (
               <div className="py-12 text-center text-slate-500 text-xs">
                 No applications matching "{searchQuery}"
@@ -656,7 +653,7 @@ export function NginxApplicationsTab({
                               hour: '2-digit',
                               minute: '2-digit',
                             })
-                          : 'Nov 17, 2026 • 11:32 AM'}
+                          : 'Not deployed yet'}
                       </span>
                     </div>
 
@@ -710,7 +707,11 @@ export function NginxApplicationsTab({
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-purple-400 shrink-0" />
                     <span className="text-slate-500 font-semibold">Last Deploy:</span>
-                    <span className="text-slate-300 font-medium">{selectedApp.lastDeploymentDuration ? `${selectedApp.lastDeploymentDuration} ago` : '2 mins ago'}</span>
+                    <span className="text-slate-300 font-medium">
+                      {selectedApp.lastDeployedAt
+                        ? (selectedApp.lastDeploymentDuration ? `${selectedApp.lastDeploymentDuration} ago` : 'Recently')
+                        : 'Never'}
+                    </span>
                   </div>
 
                   {/* Status Healthy */}
@@ -808,6 +809,8 @@ export function NginxApplicationsTab({
                           <Loader2 className="w-4 h-4 text-blue-400 animate-spin shrink-0" />
                         ) : deployProgress.status === 'failed' ? (
                           <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                        ) : deployProgress.status === 'idle' ? (
+                          <Clock className="w-4 h-4 text-slate-500 shrink-0" />
                         ) : (
                           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                         )}
@@ -818,12 +821,14 @@ export function NginxApplicationsTab({
                             ? 'Deployment Failed!'
                             : deployProgress.status === 'rolled_back'
                             ? 'Rolled Back Successfully'
+                            : deployProgress.status === 'idle'
+                            ? 'No Active Deployment'
                             : 'Deployment Successful!'}
                         </h4>
                       </div>
 
                       <p className="text-[11px] text-slate-400 truncate max-w-sm" title={deployProgress.stepMessage}>
-                        {deployProgress.stepMessage || `${selectedApp.name} deployed successfully in 2m 18s`}
+                        {deployProgress.stepMessage || (selectedApp.lastDeployedAt ? 'Ready' : 'Application has not been deployed yet.')}
                       </p>
                     </div>
 
@@ -1001,12 +1006,26 @@ export function NginxApplicationsTab({
               </div>
             </>
           ) : (
-            <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-16 text-center text-slate-400 space-y-3">
+            <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-16 text-center text-slate-400 space-y-4">
               <Package className="w-12 h-12 mx-auto text-slate-600 opacity-60" />
-              <h4 className="text-base font-bold text-white">No Application Selected</h4>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Select an application from the left panel or click "+ Add App" to register a new application.
+              <h4 className="text-base font-bold text-white">
+                {apps.length === 0 ? 'No applications found on this server.' : 'No Application Selected'}
+              </h4>
+              <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                {apps.length === 0
+                  ? 'Add your first application to configure Git repository, build commands, and 1-Click deployment.'
+                  : 'Select an application from the left panel or click "+ Add App" to register a new application.'}
               </p>
+              {apps.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAddAppModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Your First Application</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1038,7 +1057,7 @@ export function NginxApplicationsTab({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Mayabazar App"
+                  placeholder="e.g. My Production App"
                   value={newAppForm.name}
                   onChange={(e) => setNewAppForm({ ...newAppForm, name: e.target.value })}
                   className="w-full bg-[#0B1120] text-slate-200 rounded-xl px-3 py-2 border border-[#1E293B] focus:outline-none focus:border-blue-500"
@@ -1096,7 +1115,7 @@ export function NginxApplicationsTab({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. /home/siva/mayabazar or /var/www/app"
+                  placeholder="e.g. /home/ubuntu/app or /var/www/app"
                   value={newAppForm.directory}
                   onChange={(e) => setNewAppForm({ ...newAppForm, directory: e.target.value })}
                   className="w-full bg-[#0B1120] text-slate-200 rounded-xl px-3 py-2 border border-[#1E293B] focus:outline-none focus:border-blue-500 font-mono"
@@ -1147,7 +1166,7 @@ export function NginxApplicationsTab({
                   <label className="text-slate-300 font-semibold block mb-1">PM2 Process Name</label>
                   <input
                     type="text"
-                    placeholder="e.g. mayabazar"
+                    placeholder="e.g. my-app"
                     value={newAppForm.pm2ProcessName}
                     onChange={(e) => setNewAppForm({ ...newAppForm, pm2ProcessName: e.target.value })}
                     className="w-full bg-[#0B1120] text-slate-200 rounded-xl px-3 py-2 border border-[#1E293B] focus:outline-none focus:border-blue-500 font-mono"

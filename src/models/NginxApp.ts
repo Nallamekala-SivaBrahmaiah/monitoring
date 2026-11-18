@@ -59,15 +59,15 @@ const NginxAppSchema = new Schema<INginxAppDocument>(
     status: {
       type: String,
       enum: ['Deployed', 'Building', 'Failed', 'Stopped'],
-      default: 'Deployed',
+      default: 'Stopped',
     },
     healthStatus: {
       type: String,
       enum: ['Healthy', 'Degraded', 'Down', 'Unknown'],
-      default: 'Healthy',
+      default: 'Unknown',
     },
-    lastDeployedAt: { type: Date, default: Date.now },
-    lastDeploymentDuration: { type: String, default: '2m 18s' },
+    lastDeployedAt: { type: Date },
+    lastDeploymentDuration: { type: String },
     lastSuccessfulCommit: { type: String, default: '' },
     currentCommit: { type: String, default: '' },
     iconType: {

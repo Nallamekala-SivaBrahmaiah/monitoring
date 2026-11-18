@@ -17,6 +17,9 @@ export interface DiscoveredApp {
   type: 'nextjs' | 'nextjs-standalone' | 'vite' | 'react' | 'nodejs' | 'express' | 'maven' | 'gradle' | 'docker' | 'custom';
   frameworkName?: string;
   directory: string;
+  gitRepoUrl?: string;
+  gitBranch?: string;
+  startCommand?: string;
   port?: number;
   pm2Name?: string;
   pm2Status?: string;

@@ -13,6 +13,7 @@ export interface INginxServerData {
   cloudProvider: 'aws' | 'azure' | 'gcp' | 'on-premise' | 'other';
   instanceId?: string;
   region?: string;
+  publicIp?: string;
   privateIp?: string;
   osName?: string;
   osVersion?: string;

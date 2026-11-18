@@ -130,6 +130,21 @@ export async function updateAlertThresholds(
  * Retrieve current notification preferences (Email & In-App)
  */
 export async function getNotificationPreferences() {
+  const isEmailDisabled =
+    process.env.ENABLE_EMAIL_ALERTS === 'false' ||
+    process.env.DISABLE_EMAIL_NOTIFICATIONS === 'true';
+
+  if (isEmailDisabled) {
+    return {
+      emailNotificationsEnabled: false,
+      inAppNotificationsEnabled: true,
+      alertRecipients: [],
+      notifyOnResolved: false,
+      reminderIntervalMinutes: 60,
+      minSeverity: 'warning',
+    };
+  }
+
   const devOpsRecipients = await getEnabledDevOpsRecipients();
 
   try {

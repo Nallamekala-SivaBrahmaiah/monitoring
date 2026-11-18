@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import path from 'path';
 import connectToDatabase from '@/lib/mongodb';
 import NginxServer from '@/models/NginxServer';
 import NginxApp, { INginxAppData } from '@/models/NginxApp';
@@ -19,158 +20,48 @@ export async function GET(
 
     let apps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
 
-    // If no apps registered yet for this server, seed default apps matching server & environment
+    // If no apps registered yet for this server, attempt live SSH discovery on the server
     if (!apps || apps.length === 0) {
-      const serverUser = server.username || (server.cloudProvider === 'azure' ? 'siva' : 'ubuntu');
-      const homeBase = `/home/${serverUser}`;
-
-      // Check if there are discovered apps on the machine
+      // Check if there are real discovered apps on the machine
       let discovered: any[] = [];
       try {
         discovered = await discoverApplications(server.toObject());
-      } catch {}
+      } catch (discErr: any) {
+        console.warn(`[NginxApps] Discovery notice for ${server.name}:`, discErr.message);
+      }
 
-      const seedList: Partial<INginxAppData>[] = [];
-
-      if (discovered.length > 0) {
+      if (discovered && discovered.length > 0) {
+        const discoveredList: Partial<INginxAppData>[] = [];
         for (const da of discovered) {
-          seedList.push({
+          if (!da.directory) continue;
+          discoveredList.push({
             serverId: id,
             serverName: server.name,
             serverHost: server.host,
-            name: da.name || 'Discovered App',
+            name: da.name || path.basename(da.directory),
             type: (da.type as any) || 'nodejs',
-            frameworkName: da.frameworkName || 'Node.js Application',
-            directory: da.directory || `${homeBase}/${da.name}`,
-            gitRepoUrl: `https://github.com/Nallamekala-SivaBrahmaiah/${(da.name || 'app').toLowerCase()}`,
-            gitBranch: 'main',
+            frameworkName: da.frameworkName || 'Discovered Application',
+            directory: da.directory,
+            gitRepoUrl: da.gitRepoUrl || '',
+            gitBranch: da.gitBranch || 'main',
             packageManager: (da.packageManager?.toLowerCase() as any) || 'auto',
             buildCommand: da.buildConfig || 'npm run build',
-            startCommand: 'npm start',
-            pm2ProcessName: da.pm2Name || da.name,
+            startCommand: da.startCommand || 'npm start',
+            pm2ProcessName: da.pm2Name || '',
             appPort: da.port || 3000,
             status: da.pm2Status === 'online' ? 'Deployed' : 'Stopped',
             healthStatus: da.pm2Status === 'online' ? 'Healthy' : 'Unknown',
             iconType: da.type === 'maven' ? 'cart' : da.type === 'nextjs' ? 'globe' : 'layers',
-            lastDeployedAt: new Date(),
-            lastDeploymentDuration: '1m 45s',
+            lastDeployedAt: undefined,
+            lastDeploymentDuration: undefined,
           });
         }
-      }
 
-      // If less than 3 apps found, add standard reference apps from the user's application fleet
-      if (seedList.length === 0) {
-        seedList.push(
-          {
-            serverId: id,
-            serverName: server.name,
-            serverHost: server.host,
-            name: 'Mayabazar App',
-            type: 'java-maven',
-            frameworkName: 'Java Web Application - WAR on Tomcat',
-            directory: `${homeBase}/mayabazar`,
-            gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/java-web-application',
-            gitBranch: 'main',
-            packageManager: 'maven',
-            buildCommand: 'mvn clean package',
-            startCommand: 'sudo systemctl restart tomcat9',
-            pm2ProcessName: 'mayabazar',
-            appPort: 8080,
-            status: 'Deployed',
-            healthStatus: 'Healthy',
-            iconType: 'cart',
-            lastDeployedAt: new Date(Date.now() - 2 * 60 * 1000),
-            lastDeploymentDuration: '2m 18s',
-          },
-          {
-            serverId: id,
-            serverName: server.name,
-            serverHost: server.host,
-            name: 'Rachana News',
-            type: 'nextjs',
-            frameworkName: 'Next.js 14 App - SSR on Node.js',
-            directory: `${homeBase}/rachana`,
-            gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/rachana-news',
-            gitBranch: 'main',
-            packageManager: 'npm',
-            buildCommand: 'npm run build',
-            startCommand: 'npm start',
-            pm2ProcessName: 'rachana-news',
-            appPort: 3001,
-            status: 'Deployed',
-            healthStatus: 'Healthy',
-            iconType: 'globe',
-            lastDeployedAt: new Date(Date.now() - 45 * 60 * 1000),
-            lastDeploymentDuration: '1m 32s',
-          },
-          {
-            serverId: id,
-            serverName: server.name,
-            serverHost: server.host,
-            name: 'Bakery App',
-            type: 'vite',
-            frameworkName: 'React Vite - SPA Frontend',
-            directory: `${homeBase}/backery`,
-            gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/bakery-app',
-            gitBranch: 'main',
-            packageManager: 'pnpm',
-            buildCommand: 'pnpm build',
-            startCommand: 'pm2 serve dist 3002 --spa --name bakery-app',
-            pm2ProcessName: 'bakery-app',
-            appPort: 3002,
-            status: 'Deployed',
-            healthStatus: 'Healthy',
-            iconType: 'cake',
-            lastDeployedAt: new Date(Date.now() - 120 * 60 * 1000),
-            lastDeploymentDuration: '54s',
-          },
-          {
-            serverId: id,
-            serverName: server.name,
-            serverHost: server.host,
-            name: 'Boardgame',
-            type: 'nodejs',
-            frameworkName: 'Node.js Socket Server',
-            directory: `${homeBase}/boardgame`,
-            gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/boardgame',
-            gitBranch: 'main',
-            packageManager: 'npm',
-            buildCommand: 'npm run build',
-            startCommand: 'node server.js',
-            pm2ProcessName: 'boardgame',
-            appPort: 4000,
-            status: 'Failed',
-            healthStatus: 'Down',
-            iconType: 'game',
-            lastDeployedAt: new Date(Date.now() - 360 * 60 * 1000),
-            lastDeploymentDuration: '45s',
-          },
-          {
-            serverId: id,
-            serverName: server.name,
-            serverHost: server.host,
-            name: 'Monitoring API',
-            type: 'nodejs',
-            frameworkName: 'Express REST Service',
-            directory: `${homeBase}/monitoring-api`,
-            gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring-api',
-            gitBranch: 'main',
-            packageManager: 'npm',
-            buildCommand: 'npm run build',
-            startCommand: 'npm start',
-            pm2ProcessName: 'monitoring-api',
-            appPort: 5000,
-            status: 'Deployed',
-            healthStatus: 'Healthy',
-            iconType: 'api',
-            lastDeployedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-            lastDeploymentDuration: '1m 12s',
-          }
-        );
+        if (discoveredList.length > 0) {
+          await NginxApp.insertMany(discoveredList);
+          apps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
+        }
       }
-
-      await NginxApp.insertMany(seedList);
-      apps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
     }
 
     server.discoveredAppCount = apps.length;
