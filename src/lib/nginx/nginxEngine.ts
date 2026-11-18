@@ -630,6 +630,8 @@ echo -n "DOCKER:" && (docker -v 2>/dev/null || echo "not installed")
         if (seenDirs.has(dir)) continue;
         seenDirs.add(dir);
 
+        const fileName = path.basename(mPath);
+
         if (fileName === 'pom.xml') {
           apps.push({
             name: dirBase,
