@@ -189,7 +189,17 @@ export function NginxApplicationsTab({
         ? `https://github.com/Nallamekala-SivaBrahmaiah/${app.name}.git`
         : '');
     setGitRemoteUrl(resolvedGitUrl);
-    if (app.buildCommand) setBuildCmd(app.buildCommand);
+
+    const isStatic =
+      (app.frameworkName || '').toLowerCase().includes('static') ||
+      app.buildCommand === 'nginx -t';
+
+    const sanitizedBuild =
+      app.buildCommand && !app.buildCommand.includes('/bin/')
+        ? app.buildCommand
+        : (app.name === 'monitoring-app' ? 'npm run build' : (isStatic ? 'nginx -t' : 'npm run build'));
+    setBuildCmd(sanitizedBuild);
+
     if (app.pm2ProcessName) {
       setPm2AppName(app.pm2ProcessName);
       setPm2LogsAppFilter(app.pm2ProcessName);
@@ -198,10 +208,6 @@ export function NginxApplicationsTab({
       setPm2LogsAppFilter(app.name);
     }
     if (app.appPort) setAppPort(app.appPort);
-
-    const isStatic =
-      (app.frameworkName || '').toLowerCase().includes('static') ||
-      app.buildCommand === 'nginx -t';
 
     const pkg = (app.packageManager?.toLowerCase() as string) || 'npm';
     setPackageManager(pkg);
@@ -565,7 +571,8 @@ export function NginxApplicationsTab({
     overrideBranch?: string,
     overrideInstall?: string,
     overrideBuild?: string,
-    overridePm2?: string
+    overridePm2?: string,
+    overrideGitUrl?: string
   ) => {
     if (!activeServer?._id) {
       showToast('error', 'No active server selected.');
@@ -606,6 +613,7 @@ export function NginxApplicationsTab({
     ]);
 
     const currentGitUrl = (
+      overrideGitUrl ||
       selectedApp?.gitRepoUrl ||
       gitRemoteUrl ||
       `https://github.com/Nallamekala-SivaBrahmaiah/${selectedApp?.name || 'app'}.git`
@@ -717,6 +725,9 @@ export function NginxApplicationsTab({
   // Deploy an Individual Application Directly
   const handleDeploySingleApp = async (app: INginxAppData) => {
     applyAppToTarget(app);
+    const gitUrl =
+      app.gitRepoUrl ||
+      `https://github.com/Nallamekala-SivaBrahmaiah/${app.name}.git`;
     await executeStep(
       'full-deploy',
       `1-Click Deploy (${app.name})`,
@@ -724,7 +735,8 @@ export function NginxApplicationsTab({
       app.gitBranch || 'main',
       app.packageManager === 'pnpm' ? 'pnpm install' : 'npm install',
       app.buildCommand || 'npm run build',
-      app.pm2ProcessName || app.name
+      app.pm2ProcessName || app.name,
+      gitUrl
     );
   };
 
@@ -751,6 +763,9 @@ export function NginxApplicationsTab({
       const currentBuild = app.buildCommand || 'npm run build';
       const currentPM2 = app.pm2ProcessName || app.name;
       const currentBranch = app.gitBranch || 'main';
+      const currentGitUrl =
+        app.gitRepoUrl ||
+        `https://github.com/Nallamekala-SivaBrahmaiah/${app.name}.git`;
 
       setDeployProgress({
         status: 'deploying',
@@ -770,6 +785,7 @@ export function NginxApplicationsTab({
           body: JSON.stringify({
             repoPath: app.directory,
             branch: currentBranch,
+            gitRepoUrl: currentGitUrl,
             step: 'full-deploy',
             installCmd: currentInstall,
             buildCmd: currentBuild,
@@ -1050,10 +1066,10 @@ export function NginxApplicationsTab({
           <div className="space-y-2.5">
             {[...apps]
               .sort((a, b) => {
-                const isAOnline = a.status === 'Deployed' || a.healthStatus === 'Healthy';
-                const isBOnline = b.status === 'Deployed' || b.healthStatus === 'Healthy';
-                if (isAOnline !== isBOnline) return isAOnline ? -1 : 1;
-                return (a.name || '').localeCompare(b.name || '');
+                // Short primary application (monitoring-app) first, longer names next
+                if (a.name === 'monitoring-app') return -1;
+                if (b.name === 'monitoring-app') return 1;
+                return (a.name || '').length - (b.name || '').length;
               })
               .map((app) => {
               const isSelected = selectedApp?._id === app._id || selectedApp?.directory === app.directory;
@@ -1064,10 +1080,10 @@ export function NginxApplicationsTab({
                 ? matchingPm2.status === 'online'
                 : app.status === 'Deployed' || app.healthStatus === 'Healthy';
 
-              const cpuVal = matchingPm2?.monit?.cpu ?? (isOnline ? 1.8 : 0);
+              const cpuVal = matchingPm2?.monit?.cpu ?? 0;
               const memMb = matchingPm2?.monit?.memory
                 ? Math.round(matchingPm2.monit.memory / (1024 * 1024))
-                : (isOnline ? 165 : 0);
+                : 0;
               const diskUsed = activeServer?.metrics?.diskUsedGb
                 ? `${activeServer.metrics.diskUsedGb} GB`
                 : '12.8 GB';
@@ -1083,8 +1099,8 @@ export function NginxApplicationsTab({
                       : 'border-[#1E293B] bg-[#070B14]/80 hover:border-slate-600 hover:bg-[#0E1626]'
                   }`}
                 >
-                  {/* Column 1: App Identity (Fixed width on desktop so short/long names maintain perfect grid alignment) */}
-                  <div className="flex items-center gap-3 min-w-0 w-full lg:w-[410px] xl:w-[440px] shrink-0">
+                  {/* Column 1: App Identity (Fixed width on desktop with full name visibility without truncation) */}
+                  <div className="flex items-center gap-3 min-w-0 w-full lg:w-[480px] xl:w-[520px] shrink-0">
                     <div
                       className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
                         isSelected
@@ -1095,9 +1111,9 @@ export function NginxApplicationsTab({
                       {getAppIcon(app.type, app.packageManager)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-nowrap">
+                      <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                         <h4
-                          className="text-xs font-bold text-white truncate max-w-[170px] sm:max-w-[210px] group-hover:text-cyan-300 transition-colors"
+                          className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors whitespace-nowrap"
                           title={app.name}
                         >
                           {app.name}
@@ -1110,7 +1126,7 @@ export function NginxApplicationsTab({
                           <span>{isOnline ? 'Healthy' : 'Stopped'}</span>
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-400 font-mono truncate mt-0.5 max-w-[380px]" title={app.directory}>
+                      <p className="text-[11px] text-slate-400 font-mono truncate mt-0.5 max-w-[460px]" title={app.directory}>
                         {app.directory} {app.pm2ProcessName && `• PM2: ${app.pm2ProcessName}`}
                       </p>
                     </div>

@@ -529,11 +529,22 @@ export async function discoverApplications(server: INginxServerData): Promise<Di
 echo "===PM2_APPS==="
 pm2 jlist 2>/dev/null || echo "[]"
 
-# 2. Search for Nginx web applications and reverse proxy targets
+# 2. Search for Nginx web applications and repos inside the server
 echo "===APP_MARKERS==="
-find /var/www /opt /home /srv -maxdepth 4 \\( -name "package.json" -o -name "nginx.conf" -o -name "index.html" \\) 2>/dev/null | head -n 40 || true
+find /var/www /opt /home /srv -maxdepth 4 \\( -name "package.json" -o -name "nginx.conf" -o -name "index.html" -o -name ".git" \\) 2>/dev/null | head -n 50 || true
 
-# 3. System Runtimes
+# 3. Git Remotes and branches inside the server
+echo "===GIT_REMOTES==="
+find /home /var/www /opt -maxdepth 4 -name ".git" -type d 2>/dev/null | while read g; do
+  d=$(dirname "$g")
+  url=$(git -C "$d" config --get remote.origin.url 2>/dev/null || true)
+  br=$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+  if [ -n "$d" ]; then
+    echo "$d|||$url|||$br"
+  fi
+done
+
+# 4. System Runtimes
 echo "===RUNTIMES==="
 echo -n "NODE:" && (node -v 2>/dev/null || echo "not installed")
 echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
@@ -556,15 +567,27 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
     };
 
     const pm2Json = getSection('PM2_APPS', 'APP_MARKERS');
-    const markersRaw = getSection('APP_MARKERS', 'RUNTIMES');
+    const markersRaw = getSection('APP_MARKERS', 'GIT_REMOTES');
+    const gitRemotesRaw = getSection('GIT_REMOTES', 'RUNTIMES');
     const runtimesRaw = getSection('RUNTIMES');
 
+    const gitRemoteMap = new Map<string, { url: string; branch: string }>();
+    if (gitRemotesRaw) {
+      const lines = gitRemotesRaw.split('\n').map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        const parts = line.split('|||');
+        if (parts.length >= 3) {
+          gitRemoteMap.set(parts[0].trim(), {
+            url: parts[1].trim(),
+            branch: parts[2].trim() || 'main',
+          });
+        }
+      }
+    }
+
     let nodeVer = '';
-    let javaVer = '';
     const nodeMatch = runtimesRaw.match(/NODE:v?([0-9.]+)/i);
     if (nodeMatch) nodeVer = `Node.js v${nodeMatch[1]}`;
-    const javaMatch = runtimesRaw.match(/JAVA:(?:openjdk|java)\s+(?:version\s+)?"?([0-9._]+)/i);
-    if (javaMatch) javaVer = `Java ${javaMatch[1]}`;
 
     // 1. Parse PM2 Apps
     try {
@@ -593,6 +616,11 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
             frameworkName = 'Express.js';
           }
 
+          const gitInfo = gitRemoteMap.get(dir) || {
+            url: `https://github.com/Nallamekala-SivaBrahmaiah/${p.name}.git`,
+            branch: 'main',
+          };
+
           apps.push({
             name: p.name,
             type: appType,
@@ -603,13 +631,15 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
             pm2Status: p.pm2_env?.status || 'unknown',
             runtimeVersion: nodeVer,
             packageManager: 'npm',
-            buildConfig: p.pm2_env?.pm_exec_path || 'npm start',
+            buildConfig: 'npm run build',
+            gitRepoUrl: gitInfo.url,
+            gitBranch: gitInfo.branch,
           });
         }
       }
     } catch {}
 
-    // 2. Parse Discovered Application directories
+    // 2. Parse Discovered Application directories & Git repositories inside the server
     if (markersRaw) {
       const markerLines = markersRaw.split('\n').map((l) => l.trim()).filter(Boolean);
       for (const mPath of markerLines) {
@@ -621,7 +651,6 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
           dir.includes('/node_modules') ||
           dir.includes('/.nvm') ||
           dir.includes('/.next') ||
-          dir.includes('/.git') ||
           dir.includes('/.cache') ||
           dir.includes('/java-web-application') ||
           dir.includes('/docker') ||
@@ -635,9 +664,11 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
         seenDirs.add(dir);
 
         const fileName = path.basename(mPath);
+        const gitInfo = gitRemoteMap.get(dir) || {
+          url: `https://github.com/Nallamekala-SivaBrahmaiah/${dirBase}.git`,
+          branch: 'main',
+        };
 
-        // Only discover Nginx web applications and reverse proxy web targets
-        // Explicitly exclude Docker, Maven, Gradle, Kubernetes, and Jenkins apps
         if (fileName === 'package.json') {
           const isNext = dirBase.toLowerCase().includes('next');
           const isVite = dirBase.toLowerCase().includes('vite');
@@ -650,6 +681,8 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
             packageManager: 'npm',
             runtimeVersion: nodeVer || 'Node.js',
             buildConfig: 'npm run build',
+            gitRepoUrl: gitInfo.url,
+            gitBranch: gitInfo.branch,
           });
         } else if (fileName === 'index.html' || fileName === 'nginx.conf') {
           apps.push({
@@ -660,6 +693,21 @@ echo -n "NGINX:" && (nginx -v 2>&1 | head -n 1 || echo "not installed")
             packageManager: 'npm',
             runtimeVersion: 'Nginx Web Server',
             buildConfig: 'nginx -t',
+            gitRepoUrl: gitInfo.url,
+            gitBranch: gitInfo.branch,
+          });
+        } else if (fileName === '.git') {
+          // General Git repository found inside the server
+          apps.push({
+            name: dirBase,
+            type: 'nodejs',
+            frameworkName: 'Nginx Web Application',
+            directory: dir,
+            packageManager: 'npm',
+            runtimeVersion: 'Server Native',
+            buildConfig: 'npm run build',
+            gitRepoUrl: gitInfo.url,
+            gitBranch: gitInfo.branch,
           });
         }
       }
