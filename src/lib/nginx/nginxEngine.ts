@@ -995,10 +995,23 @@ export async function executePipelineStep(
   options: {
     repoPath: string;
     branch?: string;
-    step: 'git-pull' | 'install' | 'build' | 'pm2-restart' | 'pm2-flush' | 'pm2-logs' | 'full-deploy';
+    step:
+      | 'git-status'
+      | 'git-fetch'
+      | 'git-pull'
+      | 'install'
+      | 'build'
+      | 'pm2-reload'
+      | 'pm2-restart'
+      | 'pm2-flush'
+      | 'pm2-logs'
+      | 'full-deploy'
+      | 'rollback'
+      | 'custom';
     installCmd?: string;
     buildCmd?: string;
     pm2AppName?: string;
+    customCmd?: string;
   }
 ): Promise<{ success: boolean; output: string; exitCode?: number }> {
   const safePath = path.normalize(options.repoPath).replace(/\\/g, '/');
@@ -1009,6 +1022,12 @@ export async function executePipelineStep(
   let timeoutMs = 90000;
 
   switch (options.step) {
+    case 'git-status':
+      cmd = `cd "${safePath}" && git status 2>&1`;
+      break;
+    case 'git-fetch':
+      cmd = `cd "${safePath}" && git fetch --all --prune 2>&1`;
+      break;
     case 'git-pull':
       cmd = `cd "${safePath}" && git fetch --all && git checkout "${branch}" && git pull origin "${branch}" 2>&1`;
       break;
@@ -1024,17 +1043,46 @@ export async function executePipelineStep(
       timeoutMs = 240000;
       break;
     }
+    case 'pm2-reload': {
+      if (!pm2App) throw new Error('PM2 application name is required.');
+      cmd = `pm2 reload "${pm2App}" 2>&1 || pm2 restart "${pm2App}" 2>&1 || (cd "${safePath}" && pm2 start npm --name "${pm2App}" -- start 2>&1)`;
+      break;
+    }
     case 'pm2-restart':
       if (!pm2App) throw new Error('PM2 application name is required.');
-      cmd = `pm2 restart "${pm2App}" 2>&1 || pm2 start npm --name "${pm2App}" -- start 2>&1`;
+      cmd = `pm2 restart "${pm2App}" 2>&1 || (cd "${safePath}" && pm2 start npm --name "${pm2App}" -- start 2>&1)`;
       break;
     case 'pm2-flush':
       cmd = `pm2 flush 2>&1`;
       break;
     case 'pm2-logs':
       if (!pm2App) throw new Error('PM2 application name is required.');
-      cmd = `pm2 logs "${pm2App}" --lines 40 --nostream 2>&1`;
+      cmd = `pm2 logs "${pm2App}" --lines 50 --nostream 2>&1`;
       break;
+    case 'rollback': {
+      const installCmd = options.installCmd?.trim() || 'npm install';
+      const buildCmd = options.buildCmd?.trim() || 'npm run build';
+      timeoutMs = 300000;
+      cmd = `
+cd "${safePath}" || { echo "Directory not found: ${safePath}" >&2; exit 1; }
+echo ">>> [1/3] Resetting git repository to previous commit (HEAD~1)..."
+git reset --hard HEAD~1 || exit 1
+
+echo ">>> [2/3] Installing dependencies (${installCmd})..."
+${installCmd} || exit 1
+
+echo ">>> [3/3] Compiling / running build (${buildCmd})..."
+${buildCmd} || exit 1
+
+if [ -n "${pm2App}" ]; then
+  echo ">>> Reloading PM2 process (${pm2App})..."
+  pm2 reload "${pm2App}" || pm2 restart "${pm2App}" || true
+  pm2 list
+fi
+echo ">>> Rollback completed successfully."
+`;
+      break;
+    }
     case 'full-deploy': {
       const installCmd = options.installCmd?.trim() || 'npm install';
       const buildCmd = options.buildCmd?.trim() || 'npm run build';
@@ -1051,8 +1099,8 @@ echo ">>> [3/4] Building application (${buildCmd})..."
 ${buildCmd} || exit 1
 
 if [ -n "${pm2App}" ]; then
-  echo ">>> [4/4] Restarting PM2 process (${pm2App})..."
-  pm2 restart "${pm2App}" || pm2 start npm --name "${pm2App}" -- start
+  echo ">>> [4/4] Reloading PM2 process (${pm2App})..."
+  pm2 reload "${pm2App}" || pm2 restart "${pm2App}" || (cd "${safePath}" && pm2 start npm --name "${pm2App}" -- start)
   echo ">>> PM2 Status:"
   pm2 list
 else
@@ -1060,6 +1108,11 @@ else
 fi
 echo ">>> Deployment completed successfully."
 `;
+      break;
+    }
+    case 'custom': {
+      if (!options.customCmd) throw new Error('Custom command is required.');
+      cmd = `cd "${safePath}" && ${options.customCmd} 2>&1`;
       break;
     }
     default:

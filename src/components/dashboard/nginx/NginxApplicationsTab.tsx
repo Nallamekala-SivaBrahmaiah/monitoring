@@ -12,7 +12,6 @@ import {
   XCircle,
   AlertTriangle,
   Play,
-  Square,
   RotateCcw,
   History,
   Terminal,
@@ -43,6 +42,7 @@ import {
   Server,
   Activity,
   Zap,
+  Edit3,
 } from 'lucide-react';
 import { INginxServerData } from '@/models/NginxServer';
 import { INginxAppData } from '@/models/NginxApp';
@@ -69,16 +69,26 @@ export function NginxApplicationsTab({
   onNavigateToHistory,
 }: NginxApplicationsTabProps) {
   // ---------------------------------------------------------------------------
-  // 1. Applications & Discovery State
+  // 1. Pipeline Editable Configuration State
   // ---------------------------------------------------------------------------
+  // Fully editable inputs for the 5 pipeline sections
+  const [repoPath, setRepoPath] = useState<string>('/home/siva/monitoring');
+  const [gitBranch, setGitBranch] = useState<string>('main');
+  const [installCmd, setInstallCmd] = useState<string>('npm install');
+  const [buildCmd, setBuildCmd] = useState<string>('npm run build');
+  const [pm2AppName, setPm2AppName] = useState<string>('monitoring-app');
+
+  // Applications & Discovered Data State
   const [apps, setApps] = useState<INginxAppData[]>([]);
   const [selectedApp, setSelectedApp] = useState<INginxAppData | null>(null);
   const [loadingApps, setLoadingApps] = useState(false);
+
+  // Active Right Pane Tab
   const [activeRightTab, setActiveRightTab] = useState<RightPaneTab>('output');
 
-  // Deployment & Pipeline state
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [runningQuickCommand, setRunningQuickCommand] = useState<string | null>(null);
+  // Deployment Execution State
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [activeStepRunning, setActiveStepRunning] = useState<string | null>(null);
   const [deployProgress, setDeployProgress] = useState<{
     status: 'idle' | 'deploying' | 'success' | 'failed' | 'rolled_back';
     stepMessage: string;
@@ -86,11 +96,11 @@ export function NginxApplicationsTab({
     duration?: string;
   }>({
     status: 'idle',
-    stepMessage: 'Ready to deploy',
+    stepMessage: 'Ready to deploy with configured commands',
     percentage: 0,
   });
 
-  // Console / Terminal Output State
+  // Terminal & Console Logs
   const [deploymentLogs, setDeploymentLogs] = useState<string[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
   const logTerminalRef = useRef<HTMLDivElement>(null);
@@ -145,12 +155,9 @@ export function NginxApplicationsTab({
   // 7. Modals & Notifications
   // ---------------------------------------------------------------------------
   const [addAppModalOpen, setAddAppModalOpen] = useState(false);
-  const [branchModalOpen, setBranchModalOpen] = useState(false);
-  const [targetBranch, setTargetBranch] = useState('main');
   const [rollbackConfirmOpen, setRollbackConfirmOpen] = useState(false);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
@@ -173,17 +180,25 @@ export function NginxApplicationsTab({
   });
 
   // ---------------------------------------------------------------------------
-  // Helper: Copy Text
+  // Initialize Defaults based on Server
   // ---------------------------------------------------------------------------
-  const handleCopyText = (text: string, key: string) => {
-    if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2000);
-  };
+  useEffect(() => {
+    if (!activeServer) return;
+
+    // Detect sensible defaults for the selected server
+    const username = activeServer.username || 'siva';
+    const defaultDir = `/home/${username}/monitoring`;
+    setRepoPath(defaultDir);
+
+    if (activeServer.name?.toLowerCase().includes('azure') || activeServer.host === '4.240.105.247') {
+      setRepoPath('/home/siva/monitoring');
+      setGitBranch('main');
+      setPm2AppName('monitoring-app');
+    }
+  }, [activeServer]);
 
   // ---------------------------------------------------------------------------
-  // Data Fetching: Applications
+  // Fetch Registered Applications
   // ---------------------------------------------------------------------------
   const fetchApps = useCallback(async () => {
     if (!activeServer?._id) return;
@@ -191,35 +206,20 @@ export function NginxApplicationsTab({
     try {
       const res = await fetch(`/api/nginx/servers/${activeServer._id}/apps`);
       const data = await res.json();
-      if (res.ok && data.apps) {
+      if (res.ok && data.apps && data.apps.length > 0) {
         setApps(data.apps);
-        setSelectedApp((prev) => {
-          if (prev) {
-            const updated = data.apps.find((a: INginxAppData) => a._id === prev._id);
-            return updated || data.apps[0] || null;
-          }
-          return data.apps[0] || null;
-        });
+        const first = data.apps[0];
+        setSelectedApp(first);
 
-        if (data.apps.length > 0) {
-          const first = data.apps[0];
-          if (first.lastDeployedAt) {
-            setDeployProgress({
-              status: first.status === 'Failed' ? 'failed' : 'success',
-              stepMessage:
-                first.status === 'Failed'
-                  ? `Last deployment failed for ${first.name}`
-                  : `${first.name} deployed successfully on ${first.gitBranch || 'main'}${
-                      first.lastDeploymentDuration ? ` in ${first.lastDeploymentDuration}` : ''
-                    }`,
-              percentage: 100,
-              duration: first.lastDeploymentDuration,
-            });
-          }
-        }
+        // Update editable fields from app if available
+        if (first.directory) setRepoPath(first.directory);
+        if (first.gitBranch) setGitBranch(first.gitBranch);
+        if (first.buildCommand) setBuildCmd(first.buildCommand);
+        if (first.pm2ProcessName) setPm2AppName(first.pm2ProcessName);
+        if (first.packageManager === 'pnpm') setInstallCmd('pnpm install');
       }
     } catch (err: any) {
-      showToast('error', `Failed to load applications: ${err.message}`);
+      console.warn('Apps list fetch notice:', err.message);
     } finally {
       setLoadingApps(false);
     }
@@ -240,13 +240,16 @@ export function NginxApplicationsTab({
       const data = await res.json();
       if (res.ok && data.processes) {
         setPm2Processes(data.processes);
+        if (data.processes.length > 0 && !pm2AppName) {
+          setPm2AppName(data.processes[0].name);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch PM2 list:', err);
     } finally {
       setPm2Loading(false);
     }
-  }, [activeServer?._id]);
+  }, [activeServer?._id, pm2AppName]);
 
   // ---------------------------------------------------------------------------
   // Data Fetching: PM2 Logs
@@ -317,7 +320,7 @@ export function NginxApplicationsTab({
     }
   }, [activeServer?._id, errorLines]);
 
-  // Fetch data when activeRightTab changes
+  // Fetch data on active right tab switch
   useEffect(() => {
     if (activeRightTab === 'pm2-list') {
       fetchPM2List();
@@ -330,7 +333,7 @@ export function NginxApplicationsTab({
     }
   }, [activeRightTab, fetchPM2List, fetchPM2Logs, fetchAccessLogs, fetchErrorLogs]);
 
-  // Auto-refresh timers for PM2 logs, Access logs, and Error logs
+  // Auto refresh timers
   useEffect(() => {
     if (activeRightTab === 'pm2-logs' && pm2AutoRefresh) {
       const interval = setInterval(fetchPM2Logs, 5000);
@@ -352,7 +355,7 @@ export function NginxApplicationsTab({
     }
   }, [activeRightTab, errorAutoRefresh, fetchErrorLogs]);
 
-  // Auto scroll deployment log terminal
+  // Auto scroll terminal
   useEffect(() => {
     if (autoScroll && logTerminalRef.current) {
       logTerminalRef.current.scrollTop = logTerminalRef.current.scrollHeight;
@@ -360,204 +363,141 @@ export function NginxApplicationsTab({
   }, [deploymentLogs, autoScroll]);
 
   // ---------------------------------------------------------------------------
-  // Action: 1-Click Automated Full Deploy
+  // PIPELINE EXECUTION ENGINE (Direct Server SSH Execution via /pipeline)
   // ---------------------------------------------------------------------------
-  const handleDeployLatest = async (branchOverride?: string) => {
-    if (!activeServer?._id || !selectedApp?._id) return;
-    const branchToDeploy = branchOverride || selectedApp.gitBranch || 'main';
+  const executeStep = async (
+    stepKey:
+      | 'git-status'
+      | 'git-fetch'
+      | 'git-pull'
+      | 'install'
+      | 'build'
+      | 'pm2-reload'
+      | 'pm2-restart'
+      | 'pm2-flush'
+      | 'full-deploy'
+      | 'rollback',
+    customTitle?: string
+  ) => {
+    if (!activeServer?._id) {
+      showToast('error', 'No active server selected.');
+      return;
+    }
 
+    const currentRepo = repoPath.trim() || '/home/siva/monitoring';
+    const currentBranch = gitBranch.trim() || 'main';
+    const currentInstall = installCmd.trim() || 'npm install';
+    const currentBuild = buildCmd.trim() || 'npm run build';
+    const currentPM2 = pm2AppName.trim() || 'monitoring-app';
+
+    // Switch view to Deployment Output immediately so user sees live output
     setActiveRightTab('output');
-    setIsDeploying(true);
-    setDeployProgress({
-      status: 'deploying',
-      stepMessage: `Initiating automated deployment for ${selectedApp.name}...`,
-      percentage: 15,
-    });
+    setIsExecuting(true);
+    setActiveStepRunning(stepKey);
 
     const now = () => new Date().toTimeString().split(' ')[0];
-    setDeploymentLogs([
-      `[${now()}] [info] Starting 1-Click Automated Deployment for ${selectedApp.name}...`,
-      `[${now()}] [info] Target Server: ${activeServer.name} (${activeServer.host || activeServer.publicIp})`,
-      `[${now()}] [info] Application Directory: ${selectedApp.directory} | Target Branch: ${branchToDeploy}`,
-      `[${now()}] [info] Connecting via secure SSH infrastructure...`,
+    const stepLabel = customTitle || stepKey.toUpperCase();
+
+    // Progress updates
+    if (stepKey === 'full-deploy') {
+      setDeployProgress({
+        status: 'deploying',
+        stepMessage: `Executing 1-Click Automated Full Deploy on ${activeServer.name}...`,
+        percentage: 15,
+      });
+    } else if (stepKey === 'rollback') {
+      setDeployProgress({
+        status: 'deploying',
+        stepMessage: `Executing rollback on ${activeServer.name}...`,
+        percentage: 50,
+      });
+    }
+
+    setDeploymentLogs((prev) => [
+      ...prev,
+      `[${now()}] [info] >>> Executing Pipeline Step: [${stepLabel}]`,
+      `[${now()}] [info] Path: ${currentRepo} | Branch: ${currentBranch} | Server: ${activeServer.name}`,
     ]);
 
     try {
-      const res = await fetch(
-        `/api/nginx/servers/${activeServer._id}/apps/${selectedApp._id}/deploy`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ branch: branchToDeploy }),
-        }
-      );
+      const res = await fetch(`/api/nginx/servers/${activeServer._id}/pipeline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoPath: currentRepo,
+          branch: currentBranch,
+          step: stepKey,
+          installCmd: currentInstall,
+          buildCmd: currentBuild,
+          pm2AppName: currentPM2,
+        }),
+      });
 
       const data = await res.json();
 
       if (res.ok && data.success) {
-        setDeployProgress({
-          status: 'success',
-          stepMessage: `Deployment Successful! ${selectedApp.name} deployed in ${
-            data.durationFormatted || 'real-time'
-          }`,
-          percentage: 100,
-          duration: data.durationFormatted,
-        });
+        const lines = (data.output || '').split('\n').filter((l: string) => l.trim().length > 0);
+        setDeploymentLogs((prev) => [
+          ...prev,
+          ...lines,
+          `[${now()}] [success] ✓ Step [${stepLabel}] completed successfully (Exit Code 0).`,
+        ]);
 
-        if (data.logs) {
-          const lines = data.logs.split('\n').filter((l: string) => l.trim().length > 0);
-          setDeploymentLogs(lines);
-        } else {
-          setDeploymentLogs((prev) => [
-            ...prev,
-            `[${now()}] [success] Deployment completed successfully!`,
-          ]);
+        if (stepKey === 'full-deploy') {
+          setDeployProgress({
+            status: 'success',
+            stepMessage: `Deployment Successful! All steps passed on ${activeServer.name}.`,
+            percentage: 100,
+          });
+        } else if (stepKey === 'rollback') {
+          setDeployProgress({
+            status: 'success',
+            stepMessage: `Rollback completed! Restored previous commit and reloaded PM2.`,
+            percentage: 100,
+          });
         }
 
-        showToast('success', `${selectedApp.name} deployed successfully!`);
-        fetchApps();
-        if (activeRightTab === 'pm2-list') fetchPM2List();
+        showToast('success', `${stepLabel} completed successfully!`);
+        fetchPM2List();
       } else {
-        const errorMsg = data.error || 'Deployment failed';
-        setDeployProgress({
-          status: data.rolledBack ? 'rolled_back' : 'failed',
-          stepMessage: data.rolledBack
-            ? `Deployment Failed! Automatically rolled back to ${
-                data.previousCommit?.slice(0, 7) || 'previous release'
-              }`
-            : `Deployment Failed: ${errorMsg}`,
-          percentage: 100,
-        });
+        const errorText = data.output || data.error || 'Execution failed';
+        const lines = errorText.split('\n').filter((l: string) => l.trim().length > 0);
 
-        if (data.logs) {
-          const lines = data.logs.split('\n').filter((l: string) => l.trim().length > 0);
-          setDeploymentLogs(lines);
-        } else {
-          setDeploymentLogs((prev) => [...prev, `[${now()}] [error] Deployment failed: ${errorMsg}`]);
+        setDeploymentLogs((prev) => [
+          ...prev,
+          ...lines,
+          `[${now()}] [error] ✗ Step [${stepLabel}] failed with exit code ${data.exitCode || 1}`,
+        ]);
+
+        if (stepKey === 'full-deploy' || stepKey === 'rollback') {
+          setDeployProgress({
+            status: 'failed',
+            stepMessage: `Step [${stepLabel}] failed: ${data.error || 'Check console output'}`,
+            percentage: 100,
+          });
         }
 
-        showToast('error', `Deployment failed: ${errorMsg}`);
-        fetchApps();
+        showToast('error', `${stepLabel} failed. Check deployment console.`);
       }
     } catch (err: any) {
+      setDeploymentLogs((prev) => [
+        ...prev,
+        `[${now()}] [error] Network/execution exception: ${err.message}`,
+      ]);
       setDeployProgress({
         status: 'failed',
-        stepMessage: `Deployment error: ${err.message}`,
+        stepMessage: `Error: ${err.message}`,
         percentage: 100,
       });
-      setDeploymentLogs((prev) => [...prev, `[error] Network or execution failure: ${err.message}`]);
       showToast('error', err.message);
     } finally {
-      setIsDeploying(false);
+      setIsExecuting(false);
+      setActiveStepRunning(null);
     }
   };
 
   // ---------------------------------------------------------------------------
-  // Action: Quick Pipeline Command
-  // ---------------------------------------------------------------------------
-  const handleQuickCommand = async (commandKey: string, customLabel?: string) => {
-    if (!activeServer?._id || !selectedApp?._id) return;
-    const now = () => new Date().toTimeString().split(' ')[0];
-
-    setActiveRightTab('output');
-    setRunningQuickCommand(commandKey);
-    setDeploymentLogs((prev) => [
-      ...prev,
-      `[${now()}] [info] Executing: ${customLabel || commandKey} in ${selectedApp.directory}...`,
-    ]);
-
-    try {
-      const res = await fetch(
-        `/api/nginx/servers/${activeServer._id}/apps/${selectedApp._id}/command`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: commandKey }),
-        }
-      );
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        const outputLines = (data.output || 'Command executed with exit code 0.').split('\n');
-        setDeploymentLogs((prev) => [
-          ...prev,
-          ...outputLines,
-          `[${now()}] [success] ✓ ${customLabel || commandKey} completed successfully.`,
-        ]);
-        showToast('success', `${customLabel || commandKey} completed!`);
-      } else {
-        setDeploymentLogs((prev) => [
-          ...prev,
-          `[${now()}] [error] Command failed: ${data.output || data.error}`,
-        ]);
-        showToast('error', `${customLabel || commandKey} failed.`);
-      }
-    } catch (err: any) {
-      setDeploymentLogs((prev) => [...prev, `[${now()}] [error] Execution error: ${err.message}`]);
-      showToast('error', err.message);
-    } finally {
-      setRunningQuickCommand(null);
-    }
-  };
-
-  // ---------------------------------------------------------------------------
-  // Action: Rollback
-  // ---------------------------------------------------------------------------
-  const handleRollback = async () => {
-    if (!activeServer?._id || !selectedApp?._id) return;
-    setRollbackConfirmOpen(false);
-    setActiveRightTab('output');
-    const now = () => new Date().toTimeString().split(' ')[0];
-
-    setDeployProgress({
-      status: 'deploying',
-      stepMessage: `Rolling back ${selectedApp.name} to previous working release...`,
-      percentage: 50,
-    });
-    setDeploymentLogs((prev) => [
-      ...prev,
-      `[${now()}] [warn] Initiating rollback for ${selectedApp.name}...`,
-    ]);
-
-    try {
-      const res = await fetch(
-        `/api/nginx/servers/${activeServer._id}/apps/${selectedApp._id}/rollback`,
-        {
-          method: 'POST',
-        }
-      );
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        setDeployProgress({
-          status: 'success',
-          stepMessage: `Rollback Successful! Restored commit ${
-            data.commitRestored?.slice(0, 7) || 'previous release'
-          }`,
-          percentage: 100,
-        });
-        setDeploymentLogs((prev) => [
-          ...prev,
-          ...(data.output ? data.output.split('\n') : []),
-          `[${now()}] [success] ✓ Application restored and reloaded with PM2!`,
-        ]);
-        showToast('success', 'Rollback completed successfully!');
-        fetchApps();
-      } else {
-        setDeployProgress({
-          status: 'failed',
-          stepMessage: `Rollback failed: ${data.error}`,
-          percentage: 100,
-        });
-        showToast('error', data.error || 'Rollback failed.');
-      }
-    } catch (err: any) {
-      showToast('error', err.message);
-    }
-  };
-
-  // ---------------------------------------------------------------------------
-  // Action: PM2 Process Action (Reload / Restart / Stop)
+  // Action: PM2 Action (Reload / Restart / Stop in PM2 list tab)
   // ---------------------------------------------------------------------------
   const handlePM2Action = async (action: 'restart' | 'reload' | 'stop', target: string) => {
     if (!activeServer?._id) return;
@@ -635,20 +575,10 @@ export function NginxApplicationsTab({
       if (res.ok && data.success) {
         showToast('success', `Application "${newAppForm.name}" registered!`);
         setAddAppModalOpen(false);
-        setNewAppForm({
-          name: '',
-          type: 'nodejs',
-          frameworkName: '',
-          directory: '',
-          gitRepoUrl: '',
-          gitBranch: 'main',
-          packageManager: 'auto',
-          buildCommand: 'npm run build',
-          startCommand: 'npm start',
-          pm2ProcessName: '',
-          appPort: 3000,
-          iconType: 'layers',
-        });
+        setRepoPath(newAppForm.directory);
+        setGitBranch(newAppForm.gitBranch || 'main');
+        setBuildCmd(newAppForm.buildCommand || 'npm run build');
+        setPm2AppName(newAppForm.pm2ProcessName || newAppForm.name);
         fetchApps();
       } else {
         showToast('error', data.error || 'Failed to create application.');
@@ -658,7 +588,7 @@ export function NginxApplicationsTab({
     }
   };
 
-  // Download Logs Helper
+  // Download logs helper
   const handleDownloadLogFile = (content: string, filename: string) => {
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -729,10 +659,9 @@ export function NginxApplicationsTab({
       )}
 
       {/* ========================================================================= */}
-      {/* TOP CONTEXT BAR: APPLICATION SELECTOR & REPO HERO */}
+      {/* TOP HEADER: ACTIVE REPO CONTEXT & SERVER IP */}
       {/* ========================================================================= */}
       <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* Left: App Dropdown & Metadata */}
         <div className="flex items-center gap-3.5 min-w-0">
           <div className="w-12 h-12 rounded-xl bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-lg shadow-blue-600/10 shrink-0">
             <Package className="w-6 h-6 text-blue-400" />
@@ -740,74 +669,35 @@ export function NginxApplicationsTab({
 
           <div className="min-w-0">
             <div className="flex items-center gap-2.5 flex-wrap">
-              {apps.length > 1 ? (
-                <div className="relative">
-                  <select
-                    value={selectedApp?._id || ''}
-                    onChange={(e) => {
-                      const found = apps.find((a) => a._id === e.target.value);
-                      if (found) setSelectedApp(found);
-                    }}
-                    className="bg-[#0B1120] text-white font-bold text-base rounded-xl px-3 py-1 pr-8 border border-blue-500/40 focus:outline-none appearance-none cursor-pointer"
-                  >
-                    {apps.map((a) => (
-                      <option key={a._id} value={a._id} className="bg-[#111A2E] text-white">
-                        {a.name} ({a.directory})
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-              ) : (
-                <h2 className="text-base lg:text-lg font-bold text-white tracking-wide truncate">
-                  {selectedApp ? selectedApp.name : 'Application Deployment Center'}
-                </h2>
-              )}
+              <h2 className="text-base lg:text-lg font-bold text-white tracking-wide truncate">
+                {selectedApp ? selectedApp.name : 'Applications & Deployment'}
+              </h2>
 
-              {selectedApp && (
-                <>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider shrink-0 ${
-                      selectedApp.status === 'Failed'
-                        ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                        : selectedApp.status === 'Building'
-                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 animate-pulse'
-                        : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                    }`}
-                  >
-                    {selectedApp.status || 'Deployed'}
-                  </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shrink-0">
+                Active Target
+              </span>
 
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                    Port: {selectedApp.appPort || 3000}
-                  </span>
-                </>
-              )}
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                Host: {activeServer.host || activeServer.publicIp || 'Server'}
+              </span>
             </div>
 
-            {selectedApp ? (
-              <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-mono flex-wrap">
-                <span className="truncate max-w-xs" title={selectedApp.directory}>
-                  Directory: <strong className="text-slate-200">{selectedApp.directory}</strong>
-                </span>
-                <span className="text-slate-600">|</span>
-                <span>
-                  Branch: <strong className="text-cyan-300 font-bold">{selectedApp.gitBranch || 'main'}</strong>
-                </span>
-                <span className="text-slate-600">|</span>
-                <span>
-                  PM2 Process: <strong className="text-emerald-300">{selectedApp.pm2ProcessName || selectedApp.name}</strong>
-                </span>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400 mt-0.5">
-                Manage, deploy, monitor, and reload applications on this server.
-              </p>
-            )}
+            <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-mono flex-wrap">
+              <span className="truncate max-w-sm" title={repoPath}>
+                Path: <strong className="text-slate-200">{repoPath}</strong>
+              </span>
+              <span className="text-slate-600">|</span>
+              <span>
+                Branch: <strong className="text-cyan-300 font-bold">{gitBranch}</strong>
+              </span>
+              <span className="text-slate-600">|</span>
+              <span>
+                PM2: <strong className="text-emerald-300 font-bold">{pm2AppName}</strong>
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Right: GitHub Link & Add App Button */}
         <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
           {selectedApp?.gitRepoUrl && (
             <a
@@ -827,7 +717,7 @@ export function NginxApplicationsTab({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-xs font-bold transition-all cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add App</span>
+            <span>Add App Preset</span>
           </button>
         </div>
       </div>
@@ -837,10 +727,12 @@ export function NginxApplicationsTab({
       {/* ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* ======================================================================= */}
-        {/* LEFT PANE: DEVOPS PIPELINE ACCORDION & QUICK ACTION TRIGGERS (38% WIDTH) */}
+        {/* LEFT PANE: EDITABLE DEVOPS PIPELINE CONTROLS (38% WIDTH)               */}
         {/* ======================================================================= */}
         <div className="lg:col-span-5 space-y-3.5">
-          {/* 1. Accordion Step 1: Git Source & Repository */}
+          {/* ===================================================================== */}
+          {/* STEP 1: SOURCE & GIT REPOSITORY (FULLY EDITABLE)                      */}
+          {/* ===================================================================== */}
           <div className="bg-[#111A2E] border border-blue-500/30 rounded-2xl p-4 shadow-xl shadow-black/20 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -851,37 +743,68 @@ export function NginxApplicationsTab({
                   Source &amp; Git Repository
                 </span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                Connected
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
+                <Edit3 className="w-3 h-3" />
+                <span>Editable</span>
               </span>
             </div>
 
-            <div className="bg-[#0B1120] rounded-xl p-3 border border-[#1E293B] space-y-2 text-xs">
-              <div className="flex items-center justify-between text-slate-400">
-                <span className="text-[11px] font-semibold text-slate-400">Target Path:</span>
-                <span className="font-mono text-slate-200 truncate max-w-[200px]" title={selectedApp?.directory}>
-                  {selectedApp?.directory || '/home/siva/monitoring'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-slate-400">
-                <span className="text-[11px] font-semibold text-slate-400">Branch:</span>
-                <span className="font-mono text-cyan-300 font-bold flex items-center gap-1">
-                  <GitBranch className="w-3 h-3 text-cyan-400" />
-                  {selectedApp?.gitBranch || 'main'}
-                </span>
-              </div>
+            {/* Editable Target Directory */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-400 block">
+                Target Application Directory:
+              </label>
+              <input
+                type="text"
+                value={repoPath}
+                onChange={(e) => setRepoPath(e.target.value)}
+                placeholder="/home/siva/monitoring"
+                className="w-full bg-[#0B1120] text-slate-200 font-mono text-xs rounded-xl px-3 py-2 border border-[#1E293B] focus:border-blue-500 focus:outline-none"
+              />
             </div>
 
-            {/* Quick Git Triggers */}
+            {/* Editable Branch with Preset Chips */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-slate-400 block">
+                  Git Branch:
+                </label>
+                <div className="flex items-center gap-1.5">
+                  {['main', 'master', 'dev'].map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setGitBranch(b)}
+                      className={`text-[10px] px-2 py-0.5 rounded font-mono transition ${
+                        gitBranch === b
+                          ? 'bg-blue-600 text-white font-bold'
+                          : 'bg-[#0B1120] text-slate-400 hover:text-white border border-[#1E293B]'
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <input
+                type="text"
+                value={gitBranch}
+                onChange={(e) => setGitBranch(e.target.value)}
+                placeholder="main"
+                className="w-full bg-[#0B1120] text-cyan-300 font-mono text-xs font-bold rounded-xl px-3 py-2 border border-[#1E293B] focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Action Buttons: Status, Fetch, Pull */}
             <div className="grid grid-cols-3 gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => handleQuickCommand('git-status', 'git status')}
-                disabled={runningQuickCommand !== null || isDeploying}
+                onClick={() => executeStep('git-status', 'git status')}
+                disabled={isExecuting}
                 className="py-2 px-2.5 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-mono font-semibold transition flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                title="Check git status"
+                title="Run git status"
               >
-                {runningQuickCommand === 'git-status' ? (
+                {activeStepRunning === 'git-status' ? (
                   <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
                 ) : (
                   <Terminal className="w-3 h-3 text-blue-400" />
@@ -891,12 +814,12 @@ export function NginxApplicationsTab({
 
               <button
                 type="button"
-                onClick={() => handleQuickCommand('git-fetch', 'git fetch')}
-                disabled={runningQuickCommand !== null || isDeploying}
+                onClick={() => executeStep('git-fetch', 'git fetch')}
+                disabled={isExecuting}
                 className="py-2 px-2.5 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-mono font-semibold transition flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                title="Fetch latest remote commits"
+                title="Run git fetch origin"
               >
-                {runningQuickCommand === 'git-fetch' ? (
+                {activeStepRunning === 'git-fetch' ? (
                   <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
                 ) : (
                   <RefreshCw className="w-3 h-3 text-purple-400" />
@@ -906,12 +829,12 @@ export function NginxApplicationsTab({
 
               <button
                 type="button"
-                onClick={() => handleQuickCommand('git-pull', 'git pull')}
-                disabled={runningQuickCommand !== null || isDeploying}
+                onClick={() => executeStep('git-pull', `git pull (${gitBranch})`)}
+                disabled={isExecuting}
                 className="py-2 px-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                title="Pull latest code from branch"
+                title="Run git pull"
               >
-                {runningQuickCommand === 'git-pull' ? (
+                {activeStepRunning === 'git-pull' ? (
                   <Loader2 className="w-3 h-3 animate-spin text-purple-300" />
                 ) : (
                   <Download className="w-3 h-3 text-purple-300" />
@@ -921,7 +844,9 @@ export function NginxApplicationsTab({
             </div>
           </div>
 
-          {/* 2. Accordion Step 2: Package Dependencies */}
+          {/* ===================================================================== */}
+          {/* STEP 2: PACKAGE DEPENDENCIES (EDITABLE: pnpm / npm / yarn / mvn)       */}
+          {/* ===================================================================== */}
           <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -932,50 +857,70 @@ export function NginxApplicationsTab({
                   Package Dependencies
                 </span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-teal-500/10 text-teal-400 border border-teal-500/20">
-                {selectedApp?.packageManager === 'pnpm'
-                  ? 'pnpm-lock.yaml'
-                  : selectedApp?.type === 'java-maven'
-                  ? 'pom.xml'
-                  : 'package-lock.json'}
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-teal-500/10 text-teal-400 border border-teal-500/20 flex items-center gap-1">
+                <Edit3 className="w-3 h-3" />
+                <span>Editable</span>
               </span>
             </div>
 
-            <div className="flex items-center justify-between bg-[#0B1120] rounded-xl px-3 py-2 border border-[#1E293B] text-xs">
-              <span className="text-slate-400 font-semibold">Command:</span>
-              <span className="font-mono text-teal-300">
-                {selectedApp?.type === 'java-maven'
-                  ? 'mvn clean'
-                  : selectedApp?.packageManager === 'pnpm'
-                  ? 'pnpm install'
-                  : 'npm install'}
-              </span>
+            {/* Quick Preset Selector Chips */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                'npm install',
+                'pnpm install',
+                'npm ci',
+                'yarn install',
+                'bun install',
+                'mvn clean',
+              ].map((cmd) => (
+                <button
+                  key={cmd}
+                  type="button"
+                  onClick={() => setInstallCmd(cmd)}
+                  className={`text-[10px] px-2 py-1 rounded-lg font-mono transition ${
+                    installCmd === cmd
+                      ? 'bg-teal-600 text-white font-bold shadow-sm'
+                      : 'bg-[#0B1120] text-slate-400 hover:text-white border border-[#1E293B]'
+                  }`}
+                >
+                  {cmd}
+                </button>
+              ))}
             </div>
 
+            {/* Editable Install Command Input */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-400 block">
+                Install Command:
+              </label>
+              <input
+                type="text"
+                value={installCmd}
+                onChange={(e) => setInstallCmd(e.target.value)}
+                placeholder="npm install or pnpm install"
+                className="w-full bg-[#0B1120] text-teal-300 font-mono text-xs font-semibold rounded-xl px-3 py-2 border border-[#1E293B] focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Action Button: Install Dependencies */}
             <button
               type="button"
-              onClick={() => {
-                const cmd =
-                  selectedApp?.type === 'java-maven'
-                    ? 'mvn-package'
-                    : selectedApp?.packageManager === 'pnpm'
-                    ? 'pnpm-install'
-                    : 'npm-install';
-                handleQuickCommand(cmd, 'Dependency Install');
-              }}
-              disabled={runningQuickCommand !== null || isDeploying}
-              className="w-full py-2 rounded-xl bg-teal-600/15 hover:bg-teal-600/25 text-teal-300 hover:text-white border border-teal-500/30 text-xs font-bold transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              onClick={() => executeStep('install', installCmd)}
+              disabled={isExecuting}
+              className="w-full py-2.5 rounded-xl bg-teal-600/15 hover:bg-teal-600/25 text-teal-300 hover:text-white border border-teal-500/30 text-xs font-bold transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
-              {runningQuickCommand === 'npm-install' || runningQuickCommand === 'pnpm-install' ? (
+              {activeStepRunning === 'install' ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-400" />
               ) : (
                 <Wrench className="w-3.5 h-3.5 text-teal-400" />
               )}
-              <span>Install Dependencies</span>
+              <span>Run Install: {installCmd}</span>
             </button>
           </div>
 
-          {/* 3. Accordion Step 3: Build & Compile */}
+          {/* ===================================================================== */}
+          {/* STEP 3: BUILD & COMPILE PIPELINE (EDITABLE: build / dev / custom)     */}
+          {/* ===================================================================== */}
           <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -986,34 +931,70 @@ export function NginxApplicationsTab({
                   Build &amp; Compile Pipeline
                 </span>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                {selectedApp?.frameworkName || 'Next.js Turbopack'}
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
+                <Edit3 className="w-3 h-3" />
+                <span>Editable</span>
               </span>
             </div>
 
-            <div className="flex items-center justify-between bg-[#0B1120] rounded-xl px-3 py-2 border border-[#1E293B] text-xs">
-              <span className="text-slate-400 font-semibold">Build Command:</span>
-              <span className="font-mono text-blue-300">
-                {selectedApp?.buildCommand || 'npm run build'}
-              </span>
+            {/* Quick Preset Selector Chips */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                'npm run build',
+                'npm run dev',
+                'pnpm build',
+                'pnpm dev',
+                'yarn build',
+                'mvn package',
+              ].map((cmd) => (
+                <button
+                  key={cmd}
+                  type="button"
+                  onClick={() => setBuildCmd(cmd)}
+                  className={`text-[10px] px-2 py-1 rounded-lg font-mono transition ${
+                    buildCmd === cmd
+                      ? 'bg-blue-600 text-white font-bold shadow-sm'
+                      : 'bg-[#0B1120] text-slate-400 hover:text-white border border-[#1E293B]'
+                  }`}
+                >
+                  {cmd}
+                </button>
+              ))}
             </div>
 
+            {/* Editable Build Command Input */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-400 block">
+                Build / Run Command:
+              </label>
+              <input
+                type="text"
+                value={buildCmd}
+                onChange={(e) => setBuildCmd(e.target.value)}
+                placeholder="npm run build or npm run dev"
+                className="w-full bg-[#0B1120] text-blue-300 font-mono text-xs font-semibold rounded-xl px-3 py-2 border border-[#1E293B] focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Action Button: Run Build */}
             <button
               type="button"
-              onClick={() => handleQuickCommand('build', 'npm run build')}
-              disabled={runningQuickCommand !== null || isDeploying}
-              className="w-full py-2 rounded-xl bg-blue-600/15 hover:bg-blue-600/25 text-blue-300 hover:text-white border border-blue-500/30 text-xs font-bold transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              onClick={() => executeStep('build', buildCmd)}
+              disabled={isExecuting}
+              className="w-full py-2.5 rounded-xl bg-blue-600/15 hover:bg-blue-600/25 text-blue-300 hover:text-white border border-blue-500/30 text-xs font-bold transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
-              {runningQuickCommand === 'build' ? (
+              {activeStepRunning === 'build' ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
               ) : (
                 <Play className="w-3.5 h-3.5 text-blue-400" />
               )}
-              <span>Run Project Build</span>
+              <span>Run Command: {buildCmd}</span>
             </button>
           </div>
 
-          {/* 4. Accordion Step 4: PM2 Runtime Process */}
+          {/* ===================================================================== */}
+          {/* STEP 4: PM2 PROCESS LIFECYCLE (EDITABLE PROCESS NAME)                */}
+          {/* ===================================================================== */}
           <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1025,27 +1006,53 @@ export function NginxApplicationsTab({
                 </span>
               </div>
               <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Online</span>
+                <Edit3 className="w-3 h-3" />
+                <span>Editable</span>
               </span>
             </div>
 
-            <div className="flex items-center justify-between bg-[#0B1120] rounded-xl px-3 py-2 border border-[#1E293B] text-xs">
-              <span className="text-slate-400 font-semibold">Process Target:</span>
-              <span className="font-mono text-emerald-300 font-bold">
-                {selectedApp?.pm2ProcessName || selectedApp?.name || 'monitoring-app'}
-              </span>
+            {/* Editable PM2 Process Name */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-slate-400 block">
+                  PM2 Target Process:
+                </label>
+                <div className="flex items-center gap-1.5">
+                  {['monitoring-app', 'all'].map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPm2AppName(p)}
+                      className={`text-[10px] px-2 py-0.5 rounded font-mono transition ${
+                        pm2AppName === p
+                          ? 'bg-emerald-600 text-white font-bold'
+                          : 'bg-[#0B1120] text-slate-400 hover:text-white border border-[#1E293B]'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <input
+                type="text"
+                value={pm2AppName}
+                onChange={(e) => setPm2AppName(e.target.value)}
+                placeholder="monitoring-app"
+                className="w-full bg-[#0B1120] text-emerald-300 font-mono text-xs font-bold rounded-xl px-3 py-2 border border-[#1E293B] focus:border-emerald-500 focus:outline-none"
+              />
             </div>
 
+            {/* Action Buttons: Reload / Restart */}
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => handleQuickCommand('pm2-reload', 'pm2 reload')}
-                disabled={runningQuickCommand !== null || isDeploying}
+                onClick={() => executeStep('pm2-reload', `pm2 reload ${pm2AppName}`)}
+                disabled={isExecuting}
                 className="py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-emerald-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 title="Zero-downtime cluster reload"
               >
-                {runningQuickCommand === 'pm2-reload' ? (
+                {activeStepRunning === 'pm2-reload' ? (
                   <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
                 ) : (
                   <Zap className="w-3 h-3 text-emerald-400" />
@@ -1055,12 +1062,12 @@ export function NginxApplicationsTab({
 
               <button
                 type="button"
-                onClick={() => handleQuickCommand('pm2-restart', 'pm2 restart')}
-                disabled={runningQuickCommand !== null || isDeploying}
+                onClick={() => executeStep('pm2-restart', `pm2 restart ${pm2AppName}`)}
+                disabled={isExecuting}
                 className="py-2 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 title="Restart process"
               >
-                {runningQuickCommand === 'pm2-restart' ? (
+                {activeStepRunning === 'pm2-restart' ? (
                   <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
                 ) : (
                   <Play className="w-3 h-3 text-slate-400" />
@@ -1071,7 +1078,7 @@ export function NginxApplicationsTab({
           </div>
 
           {/* ===================================================================== */}
-          {/* PRIMARY WORKBENCH ACTION: 1-CLICK AUTOMATED DEPLOYMENT & ROLLBACK */}
+          {/* STEP 5: DEPLOYMENT READY & 1-CLICK AUTOMATED EXECUTION                 */}
           {/* ===================================================================== */}
           <div className="bg-[#111A2E] border border-blue-500/40 rounded-2xl p-4 shadow-2xl shadow-black/30 space-y-3">
             {/* Deploy Progress Bar */}
@@ -1121,11 +1128,11 @@ export function NginxApplicationsTab({
             {/* 1-Click Automated Full Deploy Rocket Button */}
             <button
               type="button"
-              onClick={() => handleDeployLatest()}
-              disabled={isDeploying || runningQuickCommand !== null}
+              onClick={() => executeStep('full-deploy', '1-Click Full Automated Deploy')}
+              disabled={isExecuting}
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-extrabold shadow-xl shadow-blue-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 tracking-wide uppercase"
             >
-              {isDeploying ? (
+              {isExecuting && activeStepRunning === 'full-deploy' ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <Rocket className="w-4 h-4" />
@@ -1138,7 +1145,7 @@ export function NginxApplicationsTab({
               <button
                 type="button"
                 onClick={() => setRollbackConfirmOpen(true)}
-                disabled={isDeploying || runningQuickCommand !== null}
+                disabled={isExecuting}
                 className="py-2 px-3 rounded-xl bg-[#0D1526] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
@@ -1161,10 +1168,10 @@ export function NginxApplicationsTab({
         </div>
 
         {/* ======================================================================= */}
-        {/* RIGHT PANE: MULTI-TAB WORKBENCH CONSOLE (62% WIDTH) */}
+        {/* RIGHT PANE: MULTI-TAB WORKBENCH CONSOLE (62% WIDTH)                    */}
         {/* ======================================================================= */}
         <div className="lg:col-span-7 bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20 flex flex-col space-y-3 min-h-[580px]">
-          {/* Sub-Tabs Switcher Bar (The 6 Requested Operations Tabs) */}
+          {/* Sub-Tabs Switcher Bar */}
           <div className="flex items-center justify-between gap-2 border-b border-[#1E293B] pb-3 flex-wrap">
             <div className="flex items-center gap-1 bg-[#0B1120] p-1 rounded-xl border border-[#1E293B] overflow-x-auto max-w-full">
               {/* 1. Deployment Output */}
@@ -1254,7 +1261,7 @@ export function NginxApplicationsTab({
           </div>
 
           {/* ===================================================================== */}
-          {/* TAB 1: DEPLOYMENT OUTPUT (LIVE STREAMING EXECUTION LOGS) */}
+          {/* TAB 1: DEPLOYMENT OUTPUT (LIVE STREAMING EXECUTION LOGS)              */}
           {/* ===================================================================== */}
           {activeRightTab === 'output' && (
             <div className="flex flex-col flex-1 space-y-2">
@@ -1262,17 +1269,13 @@ export function NginxApplicationsTab({
                 <div className="flex items-center gap-2">
                   <span
                     className={`w-2 h-2 rounded-full ${
-                      isDeploying || runningQuickCommand
-                        ? 'bg-blue-400 animate-ping'
-                        : 'bg-emerald-400'
+                      isExecuting ? 'bg-blue-400 animate-ping' : 'bg-emerald-400'
                     }`}
                   />
                   <span className="font-mono">
-                    {isDeploying
-                      ? 'Executing Full Pipeline...'
-                      : runningQuickCommand
-                      ? `Running ${runningQuickCommand}...`
-                      : 'Live Output Terminal'}
+                    {isExecuting
+                      ? `Running ${activeStepRunning}...`
+                      : 'Live Deployment Terminal'}
                   </span>
                 </div>
 
@@ -1302,7 +1305,7 @@ export function NginxApplicationsTab({
                     onClick={() =>
                       handleDownloadLogFile(
                         deploymentLogs.join('\n'),
-                        `${selectedApp?.name || 'app'}-deploy.log`
+                        `${pm2AppName || 'app'}-deploy.log`
                       )
                     }
                     className="px-2 py-1 rounded text-[11px] font-mono text-slate-400 hover:text-white bg-[#0B1120] border border-[#1E293B] cursor-pointer"
@@ -1322,8 +1325,8 @@ export function NginxApplicationsTab({
                     <Terminal className="w-8 h-8 mx-auto text-slate-700" />
                     <p>Ready to deploy.</p>
                     <p className="text-[11px]">
-                      Click "1-Click Automated Full Deploy" or any quick command on the left to
-                      execute operations on {activeServer.name}.
+                      Edit any pipeline parameter on the left and click "1-Click Automated Full Deploy"
+                      or any step button to execute on {activeServer.name}.
                     </p>
                   </div>
                 ) : (
@@ -1363,7 +1366,7 @@ export function NginxApplicationsTab({
           )}
 
           {/* ===================================================================== */}
-          {/* TAB 2: PM2 LOGS */}
+          {/* TAB 2: PM2 LOGS                                                       */}
           {/* ===================================================================== */}
           {activeRightTab === 'pm2-logs' && (
             <div className="flex flex-col flex-1 space-y-2">
@@ -1471,7 +1474,7 @@ export function NginxApplicationsTab({
           )}
 
           {/* ===================================================================== */}
-          {/* TAB 3: PM2 LIST */}
+          {/* TAB 3: PM2 LIST                                                       */}
           {/* ===================================================================== */}
           {activeRightTab === 'pm2-list' && (
             <div className="flex flex-col flex-1 space-y-3">
@@ -1627,7 +1630,7 @@ export function NginxApplicationsTab({
           )}
 
           {/* ===================================================================== */}
-          {/* TAB 4: PM2 FLUSH */}
+          {/* TAB 4: PM2 FLUSH                                                      */}
           {/* ===================================================================== */}
           {activeRightTab === 'pm2-flush' && (
             <div className="flex flex-col flex-1 space-y-4">
@@ -1639,9 +1642,9 @@ export function NginxApplicationsTab({
                   <div>
                     <h4 className="text-sm font-bold text-white">PM2 Log Flush &amp; Disk Reclaim</h4>
                     <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                      Flushes and truncates all active PM2 log files (<code className="text-amber-300">~/.pm2/logs/*.log</code>)
+                      Flushes and resets all PM2 log files (<code className="text-amber-300">~/.pm2/logs/*.log</code>)
                       on remote server <strong className="text-slate-200">{activeServer.name}</strong>.
-                      This operation is safe to run on production; it reclaims disk space instantly without restarting your running applications.
+                      This operation is safe to run on production; it reclaims disk space instantly without restarting running processes.
                     </p>
                   </div>
                 </div>
@@ -1703,7 +1706,7 @@ export function NginxApplicationsTab({
           )}
 
           {/* ===================================================================== */}
-          {/* TAB 5: NGINX ACCESS LOGS */}
+          {/* TAB 5: NGINX ACCESS LOGS                                              */}
           {/* ===================================================================== */}
           {activeRightTab === 'access-logs' && (
             <div className="flex flex-col flex-1 space-y-2">
@@ -1796,7 +1799,7 @@ export function NginxApplicationsTab({
           )}
 
           {/* ===================================================================== */}
-          {/* TAB 6: NGINX ERROR LOGS */}
+          {/* TAB 6: NGINX ERROR LOGS                                               */}
           {/* ===================================================================== */}
           {activeRightTab === 'error-logs' && (
             <div className="flex flex-col flex-1 space-y-2">
@@ -1892,7 +1895,7 @@ export function NginxApplicationsTab({
       </div>
 
       {/* ========================================================================= */}
-      {/* MODAL: ADD APPLICATION */}
+      {/* MODAL: ADD APPLICATION PRESET                                            */}
       {/* ========================================================================= */}
       {addAppModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
@@ -2012,7 +2015,7 @@ export function NginxApplicationsTab({
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: ROLLBACK CONFIRMATION */}
+      {/* MODAL: ROLLBACK CONFIRMATION                                             */}
       {/* ========================================================================= */}
       {rollbackConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
@@ -2024,15 +2027,17 @@ export function NginxApplicationsTab({
               <div>
                 <h3 className="text-base font-bold text-white">Confirm Rollback</h3>
                 <p className="text-xs text-slate-400">
-                  Rollback {selectedApp?.name} to previous working git commit?
+                  Rollback {repoPath} to previous git commit?
                 </p>
               </div>
             </div>
 
             <p className="text-xs text-slate-300 bg-[#0B1120] p-3 rounded-xl border border-[#1E293B] leading-relaxed">
-              This will execute a safe rollback to the previous commit on{' '}
-              <strong className="text-white">{activeServer.name}</strong>, rebuild the project,
-              and reload the PM2 cluster with zero downtime.
+              This will execute <code className="text-amber-300 font-mono">git reset --hard HEAD~1</code>,
+              install dependencies (<code className="text-teal-300 font-mono">{installCmd}</code>),
+              run the build (<code className="text-blue-300 font-mono">{buildCmd}</code>),
+              and reload PM2 (<code className="text-emerald-300 font-mono">{pm2AppName}</code>) on{' '}
+              <strong className="text-white">{activeServer.name}</strong>.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -2045,7 +2050,10 @@ export function NginxApplicationsTab({
               </button>
               <button
                 type="button"
-                onClick={handleRollback}
+                onClick={() => {
+                  setRollbackConfirmOpen(false);
+                  executeStep('rollback', 'Rollback to Previous Commit');
+                }}
                 className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-lg shadow-amber-600/30 cursor-pointer"
               >
                 Yes, Execute Rollback

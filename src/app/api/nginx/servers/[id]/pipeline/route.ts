@@ -12,7 +12,7 @@ export async function POST(
     const { id } = await params;
     const body = await req.json();
 
-    const { repoPath, branch = 'main', step, installCmd, buildCmd, pm2AppName } = body;
+    const { repoPath, branch = 'main', step, installCmd, buildCmd, pm2AppName, customCmd } = body;
 
     if (!repoPath || !step) {
       return NextResponse.json(
@@ -33,6 +33,7 @@ export async function POST(
       installCmd,
       buildCmd,
       pm2AppName,
+      customCmd,
     });
 
     return NextResponse.json({
