@@ -1,0 +1,136 @@
+'use client';
+
+import React, { useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { Server } from 'lucide-react';
+import { UnifiedServerTable } from '@/components/dashboard/UnifiedServerTable';
+import { UnifiedServerItem } from '@/components/dashboard/UnifiedServerRow';
+import { useMonitoring } from '@/context/MonitoringContext';
+
+interface OnPremisesServersTableProps {
+  servers?: any[];
+  showViewAllButton?: boolean;
+  limit?: number;
+  isLoading?: boolean;
+  onRefresh?: () => void;
+  onAddClick?: () => void;
+}
+
+export function OnPremisesServersTable({
+  servers,
+  showViewAllButton = false,
+  limit,
+  isLoading = false,
+  onRefresh,
+  onAddClick,
+}: OnPremisesServersTableProps) {
+  const router = useRouter();
+  const { customServers, triggerRefresh } = useMonitoring();
+
+  // Use passed servers or all custom servers from context
+  const serverList = servers || customServers || [];
+
+  // Filter for on-premises / datacenter servers
+  const onPremServers = useMemo(() => {
+    return serverList.filter((s: any) => {
+      const prov = (s.cloudProvider || '').toLowerCase();
+      return prov === 'on-premise' || prov === 'other' || prov === 'datacenter' || !s.cloudResourceId;
+    });
+  }, [serverList]);
+
+  // If no explicitly filtered on-prem servers, use all registered custom servers
+  const activeServers = onPremServers.length > 0 ? onPremServers : serverList;
+
+  // Map into UnifiedServerItem array
+  const unifiedServers: UnifiedServerItem[] = useMemo(() => {
+    return activeServers.map((s: any) => {
+      const rawStatus = (s.status || '').toLowerCase();
+      const isOnline =
+        rawStatus === 'online' ||
+        rawStatus === 'running' ||
+        Boolean(s.isSSHConnected && rawStatus !== 'offline');
+
+      const pubIp = s.publicIp && s.publicIp !== '-' ? s.publicIp : s.host || null;
+      const privIp = s.privateIp && s.privateIp !== '-' ? s.privateIp : null;
+      const hostIp = pubIp || privIp || s.host || '';
+
+      const isSSHVerified = Boolean(
+        s.isSSHConnected ||
+        s.status === 'Online' ||
+        s.hasSavedKey
+      );
+
+      return {
+        id: s._id || s.id,
+        serverId: s._id || s.id,
+        name: s.name || s.host || 'On-Premise Server',
+        resourceId: s._id || s.id,
+        cloudProvider: 'on-premise',
+        region: s.region || s.environment || 'Datacenter',
+        host: hostIp,
+        publicIp: pubIp,
+        privateIp: privIp,
+        port: s.port || 22,
+        username: s.username || 'root',
+        authMethod: s.authMethod || 'privateKey',
+        status: isOnline ? 'Online' : 'Offline',
+        cloudPowerState: isOnline ? 'Running' : 'Stopped',
+        isSSHConnected: isSSHVerified,
+        hasSavedKey: Boolean(s.hasSavedKey || isSSHVerified),
+        lastError: s.lastError || null,
+        lastConnectedAt: s.lastConnectedAt || s.lastHeartbeatAt || null,
+        os: s.os || 'Linux Bare-Metal',
+        hardware: s.hardware || {
+          cpuCores: 2,
+          cpuModel: 'Physical Server Node',
+          totalMemoryBytes: 8589934592,
+          totalDiskBytes: 32212254720,
+        },
+        metrics: s.metrics || {
+          cpu: {
+            usagePercent: s.metrics?.cpu?.usagePercent ?? null,
+            cores: s.hardware?.cpuCores || 2,
+            timestamp: new Date().toISOString(),
+          },
+          memory: {
+            usagePercent: s.metrics?.memory?.usagePercent ?? null,
+            totalBytes: s.hardware?.totalMemoryBytes || 8589934592,
+            usedBytes: s.metrics?.memory?.usedBytes || 0,
+            timestamp: new Date().toISOString(),
+          },
+          disks: s.metrics?.disks || [
+            {
+              mount: '/',
+              usagePercent: s.metrics?.disks?.[0]?.usagePercent ?? null,
+              totalBytes: s.hardware?.totalDiskBytes || 32212254720,
+              usedBytes: s.metrics?.disks?.[0]?.usedBytes || 0,
+            },
+          ],
+        },
+        cpuUsage: s.metrics?.cpu?.usagePercent,
+        memoryUsage: s.metrics?.memory?.usagePercent,
+        diskUsage: s.metrics?.disks?.[0]?.usagePercent,
+        totalMemoryBytes: s.hardware?.totalMemoryBytes || 8589934592,
+      };
+    });
+  }, [activeServers]);
+
+  return (
+    <UnifiedServerTable
+      servers={unifiedServers}
+      provider="on-prem"
+      title="On-Premises Infrastructure Servers"
+      subtitle="Bare-metal, physical nodes, and datacenter virtual servers with live telemetry"
+      icon={<Server className="w-4 h-4 text-emerald-400" />}
+      addLabel="Add On-Premise Server"
+      onAddClick={onAddClick}
+      showViewAllButton={showViewAllButton}
+      viewAllHref="/dashboard/servers"
+      limit={limit}
+      detailUrlPrefix="/dashboard/servers"
+      isLoading={isLoading}
+      onRefresh={onRefresh || triggerRefresh}
+      emptyMessage="No on-premises servers found. Click 'Add On-Premise Server' to register a server."
+    />
+  );
+}

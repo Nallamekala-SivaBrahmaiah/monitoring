@@ -25,7 +25,7 @@ import { useMonitoring } from '@/context/MonitoringContext';
 
 interface UnifiedServerTableProps {
   servers: UnifiedServerItem[];
-  provider?: 'aws' | 'azure' | 'fleet' | 'linux';
+  provider?: 'aws' | 'azure' | 'fleet' | 'linux' | 'on-prem';
   title?: string;
   subtitle?: string;
   icon?: React.ReactNode;
@@ -95,23 +95,30 @@ export function UnifiedServerTable({
   // Provider styling
   const isAzure = provider === 'azure';
   const isAws = provider === 'aws';
+  const isOnPrem = provider === 'on-prem';
 
   const defaultTitle = isAzure
     ? 'Microsoft Azure Virtual Machines'
     : isAws
     ? 'Amazon Web Services (AWS EC2)'
+    : isOnPrem
+    ? 'On-Premises Infrastructure Servers'
     : 'Infrastructure Servers';
 
   const defaultSubtitle = isAzure
     ? 'High-performance cloud virtual machines managed via Microsoft Azure Resource Manager (ARM)'
     : isAws
     ? 'Elastic Compute Cloud instances managed via AWS EC2 API across global regions'
+    : isOnPrem
+    ? 'Bare-metal, physical nodes, and datacenter virtual servers with live telemetry'
     : 'Multi-cloud compute instances with live guest and cloud telemetry';
 
   const defaultIcon = isAzure ? (
     <AzureLogo className="w-4 h-4" />
   ) : isAws ? (
     <AwsLogo className="w-4 h-4" />
+  ) : isOnPrem ? (
+    <Server className="w-4 h-4 text-emerald-400" />
   ) : (
     <Server className="w-4 h-4 text-blue-400" />
   );
@@ -120,18 +127,24 @@ export function UnifiedServerTable({
     ? 'bg-gradient-to-r from-[#0089D6]/20 via-[#0089D6]/5 to-transparent'
     : isAws
     ? 'bg-gradient-to-r from-amber-500/20 via-amber-500/5 to-transparent'
+    : isOnPrem
+    ? 'bg-gradient-to-r from-emerald-500/20 via-emerald-500/5 to-transparent'
     : 'bg-gradient-to-r from-blue-900/15 via-blue-900/5 to-transparent';
 
   const borderAccent = isAzure
     ? 'border-[#0089D6]/30'
     : isAws
     ? 'border-amber-500/30'
+    : isOnPrem
+    ? 'border-emerald-500/30'
     : 'border-[#1E293B]';
 
   const badgeStyle = isAzure
     ? 'bg-[#0089D6]/20 text-[#5EA0EF] border border-[#0089D6]/30'
     : isAws
     ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+    : isOnPrem
+    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
     : 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
 
   // Available unique regions
@@ -381,7 +394,7 @@ export function UnifiedServerTable({
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder={isAzure ? 'Search Azure VM...' : isAws ? 'Search EC2 instance...' : 'Search servers...'}
+                  placeholder={isAzure ? 'Search Azure VM...' : isAws ? 'Search EC2 instance...' : isOnPrem ? 'Search on-premises server...' : 'Search servers...'}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-8 pr-3 py-1.5 text-xs bg-[#0D1526] border border-[#1E293B] rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-36 sm:w-48"
@@ -438,6 +451,8 @@ export function UnifiedServerTable({
                   ? 'bg-[#0089D6] hover:bg-[#0078D4]'
                   : isAws
                   ? 'bg-[#FF9900] hover:bg-[#E68A00] text-black font-bold'
+                  : isOnPrem
+                  ? 'bg-emerald-600 hover:bg-emerald-500'
                   : 'bg-blue-600 hover:bg-blue-500'
               }`}
             >
