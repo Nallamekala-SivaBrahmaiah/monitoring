@@ -21,7 +21,7 @@ import { getLiveGuestOSMetrics } from '@/lib/serverMonitoring/osMetricsEngine';
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();
-    // Aggressively purge any racha, nacha, 44.199.21.34, or on-premise
+    // Purge deprecated test hosts
     try {
       await Promise.all([
         Server.deleteMany({
@@ -30,7 +30,6 @@ export async function GET(request: NextRequest) {
             { host: { $regex: /racha|nacha|rachana/i } },
             { host: '44.199.21.34' },
             { ip: '44.199.21.34' },
-            { cloudProvider: { $regex: /premise/i } },
           ],
         } as any),
         CloudResource.deleteMany({
@@ -52,8 +51,6 @@ export async function GET(request: NextRequest) {
     };
     if (cloudFilter && cloudFilter !== 'all') {
       query.cloudProvider = cloudFilter;
-    } else {
-      query.cloudProvider = { $nin: ['on-premise'] };
     }
 
     const rawServers = await Server.find(query)

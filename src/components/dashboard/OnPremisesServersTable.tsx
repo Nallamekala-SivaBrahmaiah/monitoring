@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Server } from 'lucide-react';
 import { UnifiedServerTable } from '@/components/dashboard/UnifiedServerTable';
@@ -26,11 +26,26 @@ export function OnPremisesServersTable({
 }: OnPremisesServersTableProps) {
   const router = useRouter();
   const { customServers, triggerRefresh } = useMonitoring();
+  const [localServers, setLocalServers] = useState<any[] | null>(null);
+
+  const fetchDirectServers = async () => {
+    try {
+      const res = await fetch('/api/servers');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setLocalServers(data);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchDirectServers();
+  }, []);
 
   // STRICT FILTER: Only display dedicated on-premises / standalone registered servers
   // Never show auto-discovered cloud fleet instances (AWS EC2 / Azure VMs) here
   const onPremServers = useMemo(() => {
-    const rawList = servers || customServers || [];
+    const rawList = servers || localServers || customServers || [];
     return rawList.filter((s: any) => {
       const prov = (s.cloudProvider || '').toLowerCase();
       const resId = (s.cloudResourceId || s.instanceId || '').toLowerCase();
@@ -49,7 +64,7 @@ export function OnPremisesServersTable({
         (!resId.startsWith('i-') && !resId.includes('/subscriptions/'))
       );
     });
-  }, [servers, customServers]);
+  }, [servers, localServers, customServers]);
 
   // Map into UnifiedServerItem array (STRICT: only onPremServers, never fall back to cloud servers)
   const unifiedServers: UnifiedServerItem[] = useMemo(() => {
@@ -139,7 +154,11 @@ export function OnPremisesServersTable({
       limit={limit}
       detailUrlPrefix="/dashboard/on-premises"
       isLoading={isLoading}
-      onRefresh={onRefresh || triggerRefresh}
+      onRefresh={() => {
+        fetchDirectServers();
+        if (onRefresh) onRefresh();
+        else triggerRefresh();
+      }}
       emptyMessage="No on-premises servers registered yet. Click '+ Add On-Premise Server' to integrate your server via SSH."
     />
   );

@@ -33,7 +33,6 @@ async function autoImportExistingServers() {
           { name: { $regex: /racha|nacha|rachana/i } },
           { host: { $regex: /racha|nacha|rachana/i } },
           { host: { $in: KNOWN_FAKE_HOSTS } },
-          { cloudProvider: { $regex: /premise/i } },
         ],
       } as any),
       Server.deleteMany({
@@ -42,14 +41,12 @@ async function autoImportExistingServers() {
           { host: { $regex: /racha|nacha|rachana/i } },
           { host: { $in: KNOWN_FAKE_HOSTS } },
           { ip: { $in: KNOWN_FAKE_HOSTS } },
-          { cloudProvider: { $regex: /premise/i } },
         ],
       } as any),
       AnsibleHost.deleteMany({
         $or: [
           { name: { $regex: /racha|nacha|rachana/i } },
           { ip: { $in: KNOWN_FAKE_HOSTS } },
-          { provider: { $regex: /premise/i } },
         ],
       } as any),
       CloudResource.deleteMany({
