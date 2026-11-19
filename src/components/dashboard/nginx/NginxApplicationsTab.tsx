@@ -148,6 +148,14 @@ export function NginxApplicationsTab({
   const [pm2Installed, setPm2Installed] = useState<boolean>(true);
   const [pm2ActionLoading, setPm2ActionLoading] = useState<string | null>(null);
 
+  // PM2 concurrency, race-condition, unmount & re-render guards
+  const isFetchingPM2Ref = useRef(false);
+  const currentServerIdRef = useRef<string | null>(null);
+  const lastLoadedServerIdRef = useRef<string | null>(null);
+  const pm2AbortControllerRef = useRef<AbortController | null>(null);
+  const prevConsoleTabRef = useRef<ConsoleTab>('output');
+  const lastActiveServerIdForAppsRef = useRef<string | null>(null);
+
   // Telemetry: PM2 Flush
   const [pm2FlushLoading, setPm2FlushLoading] = useState(false);
   const [lastFlushTime, setLastFlushTime] = useState<string | null>(null);
@@ -283,13 +291,18 @@ export function NginxApplicationsTab({
     [activeServer?._id, applyAppToTarget, isNginxApp]
   );
 
-  // Initial load
+  // Initial load apps for active server
   useEffect(() => {
     if (!activeServer) return;
-    const username = activeServer.username || 'siva';
-    setRepoPath(`/home/${username}/monitoring`);
-    fetchApps();
-  }, [activeServer, fetchApps]);
+    const sid = activeServer._id ? String(activeServer._id) : (activeServer.host || null);
+    if (!sid) return;
+    if (lastActiveServerIdForAppsRef.current !== sid) {
+      lastActiveServerIdForAppsRef.current = sid;
+      const username = activeServer.username || 'siva';
+      setRepoPath(`/home/${username}/monitoring`);
+      fetchApps();
+    }
+  }, [activeServer?._id, activeServer?.host, activeServer?.username, fetchApps]);
 
   // Handle User Clicking an Application Card
   const handleSelectApp = (app: INginxAppData) => {
@@ -431,31 +444,66 @@ export function NginxApplicationsTab({
   // ---------------------------------------------------------------------------
   // 7. Telemetry Fetching (PM2 List, PM2 Logs, Access, Error)
   // ---------------------------------------------------------------------------
+  // Sync current server ID ref
+  useEffect(() => {
+    currentServerIdRef.current = activeServer?._id ? String(activeServer._id) : null;
+  }, [activeServer?._id]);
+
   const fetchPM2List = useCallback(async () => {
-    if (!activeServer?._id) return;
+    const targetServerId = activeServer?._id ? String(activeServer._id) : null;
+    if (!targetServerId) return;
+
+    // Prevent duplicate concurrent requests
+    if (isFetchingPM2Ref.current) return;
+    isFetchingPM2Ref.current = true;
+
+    // Abort previous in-flight request if any
+    if (pm2AbortControllerRef.current) {
+      pm2AbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    pm2AbortControllerRef.current = controller;
+
     setPm2Loading(true);
     try {
-      const res = await fetch(`/api/nginx/servers/${activeServer._id}/pm2`);
+      const res = await fetch(`/api/nginx/servers/${targetServerId}/pm2`, {
+        signal: controller.signal,
+      });
       const data = await res.json();
+
+      // Guard against stale response if user switched servers while request was in-flight
+      if (currentServerIdRef.current !== targetServerId) {
+        return;
+      }
+
       if (res.ok && data.success) {
         setPm2Installed(data.pm2Installed !== false);
         setPm2Processes(data.processes || []);
         setPm2Error(null);
-        if (data.processes && data.processes.length > 0 && !pm2AppName) {
-          setPm2AppName(data.processes[0].name);
+        if (data.processes && data.processes.length > 0) {
+          // Use functional state updater so fetchPM2List does not depend on pm2AppName
+          setPm2AppName((prev) => prev || data.processes[0].name);
         }
       } else {
         setPm2Error(data.error || 'Failed to connect to server PM2 service');
         setPm2Processes([]);
       }
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return;
+      }
       console.error('Failed to fetch PM2 list:', err);
-      setPm2Error(err.message || 'Network error fetching PM2 process list');
-      setPm2Processes([]);
+      if (currentServerIdRef.current === targetServerId) {
+        setPm2Error(err.message || 'Network error fetching PM2 process list');
+        setPm2Processes([]);
+      }
     } finally {
-      setPm2Loading(false);
+      if (currentServerIdRef.current === targetServerId) {
+        setPm2Loading(false);
+      }
+      isFetchingPM2Ref.current = false;
     }
-  }, [activeServer?._id, pm2AppName]);
+  }, [activeServer?._id]);
 
   const fetchPM2Logs = useCallback(async () => {
     if (!activeServer?._id) return;
@@ -517,26 +565,50 @@ export function NginxApplicationsTab({
     }
   }, [activeServer?._id, errorLines]);
 
-  // Tab change triggers
+  // Tab change triggers (only fetch when tab actually changes, avoid redundant refetches)
   useEffect(() => {
-    if (activeConsoleTab === 'pm2-list') fetchPM2List();
-    else if (activeConsoleTab === 'pm2-logs') fetchPM2Logs();
-    else if (activeConsoleTab === 'access-logs') fetchAccessLogs();
-    else if (activeConsoleTab === 'error-logs') fetchErrorLogs();
-  }, [activeConsoleTab, fetchPM2List, fetchPM2Logs, fetchAccessLogs, fetchErrorLogs]);
+    if (prevConsoleTabRef.current !== activeConsoleTab) {
+      prevConsoleTabRef.current = activeConsoleTab;
+      if (activeConsoleTab === 'pm2-list') {
+        if (pm2Processes.length === 0 && !pm2Error && !pm2Loading) {
+          fetchPM2List();
+        }
+      } else if (activeConsoleTab === 'pm2-logs') {
+        fetchPM2Logs();
+      } else if (activeConsoleTab === 'access-logs') {
+        fetchAccessLogs();
+      } else if (activeConsoleTab === 'error-logs') {
+        fetchErrorLogs();
+      }
+    }
+  }, [activeConsoleTab, pm2Processes.length, pm2Error, pm2Loading, fetchPM2List, fetchPM2Logs, fetchAccessLogs, fetchErrorLogs]);
 
   // Initial and server-change PM2 process list fetch
   useEffect(() => {
-    setPm2Processes([]);
-    setPm2Error(null);
-    setPm2Installed(true);
-    setPm2AppName('');
-    setPm2RawLogs('');
-    setPm2Logs([]);
-    if (activeServer?._id) {
+    const serverId = activeServer?._id ? String(activeServer._id) : null;
+    if (!serverId) return;
+
+    // Only reset and fetch when changing to a DIFFERENT server ID
+    if (lastLoadedServerIdRef.current !== serverId) {
+      lastLoadedServerIdRef.current = serverId;
+      setPm2Processes([]);
+      setPm2Error(null);
+      setPm2Installed(true);
+      setPm2AppName('');
+      setPm2RawLogs('');
+      setPm2Logs([]);
       fetchPM2List();
     }
   }, [activeServer?._id, fetchPM2List]);
+
+  // Cleanup in-flight PM2 requests on unmount
+  useEffect(() => {
+    return () => {
+      if (pm2AbortControllerRef.current) {
+        pm2AbortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Auto-refresh timers
   useEffect(() => {
