@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Client, ConnectConfig } from 'ssh2';
 import { decryptSecret } from '@/lib/serverMonitoring/crypto';
 import { convertPPKToOpenSSH } from '@/lib/serverMonitoring/ppkConverter';
@@ -104,6 +105,127 @@ export function buildNginxSSHConfig(server: INginxServerData, timeoutMs: number 
 }
 
 /**
+ * Resolves any server ID (NginxServer _id, Server _id, host, instanceId, or name),
+ * ensuring encrypted SSH credentials are fully hydrated for independent remote SSH telemetry.
+ */
+export async function resolveServerForNginx(id: string): Promise<INginxServerData | null> {
+  if (!id || typeof id !== 'string') return null;
+  const cleanId = id.trim();
+  if (!cleanId) return null;
+
+  const NginxServer = (await import('@/models/NginxServer')).default;
+  const Server = (await import('@/models/Server')).default;
+  const AnsibleHost = (await import('@/models/AnsibleHost')).default;
+  const AnsibleController = (await import('@/models/AnsibleController')).default;
+
+  let serverDoc: any = null;
+
+  // 1. Try NginxServer by _id if valid ObjectId
+  if (mongoose.isValidObjectId(cleanId)) {
+    serverDoc = await NginxServer.findById(cleanId);
+  }
+
+  // 2. Try NginxServer by host, instanceId, or name
+  if (!serverDoc) {
+    serverDoc = await NginxServer.findOne({
+      $or: [
+        { host: cleanId },
+        { instanceId: cleanId },
+        { name: cleanId },
+      ],
+    });
+  }
+
+  // 3. Try Server collection
+  let sDoc: any = null;
+  if (mongoose.isValidObjectId(cleanId)) {
+    sDoc = await Server.findById(cleanId);
+  }
+  if (!sDoc) {
+    sDoc = await Server.findOne({
+      $or: [
+        { host: cleanId },
+        { publicIp: cleanId },
+        { privateIp: cleanId },
+        { cloudResourceId: cleanId },
+        { instanceId: cleanId },
+        { name: cleanId },
+      ],
+    });
+  }
+
+  // If found in Server collection but not in NginxServer, sync it immediately
+  if (sDoc && !serverDoc) {
+    serverDoc = await NginxServer.findOneAndUpdate(
+      { host: sDoc.host },
+      {
+        $set: {
+          name: sDoc.name,
+          host: sDoc.host,
+          port: sDoc.port || 22,
+          username: sDoc.username || 'ubuntu',
+          authMethod: sDoc.authMethod || 'privateKey',
+          encryptedAuthSecret: sDoc.encryptedAuthSecret,
+          authSecretIv: sDoc.authSecretIv,
+          authSecretTag: sDoc.authSecretTag,
+          cloudProvider: (sDoc.cloudProvider || 'on-premise').toLowerCase(),
+          connectionStatus: 'Online',
+          isActive: true,
+          instanceId: sDoc.cloudResourceId || sDoc.instanceId || sDoc._id.toString(),
+        },
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+  }
+
+  // 4. Hydrate missing credentials
+  if (serverDoc && !serverDoc.encryptedAuthSecret) {
+    const credDoc =
+      (await Server.findOne({
+        $or: [{ host: serverDoc.host }, { publicIp: serverDoc.host }, { name: serverDoc.name }],
+        encryptedAuthSecret: { $exists: true, $ne: '' },
+      })) ||
+      (await AnsibleHost.findOne({
+        $or: [{ ip: serverDoc.host }, { name: serverDoc.name }],
+        encryptedAuthSecret: { $exists: true, $ne: '' },
+      })) ||
+      (await AnsibleController.findOne({
+        $or: [{ ipAddress: serverDoc.host }, { name: serverDoc.name }],
+        encryptedAuthSecret: { $exists: true, $ne: '' },
+      }));
+
+    if (credDoc && credDoc.encryptedAuthSecret) {
+      serverDoc.encryptedAuthSecret = credDoc.encryptedAuthSecret;
+      serverDoc.authSecretIv = credDoc.authSecretIv;
+      serverDoc.authSecretTag = credDoc.authSecretTag;
+      serverDoc.username = serverDoc.username || credDoc.username;
+      serverDoc.port = serverDoc.port || credDoc.port || 22;
+      serverDoc.authMethod = serverDoc.authMethod || credDoc.authMethod || 'privateKey';
+
+      await NginxServer.updateOne(
+        { _id: serverDoc._id },
+        {
+          $set: {
+            encryptedAuthSecret: credDoc.encryptedAuthSecret,
+            authSecretIv: credDoc.authSecretIv,
+            authSecretTag: credDoc.authSecretTag,
+            username: serverDoc.username,
+            port: serverDoc.port,
+            authMethod: serverDoc.authMethod,
+          },
+        }
+      ).catch(() => null);
+    }
+  }
+
+  if (!serverDoc && sDoc) {
+    return sDoc.toObject ? sDoc.toObject() : sDoc;
+  }
+
+  return serverDoc ? (serverDoc.toObject ? serverDoc.toObject() : serverDoc) : null;
+}
+
+/**
  * Execute command over a new SSH connection and return full output
  */
 export async function executeSSH(
@@ -144,7 +266,11 @@ export async function executeSSH(
       client = new Client();
 
       client.on('ready', () => {
-        client!.exec(command, (err, stream) => {
+        // Automatically inject standard environment paths for Node.js, NVM, and PM2 so non-interactive SSH commands run properly
+        const envScript = `for nvm_bin in "$HOME/.nvm/versions/node"/*/bin /usr/local/bin "$HOME/.local/bin" "$HOME/.npm-global/bin" /snap/bin; do [ -d "$nvm_bin" ] && export PATH="$nvm_bin:$PATH"; done; [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" 2>/dev/null || true;\n`;
+        const wrappedCommand = envScript + command;
+
+        client!.exec(wrappedCommand, (err, stream) => {
           if (err) {
             finished = true;
             cleanup();
@@ -253,10 +379,19 @@ echo "===NGINX_TEST==="
 sudo nginx -t 2>&1 || true
 
 echo "===PM2_INSTALLED==="
-which pm2 2>/dev/null || command -v pm2 2>/dev/null || echo "NOT_FOUND"
+PM2_BIN=$(which pm2 2>/dev/null || command -v pm2 2>/dev/null || find "$HOME/.nvm" /usr/local/bin "$HOME/.npm-global" -name pm2 -type f -perm /111 2>/dev/null | head -n 1 || echo "")
+if [ -n "$PM2_BIN" ]; then
+  echo "$PM2_BIN"
+else
+  echo "NOT_FOUND"
+fi
 
 echo "===PM2_JLIST==="
-pm2 jlist 2>/dev/null || echo "[]"
+if [ -n "$PM2_BIN" ]; then
+  "$PM2_BIN" jlist 2>/dev/null || echo "[]"
+else
+  echo "[]"
+fi
 
 echo "===METRICS_MEM==="
 free -m 2>/dev/null || true
@@ -399,6 +534,7 @@ uptime -p 2>/dev/null || uptime 2>/dev/null || echo "Unknown"
           uptime: uptimeStr,
           uptimeSeconds: p.pm2_env?.pm_uptime ? Math.floor((Date.now() - p.pm2_env.pm_uptime) / 1000) : 0,
           script: p.pm2_env?.pm_exec_path || '',
+          nodeVersion: p.pm2_env?.node_version || '',
           port: p.pm2_env?.env?.PORT || undefined,
         };
       }),
@@ -413,7 +549,12 @@ uptime -p 2>/dev/null || uptime 2>/dev/null || echo "Unknown"
     return {
       success: false,
       connectionStatus: 'Failed' as const,
-      error: err.message,
+      error: err.message || 'SSH Connection Failed',
+      pm2Installed: false,
+      pm2Count: 0,
+      pm2RunningCount: 0,
+      pm2FailedCount: 0,
+      pm2Processes: [],
     };
   }
 }

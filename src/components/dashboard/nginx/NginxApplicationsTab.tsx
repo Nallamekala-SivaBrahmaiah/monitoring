@@ -144,6 +144,8 @@ export function NginxApplicationsTab({
   // Telemetry: PM2 List
   const [pm2Processes, setPm2Processes] = useState<any[]>([]);
   const [pm2Loading, setPm2Loading] = useState(false);
+  const [pm2Error, setPm2Error] = useState<string | null>(null);
+  const [pm2Installed, setPm2Installed] = useState<boolean>(true);
   const [pm2ActionLoading, setPm2ActionLoading] = useState<string | null>(null);
 
   // Telemetry: PM2 Flush
@@ -435,14 +437,21 @@ export function NginxApplicationsTab({
     try {
       const res = await fetch(`/api/nginx/servers/${activeServer._id}/pm2`);
       const data = await res.json();
-      if (res.ok && data.processes) {
-        setPm2Processes(data.processes);
-        if (data.processes.length > 0 && !pm2AppName) {
+      if (res.ok && data.success) {
+        setPm2Installed(data.pm2Installed !== false);
+        setPm2Processes(data.processes || []);
+        setPm2Error(null);
+        if (data.processes && data.processes.length > 0 && !pm2AppName) {
           setPm2AppName(data.processes[0].name);
         }
+      } else {
+        setPm2Error(data.error || 'Failed to connect to server PM2 service');
+        setPm2Processes([]);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch PM2 list:', err);
+      setPm2Error(err.message || 'Network error fetching PM2 process list');
+      setPm2Processes([]);
     } finally {
       setPm2Loading(false);
     }
@@ -518,6 +527,12 @@ export function NginxApplicationsTab({
 
   // Initial and server-change PM2 process list fetch
   useEffect(() => {
+    setPm2Processes([]);
+    setPm2Error(null);
+    setPm2Installed(true);
+    setPm2AppName('');
+    setPm2RawLogs('');
+    setPm2Logs([]);
     if (activeServer?._id) {
       fetchPM2List();
     }
@@ -843,7 +858,7 @@ export function NginxApplicationsTab({
   };
 
   // Helper actions
-  const handlePM2Action = async (action: 'restart' | 'reload' | 'stop', target: string) => {
+  const handlePM2Action = async (action: 'restart' | 'reload' | 'stop' | 'delete' | 'install', target: string) => {
     if (!activeServer?._id) return;
     setPm2ActionLoading(`${action}-${target}`);
     try {
@@ -1813,6 +1828,39 @@ export function NginxApplicationsTab({
                   <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
                   <span>Loading PM2 process table...</span>
                 </div>
+              ) : pm2Error ? (
+                <div className="py-16 px-6 text-center text-rose-400 space-y-3">
+                  <AlertTriangle className="w-8 h-8 mx-auto text-rose-500" />
+                  <div className="text-sm font-semibold text-rose-300">SSH Connection Notice</div>
+                  <p className="text-xs text-rose-400/80 max-w-lg mx-auto font-mono bg-rose-950/40 p-2.5 rounded-lg border border-rose-900/40">
+                    {pm2Error}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={fetchPM2List}
+                    className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30 text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Retry SSH Connection</span>
+                  </button>
+                </div>
+              ) : !pm2Installed ? (
+                <div className="py-16 text-center text-slate-400 space-y-3">
+                  <Layers className="w-8 h-8 mx-auto text-amber-500/60" />
+                  <div className="text-sm font-semibold text-slate-200">PM2 Not Installed</div>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Node.js process manager (PM2) is not detected on this server. Install PM2 to observe and manage active processes.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handlePM2Action('install', 'all')}
+                    disabled={pm2ActionLoading === 'install-all'}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    <span>{pm2ActionLoading === 'install-all' ? 'Installing PM2...' : 'Install PM2 via SSH'}</span>
+                  </button>
+                </div>
               ) : pm2Processes.length === 0 ? (
                 <div className="py-24 text-center text-slate-500 space-y-2">
                   <Layers className="w-8 h-8 mx-auto text-slate-700" />
@@ -1826,6 +1874,7 @@ export function NginxApplicationsTab({
                       <th className="py-3 px-3">Status</th>
                       <th className="py-3 px-3">PID</th>
                       <th className="py-3 px-3">Mode</th>
+                      <th className="py-3 px-3">Node</th>
                       <th className="py-3 px-3">CPU</th>
                       <th className="py-3 px-3">RAM</th>
                       <th className="py-3 px-3">Uptime</th>
@@ -1865,6 +1914,7 @@ export function NginxApplicationsTab({
 
                           <td className="py-3 px-3 font-mono text-slate-400">{proc.pid || '-'}</td>
                           <td className="py-3 px-3 font-mono text-slate-400">{proc.mode || 'fork'}</td>
+                          <td className="py-3 px-3 font-mono text-slate-400 text-[11px]">{proc.nodeVersion || '-'}</td>
                           <td className="py-3 px-3 font-mono text-cyan-300 font-semibold">
                             {proc.cpu ?? 0}%
                           </td>
@@ -1927,6 +1977,20 @@ export function NginxApplicationsTab({
                                 title="Stop process"
                               >
                                 Stop
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Are you sure you want to delete process "${proc.name}" from PM2?`)) {
+                                    handlePM2Action('delete', proc.name);
+                                  }
+                                }}
+                                disabled={isActionBusy}
+                                className="p-1 rounded bg-[#0B1120] hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-[#1E293B] hover:border-rose-500/30 cursor-pointer transition"
+                                title="Delete process from PM2"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
 
                               <button

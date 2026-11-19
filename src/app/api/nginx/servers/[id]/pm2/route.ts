@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
-import NginxServer from '@/models/NginxServer';
-import { queryServerDetails, executePM2Action } from '@/lib/nginx/nginxEngine';
+import { queryServerDetails, executePM2Action, resolveServerForNginx } from '@/lib/nginx/nginxEngine';
 
 export async function GET(
   req: NextRequest,
@@ -11,14 +10,31 @@ export async function GET(
     await connectToDatabase();
     const { id } = await params;
 
-    const server = await NginxServer.findById(id);
+    const server = await resolveServerForNginx(id);
     if (!server) {
       return NextResponse.json({ success: false, error: 'Server not found' }, { status: 404 });
     }
 
-    const details = await queryServerDetails(server.toObject());
+    const details = await queryServerDetails(server);
+    if (!details.success && details.error) {
+      return NextResponse.json({
+        success: false,
+        error: details.error,
+        serverId: server._id?.toString() || id,
+        serverName: server.name,
+        pm2Installed: false,
+        pm2Count: 0,
+        pm2RunningCount: 0,
+        pm2FailedCount: 0,
+        processes: [],
+      }, { status: 200 });
+    }
+
     return NextResponse.json({
       success: true,
+      serverId: server._id?.toString() || id,
+      serverName: server.name,
+      serverHost: server.host,
       pm2Installed: details.pm2Installed,
       pm2Count: details.pm2Count,
       pm2RunningCount: details.pm2RunningCount,
@@ -48,14 +64,16 @@ export async function POST(
       );
     }
 
-    const server = await NginxServer.findById(id);
+    const server = await resolveServerForNginx(id);
     if (!server) {
       return NextResponse.json({ success: false, error: 'Server not found' }, { status: 404 });
     }
 
-    const res = await executePM2Action(server.toObject(), action, target);
+    const res = await executePM2Action(server, action, target);
     return NextResponse.json({
       success: res.success,
+      serverId: server._id?.toString() || id,
+      serverName: server.name,
       action,
       target,
       output: res.output,
@@ -64,4 +82,3 @@ export async function POST(
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
-

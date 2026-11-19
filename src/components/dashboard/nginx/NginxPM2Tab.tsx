@@ -70,6 +70,9 @@ export function NginxPM2Tab({ activeServer }: NginxPM2TabProps) {
   };
 
   useEffect(() => {
+    setProcesses([]);
+    setLogContent('');
+    setSelectedAppLogs(null);
     if (activeServer) {
       fetchPM2();
       fetchAppLogs();

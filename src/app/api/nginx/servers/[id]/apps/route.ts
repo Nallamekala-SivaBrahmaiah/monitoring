@@ -3,7 +3,7 @@ import path from 'path';
 import connectToDatabase from '@/lib/mongodb';
 import NginxServer from '@/models/NginxServer';
 import NginxApp, { INginxAppData } from '@/models/NginxApp';
-import { discoverApplications, queryAppDiskMetrics } from '@/lib/nginx/nginxEngine';
+import { discoverApplications, queryAppDiskMetrics, resolveServerForNginx } from '@/lib/nginx/nginxEngine';
 
 export async function GET(
   req: NextRequest,
@@ -13,10 +13,13 @@ export async function GET(
     await connectToDatabase();
     const { id } = await params;
 
-    const server = await NginxServer.findById(id);
+    const server = await resolveServerForNginx(id);
     if (!server) {
       return NextResponse.json({ success: false, error: 'Server not found' }, { status: 404 });
     }
+
+    const srvId = server._id?.toString() || id;
+    const lookupIds = Array.from(new Set([id, srvId, (server as any).instanceId, server.host].filter(Boolean)));
 
     const isNginxAppDoc = (a: any) => {
       if (!a) return false;
@@ -30,7 +33,7 @@ export async function GET(
     };
 
     // Clean up any internal cache docs from Nginx collection
-    const existingServerApps = await NginxApp.find({ serverId: id }).lean();
+    const existingServerApps = await NginxApp.find({ serverId: { $in: lookupIds } }).lean();
     const staleIds = existingServerApps
       .filter((a: any) => !isNginxAppDoc(a))
       .map((a: any) => a._id);
@@ -39,14 +42,14 @@ export async function GET(
     }
 
     const scan = req.nextUrl?.searchParams?.get('scan') === 'true';
-    let rawApps = await NginxApp.find({ serverId: id }).sort({ createdAt: 1 }).lean();
+    let rawApps = await NginxApp.find({ serverId: { $in: lookupIds } }).sort({ createdAt: 1 }).lean();
     let apps = rawApps.filter(isNginxAppDoc);
 
     // If scan requested or no apps registered yet, attempt live SSH discovery on the server
     if (scan || apps.length === 0) {
       let discovered: any[] = [];
       try {
-        discovered = await discoverApplications(server.toObject());
+        discovered = await discoverApplications(server);
       } catch (discErr: any) {
         console.warn(`[NginxApps] Discovery notice for ${server.name}:`, discErr.message);
       }
@@ -106,14 +109,16 @@ export async function GET(
     }
 
     server.discoveredAppCount = apps.length;
-    await server.save();
+    if (typeof (server as any).save === 'function') {
+      await (server as any).save().catch(() => null);
+    }
 
     // Retrieve actual disk information from the currently selected server using the existing SSH connection
     let diskMetricsMap: Record<string, any> = {};
     try {
       const dirs = apps.map((a: any) => a.directory).filter(Boolean);
       if (dirs.length > 0) {
-        diskMetricsMap = await queryAppDiskMetrics(server.toObject(), dirs);
+        diskMetricsMap = await queryAppDiskMetrics(server, dirs);
       }
     } catch (diskErr: any) {
       console.warn(`[NginxApps] Disk metrics query notice for ${server.name}:`, diskErr.message);

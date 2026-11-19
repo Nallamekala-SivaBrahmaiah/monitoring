@@ -277,6 +277,46 @@ export default function NginxDashboardPage() {
             return s;
           });
 
+        // Ensure any on-premise or custom registered servers from /api/servers are included in cleanServers
+        for (const rs of registeredServers) {
+          const rHost = (rs.host || rs.publicIp || '').trim().toLowerCase();
+          const rName = (rs.name || '').trim().toLowerCase();
+          const rId = String(rs._id || rs.id || rs.cloudResourceId || '').toLowerCase();
+          const prov = (rs.cloudProvider || '').toLowerCase();
+
+          const alreadyPresent = cleanServers.some((cs) => {
+            const csHost = (cs.host || '').trim().toLowerCase();
+            const csName = (cs.name || '').trim().toLowerCase();
+            const csId = String(cs._id || cs.instanceId || '').toLowerCase();
+            return (rHost && csHost === rHost) || (rName && csName === rName) || (rId && csId === rId);
+          });
+
+          if (!alreadyPresent && (prov === 'on-premise' || prov === 'on-premises' || prov === 'custom' || prov === 'other' || prov === 'datacenter' || rs.hasSavedKey)) {
+            cleanServers.push({
+              _id: rs._id || rs.id,
+              name: rs.name || rs.host,
+              host: rs.host || rs.publicIp || '-',
+              port: rs.port || 22,
+              username: rs.username || 'ubuntu',
+              authMethod: rs.authMethod || 'privateKey',
+              cloudProvider: 'on-premise',
+              instanceId: rs.cloudResourceId || rs.instanceId || rs._id,
+              region: rs.region || 'Datacenter',
+              publicIp: rs.publicIp || rs.host,
+              privateIp: rs.privateIp || '',
+              osName: rs.os?.name || 'Linux',
+              connectionStatus: (rs.status === 'Online' || rs.status === 'Running' ? 'Online' : 'Failed') as any,
+              isActive: true,
+              metrics: {
+                cpuPercent: rs.metrics?.cpu?.usagePercent || 0,
+                memoryPercent: rs.metrics?.memory?.usagePercent || 0,
+                diskPercent: rs.metrics?.disks?.[0]?.usagePercent || 0,
+                uptime: rs.os?.uptimeFormatted || 'Active',
+              },
+            } as any);
+          }
+        }
+
         setServers(cleanServers);
         setLastUpdatedTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
 
@@ -291,13 +331,18 @@ export default function NginxDashboardPage() {
         // Never auto-select or force-open any server on main landing page!
         setActiveServer((prev) => {
           if (requestedServerId) {
-            const requested = cleanServers.find((s) => s._id === requestedServerId);
-            if (requested && requested.connectionStatus === 'Online') {
+            const requested = cleanServers.find((s) =>
+              String(s._id) === requestedServerId ||
+              s.instanceId === requestedServerId ||
+              s.host === requestedServerId ||
+              (s.name && s.name.toLowerCase() === requestedServerId.toLowerCase())
+            );
+            if (requested) {
               return requested;
             }
           }
           if (prev) {
-            return cleanServers.find((s) => s._id === prev._id) || null;
+            return cleanServers.find((s) => String(s._id) === String(prev._id) || s.host === prev.host) || null;
           }
           return null; // Keep null so main landing page opens cleanly!
         });

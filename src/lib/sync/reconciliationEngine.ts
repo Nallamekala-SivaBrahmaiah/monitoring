@@ -149,6 +149,7 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
 
         await Server.deleteMany({
           cloudProvider: 'azure',
+          encryptedAuthSecret: { $in: ['', null] },
           name: { $nin: liveAzureNames },
           host: { $nin: liveAzureIps },
         });
@@ -369,6 +370,7 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
           // Also clean up terminated AWS EC2 instances from Server and AnsibleHost for this region
           await Server.deleteMany({
             cloudProvider: 'aws',
+            encryptedAuthSecret: { $in: ['', null] },
             region: reg,
             $and: [
               { name: { $nin: Array.from(regionLiveNames) } },
@@ -439,6 +441,7 @@ export async function runFullInfrastructureReconciliation(): Promise<Reconciliat
       if (discoveryResults.some((d) => d.success)) {
         await Server.deleteMany({
           cloudProvider: 'aws',
+          encryptedAuthSecret: { $in: ['', null] },
           $and: [
             { name: { $nin: Array.from(allAccountLiveAwsNames) } },
             { host: { $nin: Array.from(allAccountLiveAwsIps) } },
