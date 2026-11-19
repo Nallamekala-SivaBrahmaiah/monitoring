@@ -4,9 +4,6 @@ import CloudResource from '@/models/CloudResource';
 import Server from '@/models/Server';
 import { runFullInfrastructureReconciliation } from '@/lib/sync/reconciliationEngine';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();

@@ -8,9 +8,6 @@ import AnsibleHost from '@/models/AnsibleHost';
 import { encryptSecret } from '@/lib/serverMonitoring/crypto';
 import { testNginxServerConnection } from '@/lib/nginx/nginxEngine';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
 const KNOWN_FAKE_HOSTS = [
   '4.240.109.230',
   '20.235.243.1',
