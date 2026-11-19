@@ -34,6 +34,10 @@ import {
   Loader2,
   GitBranch,
   Sparkles,
+  Copy,
+  Check,
+  X,
+  Eye,
 } from 'lucide-react';
 import { DockerIcon, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import {
@@ -286,6 +290,81 @@ export function DockerServerDetailView({
   // Multi-Application Stack & Container Selection
   const [selectedStack, setSelectedStack] = useState<string>('all');
   const [selectedContainerTarget, setSelectedContainerTarget] = useState<string>('');
+
+  // Resource Inspect Modal State (Containers, Images, Volumes, Networks)
+  const [inspectModal, setInspectModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    type: 'container' | 'image' | 'volume' | 'network';
+    target: string;
+    content: string;
+    loading: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    type: 'container',
+    target: '',
+    content: '',
+    loading: false,
+  });
+  const [copiedInspect, setCopiedInspect] = useState(false);
+
+  const handleInspectResource = async (
+    type: 'container' | 'image' | 'volume' | 'network',
+    target: string
+  ) => {
+    setInspectModal({
+      isOpen: true,
+      title: `Inspect ${type.charAt(0).toUpperCase() + type.slice(1)}: ${target}`,
+      type,
+      target,
+      content: '',
+      loading: true,
+    });
+    setCopiedInspect(false);
+
+    try {
+      const endpoint = `/api/docker/servers/${host.id}/${type}s`;
+      const bodyPayload: any = { action: 'inspect' };
+      if (type === 'container') bodyPayload.container = target;
+      else if (type === 'image') bodyPayload.image = target;
+      else if (type === 'volume') bodyPayload.volume = target;
+      else if (type === 'network') bodyPayload.network = target;
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyPayload),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        let formatted = data.output;
+        try {
+          const parsed = JSON.parse(data.output);
+          formatted = JSON.stringify(parsed, null, 2);
+        } catch {}
+        setInspectModal((prev) => ({
+          ...prev,
+          content: formatted,
+          loading: false,
+        }));
+      } else {
+        setInspectModal((prev) => ({
+          ...prev,
+          content: `// Error inspecting ${type}:\n${data.error || 'Failed to retrieve inspect output'}`,
+          loading: false,
+        }));
+        showToast('error', data.error || `Failed to inspect ${type}`);
+      }
+    } catch (err: any) {
+      setInspectModal((prev) => ({
+        ...prev,
+        content: `// Network error inspecting ${type}:\n${err.message}`,
+        loading: false,
+      }));
+      showToast('error', err.message);
+    }
+  };
 
   // Role Mappings
   const [roleMapping, setRoleMapping] = useState({
@@ -1047,6 +1126,16 @@ export function DockerServerDetailView({
                                 >
                                   <FileText className="w-3.5 h-3.5" />
                                 </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleInspectResource('container', c.name)}
+                                  className="px-2 py-1 rounded bg-[#070B14] hover:bg-[#18233C] text-slate-300 text-xs font-semibold border border-[#1E293B] cursor-pointer transition flex items-center gap-1"
+                                  title="Inspect Container JSON"
+                                >
+                                  <Eye className="w-3 h-3 text-cyan-400" />
+                                  <span>Inspect</span>
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -1115,10 +1204,12 @@ export function DockerServerDetailView({
                         <td className="py-3 px-4 text-right">
                           <button
                             type="button"
-                            onClick={() => showToast('success', `Inspection telemetry active for ${img.repository}`)}
-                            className="px-2.5 py-1 rounded bg-[#070B14] hover:bg-[#18233C] text-slate-300 text-xs font-semibold border border-[#1E293B] cursor-pointer"
+                            onClick={() => handleInspectResource('image', img.repository !== '<none>' ? `${img.repository}:${img.tag}` : img.id)}
+                            className="px-2.5 py-1 rounded bg-[#070B14] hover:bg-[#18233C] text-slate-300 text-xs font-semibold border border-[#1E293B] cursor-pointer transition inline-flex items-center gap-1"
+                            title="Inspect Image JSON"
                           >
-                            Inspect
+                            <Eye className="w-3 h-3 text-cyan-400" />
+                            <span>Inspect</span>
                           </button>
                         </td>
                       </tr>
@@ -1157,7 +1248,7 @@ export function DockerServerDetailView({
                   <th className="py-3 px-3">Driver</th>
                   <th className="py-3 px-3">Host Mountpoint</th>
                   <th className="py-3 px-3">Connected Services</th>
-                  <th className="py-3 px-4 text-right">Protection Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1E293B]/60">
@@ -1182,15 +1273,26 @@ export function DockerServerDetailView({
                             {vol.connectedContainers?.join(', ') || 'Auto-bound'}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            {isDb ? (
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold font-mono">
-                                Preserved Volume
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-mono">
-                                Standard Volume
-                              </span>
-                            )}
+                            <div className="flex items-center justify-end gap-2">
+                              {isDb ? (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold font-mono">
+                                  Preserved
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-mono">
+                                  Standard
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleInspectResource('volume', vol.name)}
+                                className="px-2.5 py-1 rounded bg-[#070B14] hover:bg-[#18233C] text-slate-300 text-xs font-semibold border border-[#1E293B] cursor-pointer transition inline-flex items-center gap-1"
+                                title="Inspect Volume JSON"
+                              >
+                                <Eye className="w-3 h-3 text-cyan-400" />
+                                <span>Inspect</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1230,7 +1332,7 @@ export function DockerServerDetailView({
                   <th className="py-3 px-3">Driver</th>
                   <th className="py-3 px-3">IPAM Subnet</th>
                   <th className="py-3 px-3">Gateway</th>
-                  <th className="py-3 px-4 text-right">Scope</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1E293B]/60">
@@ -1251,9 +1353,20 @@ export function DockerServerDetailView({
                         <td className="py-3 px-3 font-mono text-slate-300">{net.subnet || '172.28.0.0/16'}</td>
                         <td className="py-3 px-3 font-mono text-slate-400">{net.gateway || '172.28.0.1'}</td>
                         <td className="py-3 px-4 text-right">
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono text-[10px]">
-                            {net.scope}
-                          </span>
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono text-[10px]">
+                              {net.scope}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleInspectResource('network', net.name)}
+                              className="px-2.5 py-1 rounded bg-[#070B14] hover:bg-[#18233C] text-slate-300 text-xs font-semibold border border-[#1E293B] cursor-pointer transition inline-flex items-center gap-1"
+                              title="Inspect Network JSON"
+                            >
+                              <Eye className="w-3 h-3 text-cyan-400" />
+                              <span>Inspect</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1899,6 +2012,124 @@ export function DockerServerDetailView({
           </div>
         );
       })()}
+
+      {/* ========================================================================= */}
+      {/* UNIFIED DOCKER INSPECT MODAL (Containers, Images, Volumes, Networks)     */}
+      {/* ========================================================================= */}
+      {inspectModal.isOpen && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#0B1120] border border-[#1E293B] rounded-2xl w-full max-w-4xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-[#1E293B] bg-[#070B14]">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`p-2 rounded-xl border ${
+                    inspectModal.type === 'container'
+                      ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+                      : inspectModal.type === 'image'
+                      ? 'bg-purple-500/10 border-purple-500/20 text-purple-400'
+                      : inspectModal.type === 'volume'
+                      ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                      : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                  }`}
+                >
+                  <Eye className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-[10px] font-bold uppercase font-mono px-2 py-0.5 rounded-full border ${
+                        inspectModal.type === 'container'
+                          ? 'bg-cyan-500/20 border-cyan-500/30 text-cyan-300'
+                          : inspectModal.type === 'image'
+                          ? 'bg-purple-500/20 border-purple-500/30 text-purple-300'
+                          : inspectModal.type === 'volume'
+                          ? 'bg-amber-500/20 border-amber-500/30 text-amber-300'
+                          : 'bg-blue-500/20 border-blue-500/30 text-blue-300'
+                      }`}
+                    >
+                      {inspectModal.type} inspect
+                    </span>
+                    <h3 className="text-sm font-bold text-white font-mono truncate max-w-[320px] sm:max-w-md">
+                      {inspectModal.target}
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    Target host: <strong className="text-white">{host.name}</strong> ({host.host})
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(inspectModal.content);
+                    setCopiedInspect(true);
+                    setTimeout(() => setCopiedInspect(false), 2000);
+                  }}
+                  disabled={inspectModal.loading || !inspectModal.content}
+                  className="px-3 py-1.5 rounded-xl bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="Copy JSON Output"
+                >
+                  {copiedInspect ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-emerald-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Copy JSON</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setInspectModal((prev) => ({ ...prev, isOpen: false }))}
+                  className="p-1.5 rounded-xl bg-[#111A2E] hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 border border-[#1E293B] hover:border-rose-500/30 transition cursor-pointer"
+                  title="Close Inspector"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 flex-1 overflow-auto bg-[#03060C] select-text">
+              {inspectModal.loading ? (
+                <div className="py-24 flex flex-col items-center justify-center gap-3 text-slate-400">
+                  <Loader2 className="w-7 h-7 animate-spin text-cyan-400" />
+                  <span className="text-xs font-mono">
+                    Executing docker {inspectModal.type} inspect {inspectModal.target}...
+                  </span>
+                </div>
+              ) : (
+                <pre className="font-mono text-xs text-emerald-400 leading-relaxed whitespace-pre overflow-x-auto p-2">
+                  {inspectModal.content || '// No inspection telemetry returned.'}
+                </pre>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between p-3 border-t border-[#1E293B] bg-[#070B14] text-xs">
+              <span className="text-[11px] text-slate-500 font-mono">
+                docker {inspectModal.type === 'volume' || inspectModal.type === 'network' ? `${inspectModal.type} ` : ''}inspect {inspectModal.target}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setInspectModal((prev) => ({ ...prev, isOpen: false }))}
+                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
