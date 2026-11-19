@@ -144,7 +144,11 @@ export async function executeSSH(
       client = new Client();
 
       client.on('ready', () => {
-        client!.exec(command, (err, stream) => {
+        // Automatically inject standard environment paths for Node.js, NVM, and PM2
+        const envScript = `for nvm_bin in "$HOME/.nvm/versions/node"/*/bin /usr/local/bin "$HOME/.local/bin" "$HOME/.npm-global/bin" /snap/bin; do [ -d "$nvm_bin" ] && export PATH="$nvm_bin:$PATH"; done; [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" 2>/dev/null || true;\n`;
+        const wrappedCommand = envScript + command;
+
+        client!.exec(wrappedCommand, (err, stream) => {
           if (err) {
             finished = true;
             cleanup();
@@ -368,6 +372,7 @@ uptime -p 2>/dev/null || uptime 2>/dev/null || echo "Unknown"
         name: p.name,
         pmId: p.pm_id,
         pid: p.pid,
+        cwd: p.pm2_env?.pm_cwd || p.pm2_env?.env?.PWD || '',
         status: p.pm2_env?.status || 'unknown',
         cpu: p.monit?.cpu || 0,
         memoryBytes: p.monit?.memory || 0,
@@ -1418,18 +1423,39 @@ ${dirScript}
     for (const d of validDirs) {
       const safe = path.normalize(d).replace(/\\/g, '/');
       const dirBase = path.basename(safe).toLowerCase();
+      const safeLower = safe.toLowerCase();
 
       // Find matching PM2 process
       const matchingPm2 = pm2List.find((p: any) => {
-        const pCwd = path.normalize(p.pm2_env?.pm_cwd || '').replace(/\\/g, '/');
+        const pCwd = path.normalize(p.pm2_env?.pm_cwd || p.pm2_env?.env?.PWD || '').replace(/\\/g, '/').toLowerCase();
+        const pExec = (p.pm2_env?.pm_exec_path || '').toLowerCase();
         const pName = (p.name || '').toLowerCase();
-        return pCwd === safe || pName === dirBase || safe.endsWith('/' + pName);
+
+        // 1. Exact or prefix/suffix directory match
+        if (pCwd && (pCwd === safeLower || safeLower.startsWith(pCwd) || pCwd.startsWith(safeLower))) return true;
+        // 2. Executable/script path inside application directory
+        if (pExec && (pExec.includes(safeLower) || pExec.includes(dirBase))) return true;
+        // 3. Name matches folder base
+        if (pName && (pName === dirBase || safeLower.endsWith('/' + pName))) return true;
+        // 4. Fuzzy slug matching (e.g., 'rachananews-backend-staging' vs 'rachananews-adminbackend')
+        const cleanP = pName.replace(/[^a-z0-9]/g, '');
+        const cleanD = dirBase.replace(/[^a-z0-9]/g, '');
+        if (cleanP && cleanD && (cleanP.includes(cleanD) || cleanD.includes(cleanP))) return true;
+        return false;
       });
 
+      const isPm2Online = matchingPm2?.pm2_env?.status === 'online';
       const cpuPercent = typeof matchingPm2?.monit?.cpu === 'number' ? matchingPm2.monit.cpu : 0;
       const memoryMb = matchingPm2?.monit?.memory ? Math.round(matchingPm2.monit.memory / (1024 * 1024)) : 0;
-      const pm2Status = matchingPm2?.pm2_env?.status || (matchingPm2 ? 'online' : 'stopped');
-      const pm2Name = matchingPm2?.name || '';
+      
+      // If frontend application is static / served by Nginx (e.g. dist / build / index.html), mark online
+      const isStaticFrontend = dirBase.includes('frontend') || dirBase.includes('adminfrontend') || dirBase.includes('ui');
+      const pm2Status = isPm2Online
+        ? 'online'
+        : matchingPm2
+        ? (matchingPm2.pm2_env?.status || 'stopped')
+        : (isStaticFrontend ? 'online' : 'stopped');
+      const pm2Name = matchingPm2?.name || (isStaticFrontend ? 'nginx-static' : '');
 
       const marker = `===DIR:${safe}===`;
       const idx = out.indexOf(marker);

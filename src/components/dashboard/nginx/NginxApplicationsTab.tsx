@@ -1069,17 +1069,31 @@ export function NginxApplicationsTab({
               })
               .map((app) => {
               const isSelected = selectedApp?._id === app._id || selectedApp?.directory === app.directory;
-              const matchingPm2 = pm2Processes.find(
-                (p) => p.name === app.pm2ProcessName || p.name === app.name || p.pm2_env?.pm_cwd === app.directory
-              );
+              const matchingPm2 = pm2Processes.find((p) => {
+                const pCwd = ((p as any).cwd || p.pm2_env?.pm_cwd || '').replace(/\\/g, '/').toLowerCase();
+                const appDir = (app.directory || '').replace(/\\/g, '/').toLowerCase();
+                const pName = (p.name || '').toLowerCase();
+                const appName = (app.name || '').toLowerCase();
+                const appPm2 = (app.pm2ProcessName || '').toLowerCase();
+
+                if (appPm2 && pName === appPm2) return true;
+                if (pName === appName) return true;
+                if (pCwd && appDir && (pCwd === appDir || appDir.startsWith(pCwd) || pCwd.startsWith(appDir))) return true;
+                const cleanP = pName.replace(/[^a-z0-9]/g, '');
+                const cleanA = appName.replace(/[^a-z0-9]/g, '');
+                if (cleanP && cleanA && (cleanP.includes(cleanA) || cleanA.includes(cleanP))) return true;
+                return false;
+              });
               const isOnline = matchingPm2
                 ? matchingPm2.status === 'online'
                 : (app as any).status === 'Deployed' || (app as any).healthStatus === 'Healthy';
 
-              const rawCpu = matchingPm2?.monit?.cpu ?? ((app as any).cpu ?? 0);
+              const rawCpu = matchingPm2?.cpu ?? (matchingPm2 as any)?.monit?.cpu ?? ((app as any).cpu ?? 0);
               const cpuVal = typeof rawCpu === 'number' ? (rawCpu % 1 === 0 ? rawCpu : rawCpu.toFixed(1)) : rawCpu;
-              const memMb = matchingPm2?.monit?.memory
-                ? Math.round(matchingPm2.monit.memory / (1024 * 1024))
+              const memMb = matchingPm2?.memoryBytes
+                ? Math.round(matchingPm2.memoryBytes / (1024 * 1024))
+                : (matchingPm2 as any)?.monit?.memory
+                ? Math.round((matchingPm2 as any).monit.memory / (1024 * 1024))
                 : ((app as any).memoryMb ?? 0);
 
               // Real disk telemetry from SSH df -P -B1 command
