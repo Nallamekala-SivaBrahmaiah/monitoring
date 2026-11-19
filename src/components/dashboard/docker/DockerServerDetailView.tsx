@@ -284,6 +284,10 @@ export function DockerServerDetailView({
   const [isPaused, setIsPaused] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
 
+  // Multi-Application Stack & Container Selection
+  const [selectedStack, setSelectedStack] = useState<string>('all');
+  const [selectedContainerTarget, setSelectedContainerTarget] = useState<string>('');
+
   // Role Mappings
   const [roleMapping, setRoleMapping] = useState({
     frontend: 'monitoring-frontend',
@@ -406,16 +410,96 @@ export function DockerServerDetailView({
   }, [fetchResources]);
 
   // ---------------------------------------------------------------------------
-  // 2. Fetch Console Logs
+  // 2. Fetch Console Logs & Dynamic Target Resolution
   // ---------------------------------------------------------------------------
+  const availableStacks = React.useMemo(() => {
+    return [
+      { id: 'all', name: 'All Applications (Fleet)', tag: 'GLOBAL', color: 'border-slate-500/30 text-slate-300' },
+      { id: 'mern', name: 'MERN Stack (React / Node / Mongo)', tag: 'MERN', color: 'border-cyan-500/30 text-cyan-300' },
+      { id: 'python', name: 'Python Stack (FastAPI / Postgres)', tag: 'PYTHON', color: 'border-amber-500/30 text-amber-300' },
+      { id: 'java', name: 'Java Stack (Spring Boot / DB)', tag: 'JAVA', color: 'border-rose-500/30 text-rose-300' },
+      { id: 'dotnet', name: '.NET Core Stack (Web API / DB)', tag: '.NET', color: 'border-purple-500/30 text-purple-300' },
+    ];
+  }, []);
+
+  // Filter containers by selected stack
+  const currentStackContainers = React.useMemo(() => {
+    if (selectedStack === 'all') return containers;
+    return containers.filter(
+      (c) =>
+        c.name.toLowerCase().startsWith(selectedStack.toLowerCase()) ||
+        c.name.toLowerCase().includes(selectedStack.toLowerCase())
+    );
+  }, [containers, selectedStack]);
+
+  // Filter containers for current role
+  const containersForCurrentRole = React.useMemo(() => {
+    if (consoleRole === 'frontend') {
+      const fList = currentStackContainers.filter(
+        (c) =>
+          c.name.includes('frontend') ||
+          c.name.includes('web') ||
+          c.name.includes('ui') ||
+          c.name.includes('client')
+      );
+      return fList.length > 0 ? fList : currentStackContainers;
+    }
+    if (consoleRole === 'backend') {
+      const bList = currentStackContainers.filter(
+        (c) =>
+          c.name.includes('backend') ||
+          c.name.includes('api') ||
+          c.name.includes('server') ||
+          c.name.includes('app')
+      );
+      return bList.length > 0 ? bList : currentStackContainers;
+    }
+    if (consoleRole === 'database') {
+      const dList = currentStackContainers.filter(
+        (c) =>
+          c.name.includes('database') ||
+          c.name.includes('postgres') ||
+          c.name.includes('db') ||
+          c.name.includes('mongo') ||
+          c.name.includes('redis') ||
+          c.name.includes('sql')
+      );
+      return dList.length > 0 ? dList : currentStackContainers;
+    }
+    // combined
+    return currentStackContainers;
+  }, [currentStackContainers, consoleRole]);
+
+  // Effective Target Container to query logs for
+  const effectiveTargetContainer = React.useMemo(() => {
+    if (selectedContainerTarget) {
+      const exists = containers.some((c) => c.name === selectedContainerTarget);
+      if (exists) return selectedContainerTarget;
+    }
+
+    if (consoleRole === 'combined') {
+      if (selectedStack !== 'all') {
+        const stackContainerNames = currentStackContainers.map((c) => c.name);
+        return stackContainerNames.length > 0 ? stackContainerNames.join(',') : 'all';
+      }
+      return 'all';
+    }
+
+    if (containersForCurrentRole.length > 0) {
+      return containersForCurrentRole[0].name;
+    }
+
+    if (consoleRole === 'frontend') return roleMapping.frontend || (containers[0]?.name ?? 'all');
+    if (consoleRole === 'backend') return roleMapping.backend || (containers[0]?.name ?? 'all');
+    if (consoleRole === 'database') return roleMapping.database || (containers[0]?.name ?? 'all');
+    return 'all';
+  }, [selectedContainerTarget, containers, consoleRole, selectedStack, currentStackContainers, containersForCurrentRole, roleMapping]);
+
   const fetchConsoleLogs = useCallback(async () => {
     if (isPaused) return;
     setConsoleLoading(true);
     try {
-      let targetContainer = roleMapping.frontend;
-      if (consoleRole === 'backend') targetContainer = roleMapping.backend;
-      if (consoleRole === 'database') targetContainer = roleMapping.database;
-      if (consoleRole === 'combined') targetContainer = 'monitoring-frontend';
+      const targetContainer = effectiveTargetContainer;
 
       const res = await fetch(
         `/api/docker/servers/${host.id}/logs?container=${encodeURIComponent(targetContainer)}&lines=${consoleTail}`
@@ -423,19 +507,22 @@ export function DockerServerDetailView({
       const data = await res.json();
       if (res.ok && data.logs) {
         setConsoleLogs(data.logs);
+      } else if (data.error) {
+        setConsoleLogs(`[ERROR] ${data.error}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to fetch logs:', err);
+      setConsoleLogs(`[FETCH ERROR] ${err.message || 'Network request failed'}`);
     } finally {
       setConsoleLoading(false);
     }
-  }, [host.id, consoleRole, roleMapping, consoleTail, isPaused]);
+  }, [host.id, effectiveTargetContainer, consoleTail, isPaused]);
 
   useEffect(() => {
     if (activeTab === 'console') {
       fetchConsoleLogs();
     }
-  }, [activeTab, consoleRole, fetchConsoleLogs]);
+  }, [activeTab, consoleRole, effectiveTargetContainer, fetchConsoleLogs]);
 
   // Auto-scroll terminal
   useEffect(() => {
@@ -995,7 +1082,20 @@ export function DockerServerDetailView({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setRoleMapping((prev) => ({ ...prev, frontend: c.name }));
+                                    setSelectedContainerTarget(c.name);
+                                    if (c.name.includes('frontend') || c.name.includes('web') || c.name.includes('ui')) {
+                                      setConsoleRole('frontend');
+                                    } else if (c.name.includes('backend') || c.name.includes('api') || c.name.includes('server')) {
+                                      setConsoleRole('backend');
+                                    } else if (c.name.includes('database') || c.name.includes('postgres') || c.name.includes('db')) {
+                                      setConsoleRole('database');
+                                    } else {
+                                      setConsoleRole('combined');
+                                    }
+                                    const prefix = c.name.split('-')[0].toLowerCase();
+                                    if (['mern', 'python', 'java', 'dotnet'].includes(prefix)) {
+                                      setSelectedStack(prefix);
+                                    }
                                     setActiveTab('console');
                                   }}
                                   className="p-1 rounded bg-[#070B14] hover:bg-[#18233C] text-slate-400 hover:text-white border border-[#1E293B] cursor-pointer"
@@ -1253,19 +1353,115 @@ export function DockerServerDetailView({
             </div>
           </div>
 
-          {/* Role Mapping & Console Controls Toolbar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2 text-slate-400">
-              <span className="font-semibold text-slate-300">Target Container:</span>
-              <span className="px-2 py-0.5 rounded bg-[#070B14] text-cyan-400 font-mono border border-[#1E293B] font-bold">
-                {consoleRole === 'frontend'
-                  ? roleMapping.frontend
-                  : consoleRole === 'backend'
-                  ? roleMapping.backend
-                  : consoleRole === 'database'
-                  ? roleMapping.database
-                  : 'All Application Containers'}
+          {/* 1. Application / Stack Selection Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#070B14] p-3 rounded-xl border border-[#1E293B]">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <Layers className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-white block">
+                  Application Stack Filter:
+                </span>
+                <span className="text-[11px] text-slate-400 block">
+                  Select which application stack to view
+                </span>
+              </div>
+            </div>
+
+            {/* Stack Selection Pills */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {availableStacks.map((st) => {
+                const isSelected = selectedStack === st.id;
+                return (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedStack(st.id);
+                      setSelectedContainerTarget(''); // reset explicit target to auto-scope
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border ${
+                      isSelected
+                        ? 'bg-blue-600 text-white border-blue-400/50 shadow-sm shadow-blue-600/30'
+                        : 'bg-[#0B1120] text-slate-400 hover:text-white hover:bg-[#18233C] border-[#1E293B]'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        isSelected ? 'bg-white' : 'bg-slate-500'
+                      }`}
+                    />
+                    <span>{st.name.split('(')[0].trim()}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 2. Role Mapping & Console Controls Toolbar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-[#090E1A] p-3 rounded-xl border border-[#1E293B]">
+            {/* Target Container Dropdown Selector */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+                <Boxes className="w-4 h-4 text-cyan-400" />
+                <span>Target Container:</span>
               </span>
+
+              {/* Interactive Container Dropdown */}
+              <div className="relative">
+                <select
+                  value={effectiveTargetContainer}
+                  onChange={(e) => setSelectedContainerTarget(e.target.value)}
+                  className="bg-[#070B14] border border-[#1E293B] hover:border-cyan-500/50 text-cyan-300 font-mono text-xs rounded-xl px-3 py-1.5 font-bold focus:border-cyan-500 focus:outline-none cursor-pointer transition shadow-inner"
+                >
+                  {consoleRole === 'combined' && (
+                    <option value={effectiveTargetContainer}>
+                      {selectedStack === 'all'
+                        ? '⚡ All Fleet Containers Combined'
+                        : `⚡ All ${selectedStack.toUpperCase()} Stack Containers Combined`}
+                    </option>
+                  )}
+                  {containersForCurrentRole.map((c) => (
+                    <option key={c.id || c.name} value={c.name}>
+                      {c.name} ({c.state} • {c.ports ? c.ports.split(',')[0] : 'internal'})
+                    </option>
+                  ))}
+                  {containersForCurrentRole.length < containers.length && (
+                    <optgroup label="── All Running Host Containers ──">
+                      {containers.map((c) => (
+                        <option key={`all-${c.id || c.name}`} value={c.name}>
+                          {c.name} ({c.state} • {c.ports ? c.ports.split(',')[0] : 'internal'})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {/* Live Container Telemetry Tag */}
+              {(() => {
+                const activeC = containers.find((c) => c.name === effectiveTargetContainer);
+                if (!activeC) return null;
+                return (
+                  <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#070B14] border border-[#1E293B] text-[11px]">
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        activeC.state === 'running' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                      }`}
+                    />
+                    <span className="text-slate-200 font-mono font-bold">{activeC.name}</span>
+                    <span className="text-slate-500 border-l border-[#1E293B] pl-2 font-mono">
+                      {activeC.image}
+                    </span>
+                    {activeC.ports && (
+                      <span className="text-cyan-400 border-l border-[#1E293B] pl-2 font-mono font-semibold">
+                        {activeC.ports.split(',')[0]}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -1327,7 +1523,7 @@ export function DockerServerDetailView({
               consoleLogs
             ) : (
               <div className="py-20 text-center text-slate-500">
-                No logs recorded yet for container target "{roleMapping.frontend}".
+                No logs recorded yet for container target "{effectiveTargetContainer}".
               </div>
             )}
           </div>

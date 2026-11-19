@@ -644,9 +644,20 @@ export async function getContainerLogs(
 ): Promise<{ success: boolean; logs: string; error?: string }> {
   try {
     const dockerCmd = await detectDockerCommand(server);
-    const target = containerTarget.trim();
+    const target = (containerTarget || 'all').trim();
 
-    const cmd = `${dockerCmd} logs --tail ${lines} --timestamps ${target} 2>&1`;
+    let cmd = '';
+    if (target.includes(',') || target === 'all' || target === 'combined') {
+      if (target.includes(',')) {
+        const cList = target.split(',').map((c) => c.trim()).filter(Boolean);
+        cmd = `for c in ${cList.join(' ')}; do echo "============================== [CONTAINER: $c] =============================="; ${dockerCmd} logs --tail ${lines} --timestamps "$c" 2>&1 || true; echo ""; done`;
+      } else {
+        cmd = `for c in $(${dockerCmd} ps --format '{{.Names}}'); do echo "============================== [CONTAINER: $c] =============================="; ${dockerCmd} logs --tail 50 --timestamps "$c" 2>&1 || true; echo ""; done`;
+      }
+    } else {
+      cmd = `${dockerCmd} logs --tail ${lines} --timestamps ${target} 2>&1`;
+    }
+
     const res = await executeSSH(server, cmd, 15000);
 
     return {
