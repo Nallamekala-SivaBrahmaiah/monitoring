@@ -171,11 +171,10 @@ async function autoImportExistingServers() {
     }
   }
 
-  // 2. Sync from CloudResource (AWS EC2 & Azure VMs)
+  // 2. Sync from CloudResource (AWS EC2, Azure VMs, and On-Premises)
   for (const cr of cloudResources as any[]) {
-    const host = (cr.publicIp && cr.publicIp !== '-' ? cr.publicIp : cr.privateIp || '').trim();
+    const host = (cr.publicIp && cr.publicIp !== '-' ? cr.publicIp : cr.privateIp || cr.host || '').trim();
     if (!host || host === '-') continue;
-    if (cr.provider === 'on-premise' || cr.provider === 'on-premises') continue;
 
     const creds =
       credsByLookup.get(host.toLowerCase()) ||
@@ -364,19 +363,23 @@ async function autoImportExistingServers() {
     for (const cr of cloudResources as any[]) {
       const pub = (cr.publicIp || '').trim().toLowerCase();
       const priv = (cr.privateIp || '').trim().toLowerCase();
+      const host = (cr.host || '').trim().toLowerCase();
       const inst = (cr.resourceId || '').trim().toLowerCase();
       const nm = (cr.name || '').trim().toLowerCase();
       if (pub && pub !== '-') validCloudHosts.add(pub);
       if (priv && priv !== '-') validCloudHosts.add(priv);
+      if (host && host !== '-') validCloudHosts.add(host);
       if (inst) validCloudInstanceIds.add(inst);
       if (nm) validCloudNames.add(nm);
     }
 
     for (const s of servers as any[]) {
-      const host = (s.host || s.ip || '').trim().toLowerCase();
-      const inst = (s.resourceId || s.cloudResourceId || '').trim().toLowerCase();
+      const host = (s.host || s.ip || s.publicIp || '').trim().toLowerCase();
+      const priv = (s.privateIp || '').trim().toLowerCase();
+      const inst = (s.resourceId || s.cloudResourceId || s.instanceId || '').trim().toLowerCase();
       const nm = (s.name || '').trim().toLowerCase();
       if (host && host !== '-') validCloudHosts.add(host);
+      if (priv && priv !== '-') validCloudHosts.add(priv);
       if (inst) validCloudInstanceIds.add(inst);
       if (nm) validCloudNames.add(nm);
     }
@@ -388,15 +391,26 @@ async function autoImportExistingServers() {
       const h = (srv.host || '').trim().toLowerCase();
       const inst = (srv.instanceId || '').trim().toLowerCase();
       const nm = (srv.name || '').trim().toLowerCase();
+      const prov = (srv.cloudProvider || '').toLowerCase().trim();
+      const hasAuth = Boolean(srv.encryptedAuthSecret);
 
       const isKnownFake = KNOWN_FAKE_HOSTS.includes(h);
+      const isOnPrem =
+        prov === 'on-premise' ||
+        prov === 'on-premises' ||
+        prov === 'onprem' ||
+        prov === 'other' ||
+        prov === 'custom' ||
+        prov === 'datacenter' ||
+        prov === 'bare-metal';
 
       const existsInCloud =
         (h && validCloudHosts.has(h)) ||
         (inst && validCloudInstanceIds.has(inst)) ||
         (nm && validCloudNames.has(nm));
 
-      if (isKnownFake || !existsInCloud) {
+      // Never prune servers that are on-premises, custom, or have encrypted auth credentials
+      if (isKnownFake || (!existsInCloud && !isOnPrem && !hasAuth)) {
         staleIds.push(srv._id);
       }
     }

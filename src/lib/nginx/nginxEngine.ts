@@ -144,11 +144,7 @@ export async function executeSSH(
       client = new Client();
 
       client.on('ready', () => {
-        // Automatically inject standard environment paths for Node.js, NVM, and PM2
-        const envScript = `for nvm_bin in "$HOME/.nvm/versions/node"/*/bin /usr/local/bin "$HOME/.local/bin" "$HOME/.npm-global/bin" /snap/bin; do [ -d "$nvm_bin" ] && export PATH="$nvm_bin:$PATH"; done; [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" 2>/dev/null || true;\n`;
-        const wrappedCommand = envScript + command;
-
-        client!.exec(wrappedCommand, (err, stream) => {
+        client!.exec(command, (err, stream) => {
           if (err) {
             finished = true;
             cleanup();
@@ -331,14 +327,16 @@ uptime -p 2>/dev/null || uptime 2>/dev/null || echo "Unknown"
     // 3. Metrics
     const memRaw = getSection('METRICS_MEM');
     let memoryPercent = 0;
+    let totalMemBytes = 0;
     if (memRaw) {
       const memLines = memRaw.split('\n');
       const memLine = memLines.find((l) => l.startsWith('Mem:'));
       if (memLine) {
         const parts = memLine.split(/\s+/);
-        const total = parseFloat(parts[1]) || 1;
-        const used = parseFloat(parts[2]) || 0;
-        memoryPercent = Math.min(100, Math.round((used / total) * 100));
+        const totalMb = parseFloat(parts[1]) || 1;
+        const usedMb = parseFloat(parts[2]) || 0;
+        memoryPercent = Math.min(100, Math.round((usedMb / totalMb) * 100));
+        totalMemBytes = totalMb * 1024 * 1024;
       }
     }
 
@@ -368,19 +366,42 @@ uptime -p 2>/dev/null || uptime 2>/dev/null || echo "Unknown"
       pm2Count,
       pm2RunningCount,
       pm2FailedCount,
-      pm2Processes: pm2List.map((p) => ({
-        name: p.name,
-        pmId: p.pm_id,
-        pid: p.pid,
-        cwd: p.pm2_env?.pm_cwd || p.pm2_env?.env?.PWD || '',
-        status: p.pm2_env?.status || 'unknown',
-        cpu: p.monit?.cpu || 0,
-        memoryBytes: p.monit?.memory || 0,
-        restarts: p.pm2_env?.restart_time || 0,
-        uptimeSeconds: p.pm2_env?.pm_uptime ? Math.floor((Date.now() - p.pm2_env.pm_uptime) / 1000) : 0,
-        script: p.pm2_env?.pm_exec_path || '',
-        port: p.pm2_env?.env?.PORT || undefined,
-      })),
+      pm2Processes: pm2List.map((p) => {
+        const memBytes = p.monit?.memory || p.memory || p.memoryBytes || 0;
+        const memMb = (memBytes / (1024 * 1024)).toFixed(1);
+        const memPercent = totalMemBytes > 0 && memBytes > 0
+          ? ((memBytes / totalMemBytes) * 100).toFixed(1)
+          : (p.monit?.memory_percent ? Number(p.monit.memory_percent).toFixed(1) : '0.0');
+
+        let uptimeStr = 'Active';
+        if (p.pm2_env?.pm_uptime) {
+          const diffSec = Math.floor((Date.now() - p.pm2_env.pm_uptime) / 1000);
+          if (diffSec < 60) uptimeStr = `${diffSec}s`;
+          else if (diffSec < 3600) uptimeStr = `${Math.floor(diffSec / 60)}m`;
+          else if (diffSec < 86400) uptimeStr = `${Math.floor(diffSec / 3600)}h ${Math.floor((diffSec % 3600) / 60)}m`;
+          else uptimeStr = `${Math.floor(diffSec / 86400)}d ${Math.floor((diffSec % 86400) / 3600)}h`;
+        }
+
+        return {
+          name: p.name,
+          pmId: p.pm_id,
+          pm_id: p.pm_id,
+          pid: p.pid,
+          cwd: p.pm2_env?.pm_cwd || p.pm2_env?.env?.PWD || '',
+          status: p.pm2_env?.status || 'unknown',
+          mode: p.pm2_env?.exec_mode?.replace('_mode', '') || 'fork',
+          cpu: typeof p.monit?.cpu === 'number' ? (p.monit.cpu % 1 === 0 ? p.monit.cpu : parseFloat(p.monit.cpu.toFixed(1))) : (p.cpu || 0),
+          memory: memBytes,
+          memoryBytes: memBytes,
+          memoryMb: parseFloat(memMb),
+          memoryPercent: `${memPercent}%`,
+          restarts: p.pm2_env?.restart_time || 0,
+          uptime: uptimeStr,
+          uptimeSeconds: p.pm2_env?.pm_uptime ? Math.floor((Date.now() - p.pm2_env.pm_uptime) / 1000) : 0,
+          script: p.pm2_env?.pm_exec_path || '',
+          port: p.pm2_env?.env?.PORT || undefined,
+        };
+      }),
       metrics: {
         memoryPercent,
         diskPercent,
@@ -1423,39 +1444,18 @@ ${dirScript}
     for (const d of validDirs) {
       const safe = path.normalize(d).replace(/\\/g, '/');
       const dirBase = path.basename(safe).toLowerCase();
-      const safeLower = safe.toLowerCase();
 
       // Find matching PM2 process
       const matchingPm2 = pm2List.find((p: any) => {
-        const pCwd = path.normalize(p.pm2_env?.pm_cwd || p.pm2_env?.env?.PWD || '').replace(/\\/g, '/').toLowerCase();
-        const pExec = (p.pm2_env?.pm_exec_path || '').toLowerCase();
+        const pCwd = path.normalize(p.pm2_env?.pm_cwd || '').replace(/\\/g, '/');
         const pName = (p.name || '').toLowerCase();
-
-        // 1. Exact or prefix/suffix directory match
-        if (pCwd && (pCwd === safeLower || safeLower.startsWith(pCwd) || pCwd.startsWith(safeLower))) return true;
-        // 2. Executable/script path inside application directory
-        if (pExec && (pExec.includes(safeLower) || pExec.includes(dirBase))) return true;
-        // 3. Name matches folder base
-        if (pName && (pName === dirBase || safeLower.endsWith('/' + pName))) return true;
-        // 4. Fuzzy slug matching (e.g., 'rachananews-backend-staging' vs 'rachananews-adminbackend')
-        const cleanP = pName.replace(/[^a-z0-9]/g, '');
-        const cleanD = dirBase.replace(/[^a-z0-9]/g, '');
-        if (cleanP && cleanD && (cleanP.includes(cleanD) || cleanD.includes(cleanP))) return true;
-        return false;
+        return pCwd === safe || pName === dirBase || safe.endsWith('/' + pName);
       });
 
-      const isPm2Online = matchingPm2?.pm2_env?.status === 'online';
       const cpuPercent = typeof matchingPm2?.monit?.cpu === 'number' ? matchingPm2.monit.cpu : 0;
       const memoryMb = matchingPm2?.monit?.memory ? Math.round(matchingPm2.monit.memory / (1024 * 1024)) : 0;
-      
-      // If frontend application is static / served by Nginx (e.g. dist / build / index.html), mark online
-      const isStaticFrontend = dirBase.includes('frontend') || dirBase.includes('adminfrontend') || dirBase.includes('ui');
-      const pm2Status = isPm2Online
-        ? 'online'
-        : matchingPm2
-        ? (matchingPm2.pm2_env?.status || 'stopped')
-        : (isStaticFrontend ? 'online' : 'stopped');
-      const pm2Name = matchingPm2?.name || (isStaticFrontend ? 'nginx-static' : '');
+      const pm2Status = matchingPm2?.pm2_env?.status || (matchingPm2 ? 'online' : 'stopped');
+      const pm2Name = matchingPm2?.name || '';
 
       const marker = `===DIR:${safe}===`;
       const idx = out.indexOf(marker);

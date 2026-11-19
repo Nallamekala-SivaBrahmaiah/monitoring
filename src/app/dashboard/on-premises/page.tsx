@@ -41,25 +41,28 @@ export default function OnPremisesPage() {
   }
   const allAvailable = mergedMap.size > 0 ? Array.from(mergedMap.values()) : directServers;
 
-  // STRICT FILTER: Only display dedicated on-premises servers
+  // STRICT FILTER: Display dedicated on-premises & custom integrated servers
   const onPremServers = allAvailable.filter((s: any) => {
     const prov = (s.cloudProvider || '').toLowerCase();
     const resId = (s.cloudResourceId || s.instanceId || '').toLowerCase();
 
-    // Exclude cloud resources automatically discovered via cloud account sync
-    if (prov === 'aws' || prov === 'azure' || prov === 'gcp') return false;
-    if (resId.startsWith('i-') || resId.includes('/subscriptions/') || resId.includes('/resourcegroups/')) return false;
-
-    return (
+    // Dedicated on-premise, datacenter, bare-metal or custom registered servers
+    if (
       prov === 'on-premise' ||
       prov === 'on-premises' ||
       prov === 'onprem' ||
-      prov === 'other' ||
       prov === 'datacenter' ||
       prov === 'bare-metal' ||
-      prov === 'custom' ||
-      !prov
-    );
+      prov === 'custom'
+    ) {
+      return true;
+    }
+
+    // Exclude cloud resources automatically discovered via cloud account fleet sync
+    if (prov === 'aws' || prov === 'azure' || prov === 'gcp') return false;
+    if (resId.startsWith('i-') || resId.includes('/subscriptions/') || resId.includes('/resourcegroups/')) return false;
+
+    return prov === 'other' || !prov;
   });
 
   const onlineCount = onPremServers.filter((s: any) => {

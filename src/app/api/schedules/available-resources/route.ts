@@ -207,6 +207,40 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // 4. Add On-Premises & custom resources from CloudResource collection
+    const onPremCloudResources = await (CloudResource as any).find({
+      provider: { $in: ['on-premise', 'on-premises', 'other', 'custom', 'datacenter', 'bare-metal'] },
+      isDeleted: { $ne: true },
+      status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
+    }).lean();
+
+    for (const cr of onPremCloudResources as any[]) {
+      const crId = cr._id.toString();
+      const crHost = (cr.publicIp || cr.privateIp || cr.host || '').trim();
+      const crName = (cr.name || crHost || 'On-Premise Server').trim();
+      const resId = cr.resourceId || crId;
+
+      const dedupKey = `on-premise:${resId}`;
+      if (seenKeys.has(dedupKey) || (crHost && seenKeys.has(`on-premise:${crHost}`))) continue;
+      seenKeys.add(dedupKey);
+      if (crHost) seenKeys.add(`on-premise:${crHost}`);
+
+      const rawStatus = (cr.status || '').toLowerCase();
+      const isOnline = rawStatus === 'online' || rawStatus === 'running';
+
+      availableResources.push({
+        id: crId,
+        name: crName,
+        resourceId: resId,
+        provider: 'on-premise',
+        region: cr.region || 'Datacenter',
+        currentState: isOnline ? 'Running' : 'Stopped',
+        ipAddress: crHost,
+        sshServerId: cr.metadata?.sshServerId || cr.tags?.sshServerId,
+        isSSHConnected: Boolean(cr.metadata?.isSSHConnected || cr.tags?.isSSHConnected === 'true'),
+      });
+    }
+
     // Sort alphabetically by server name
     availableResources.sort((a, b) => a.name.localeCompare(b.name));
 

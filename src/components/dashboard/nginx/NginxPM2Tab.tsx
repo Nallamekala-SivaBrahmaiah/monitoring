@@ -248,8 +248,8 @@ export function NginxPM2Tab({ activeServer }: NginxPM2TabProps) {
                         {proc.cpu}%
                       </td>
 
-                      <td className="py-3 px-4 font-mono text-slate-300">
-                        {memMb} MB
+                      <td className="py-3 px-4 font-mono text-purple-300 font-semibold">
+                        {proc.memoryPercent && proc.memoryPercent !== '0.0%' ? `${proc.memoryPercent} (${memMb} MB)` : `${memMb} MB`}
                       </td>
 
                       <td className="py-3 px-4 font-mono text-slate-400">

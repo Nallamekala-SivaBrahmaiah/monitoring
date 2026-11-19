@@ -122,31 +122,19 @@ export async function GET(
     const appsWithDisk = apps.map((app: any) => {
       const safeDir = path.normalize(app.directory || '').replace(/\\/g, '/');
       const disk = diskMetricsMap[safeDir];
-      const isOnline = disk?.pm2Status === 'online' || app.status === 'Deployed' || app.healthStatus === 'Healthy';
-      const resolvedStatus = isOnline ? 'Deployed' : 'Stopped';
-      const resolvedHealth = isOnline ? 'Healthy' : 'Stopped';
-      const resolvedPm2 = disk?.pm2Name || app.pm2ProcessName || '';
-
-      if (isOnline && (app.status !== 'Deployed' || !app.pm2ProcessName)) {
-        NginxApp.updateOne(
-          { _id: app._id },
-          { $set: { status: 'Deployed', healthStatus: 'Healthy', pm2ProcessName: resolvedPm2 } }
-        ).catch(() => null);
-      }
-
       return {
         ...app,
         cpu: disk?.cpuPercent !== undefined ? disk.cpuPercent : (app.cpu || 0),
         memoryMb: disk?.memoryMb !== undefined ? disk.memoryMb : (app.memoryMb || 0),
-        pm2ProcessName: resolvedPm2,
+        pm2ProcessName: disk?.pm2Name || app.pm2ProcessName || '',
         hostCpu: disk?.hostCpu ?? 2.3,
         cpuCores: disk?.cpuCores ?? 2,
         totalRam: disk?.totalRam ?? '7.7 GB',
         freeRam: disk?.freeRam ?? '6.6 GB',
         hostRamUsed: disk?.hostRamUsed ?? '1.1 GB',
         hostRamPercent: disk?.hostRamPercent ?? 15,
-        status: resolvedStatus,
-        healthStatus: resolvedHealth,
+        status: disk?.pm2Status === 'online' ? 'Deployed' : (app.status === 'Deployed' ? 'Deployed' : 'Stopped'),
+        healthStatus: disk?.pm2Status === 'online' ? 'Healthy' : (app.healthStatus === 'Healthy' ? 'Healthy' : 'Stopped'),
         diskMetrics: disk || {
           status: 'unavailable',
           total: 'Unavailable',

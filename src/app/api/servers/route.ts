@@ -740,6 +740,9 @@ export async function POST(request: NextRequest) {
           accountId: 'custom-server',
           region: region || 'global',
           name: serverDoc.name,
+          host: serverDoc.host,
+          publicIp: serverDoc.host,
+          privateIp: serverDoc.privateIp || serverDoc.host,
           resourceType: 'Server',
           status: isInitialOnline ? 'Running' : 'Stopped',
           metrics: {
@@ -753,6 +756,11 @@ export async function POST(request: NextRequest) {
             ip: serverDoc.host,
             os: initialSpecs?.os ? `${initialSpecs.os.name} ${initialSpecs.os.version || ''}` : 'Linux',
             isSSHConnected: 'true',
+            sshServerId: serverDoc._id.toString(),
+          },
+          metadata: {
+            sshServerId: serverDoc._id.toString(),
+            isSSHConnected: true,
           },
           isDeleted: false,
           lastSyncedAt: new Date(),
@@ -770,9 +778,10 @@ export async function POST(request: NextRequest) {
           $set: {
             name: serverDoc.name,
             host: hostTrim,
+            publicIp: hostTrim,
             privateIp: serverDoc.privateIp || '',
             region: serverDoc.region || '',
-            instanceId: serverDoc.instanceId || serverDoc.cloudResourceId || '',
+            instanceId: serverDoc.instanceId || serverDoc.cloudResourceId || serverDoc._id.toString(),
             cloudProvider: (serverDoc.cloudProvider || 'other').toLowerCase(),
             connectionStatus: isInitialOnline ? 'Online' : 'Offline',
             osName: initialSpecs?.os?.name || serverDoc.os?.name || 'Linux',
@@ -783,6 +792,7 @@ export async function POST(request: NextRequest) {
             authSecretIv: encrypted.iv,
             authSecretTag: encrypted.tag,
             lastConnectedAt: new Date(),
+            isActive: true,
           },
         },
         { upsert: true }

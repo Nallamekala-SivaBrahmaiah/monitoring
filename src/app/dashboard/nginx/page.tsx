@@ -150,7 +150,9 @@ export default function NginxDashboardPage() {
       ]);
       const dataNginx = await resNginx.json();
       const dataServers = resServers && resServers.ok ? await resServers.json() : null;
-      const registeredServers: any[] = dataServers?.servers || [];
+      const registeredServers: any[] = Array.isArray(dataServers)
+        ? dataServers
+        : (dataServers?.servers || []);
 
       const KNOWN_FAKE_HOSTS = new Set([
         '4.240.109.230',
@@ -170,7 +172,22 @@ export default function NginxDashboardPage() {
           .filter((s) => {
             const h = (s.host || '').trim().toLowerCase();
             const nm = (s.name || '').toLowerCase();
+            const prov = (s.cloudProvider || '').toLowerCase();
             if (KNOWN_FAKE_HOSTS.has(h)) return false;
+
+            // Always retain dedicated, on-premise, and credential-backed servers
+            if (
+              prov === 'on-premise' ||
+              prov === 'on-premises' ||
+              prov === 'other' ||
+              prov === 'custom' ||
+              prov === 'datacenter' ||
+              prov === 'bare-metal' ||
+              (s as any).hasSavedKey ||
+              (s as any).encryptedAuthSecret
+            ) {
+              return true;
+            }
 
             if (registeredServers.length > 0) {
               const matched = registeredServers.some((rs: any) => {

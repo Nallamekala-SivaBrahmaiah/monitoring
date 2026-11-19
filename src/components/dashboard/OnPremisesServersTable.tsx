@@ -51,21 +51,23 @@ export function OnPremisesServersTable({
       const prov = (s.cloudProvider || '').toLowerCase();
       const resId = (s.cloudResourceId || s.instanceId || '').toLowerCase();
 
-      // Filter out auto-synced cloud instances
-      if (prov === 'aws' || prov === 'azure' || prov === 'gcp') return false;
-      if (resId.startsWith('i-') || resId.includes('/subscriptions/') || resId.includes('/resourcegroups/')) return false;
-
-      // Include explicitly registered on-premise / standalone servers
-      return (
+      // Include explicitly registered on-premise, datacenter, bare-metal or custom servers
+      if (
         prov === 'on-premise' ||
         prov === 'on-premises' ||
         prov === 'onprem' ||
-        prov === 'other' ||
         prov === 'datacenter' ||
         prov === 'bare-metal' ||
-        prov === 'custom' ||
-        !prov
-      );
+        prov === 'custom'
+      ) {
+        return true;
+      }
+
+      // Filter out auto-synced cloud fleet instances
+      if (prov === 'aws' || prov === 'azure' || prov === 'gcp') return false;
+      if (resId.startsWith('i-') || resId.includes('/subscriptions/') || resId.includes('/resourcegroups/')) return false;
+
+      return prov === 'other' || !prov;
     });
   }, [servers, localServers, customServers]);
 
