@@ -18,36 +18,39 @@ export async function GET(
     }
 
     const sid = server._id?.toString() || id;
+    const defaultUser = server.username || 'azureuser';
+
+    const defaultStackConfig = {
+      serverId: sid,
+      appName: 'mern-stack-app',
+      stackType: 'mern',
+      gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/mern-stack-app.git',
+      gitBranch: 'main',
+      appDirectory: `/home/${defaultUser}/apps/mern`,
+      frontendDirectory: 'src',
+      backendDirectory: 'src/server',
+      frontendDockerfile: 'Dockerfile',
+      backendDockerfile: 'Dockerfile',
+      composeFilePath: 'docker-compose.yml',
+      packageManager: 'npm',
+      buildCommand: 'npm run build',
+      runCommand: 'npm start',
+      frontendContainerName: 'mern-frontend',
+      backendContainerName: 'mern-backend',
+      databaseContainerName: 'mern-database',
+      redisContainerName: 'mern-redis-cache',
+      nginxContainerName: 'mern-nginx-proxy',
+      frontendPort: 3001,
+      backendPort: 5001,
+      databasePort: 5431,
+      healthCheckUrl: 'http://localhost:3001',
+      healthCheckTimeout: 15,
+    };
 
     // Load or create default app config
     let config = await DockerAppConfig.findOne({ serverId: sid }).lean();
-    if (!config) {
-      config = {
-        serverId: sid,
-        appName: 'monitoring-app',
-        stackType: 'mern',
-        gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
-        gitBranch: 'main',
-        appDirectory: `/home/${server.username || 'siva'}/monitoring`,
-        frontendDirectory: 'src',
-        backendDirectory: 'src/server',
-        frontendDockerfile: 'Dockerfile',
-        backendDockerfile: 'Dockerfile',
-        composeFilePath: 'docker-compose.yml',
-        packageManager: 'npm',
-        buildCommand: 'npm run build',
-        runCommand: 'npm start',
-        frontendContainerName: 'monitoring-frontend',
-        backendContainerName: 'monitoring-backend',
-        databaseContainerName: 'monitoring-database',
-        redisContainerName: 'monitoring-redis-cache',
-        nginxContainerName: 'monitoring-nginx-proxy',
-        frontendPort: 3000,
-        backendPort: 5000,
-        databasePort: 27017,
-        healthCheckUrl: 'http://localhost:3000',
-        healthCheckTimeout: 15,
-      };
+    if (!config || config.gitRepoUrl?.includes('monitoring.git') || config.appName === 'monitoring-app') {
+      config = defaultStackConfig;
     }
 
     // Load deployment history
@@ -102,34 +105,37 @@ export async function POST(
     }
 
     // Load effective configuration
+    const defaultUser = server.username || 'azureuser';
+    const defaultStackConfig = {
+      serverId: sid,
+      appName: 'mern-stack-app',
+      stackType: 'mern',
+      gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/mern-stack-app.git',
+      gitBranch: 'main',
+      appDirectory: `/home/${defaultUser}/apps/mern`,
+      frontendDirectory: 'src',
+      backendDirectory: 'src/server',
+      frontendDockerfile: 'Dockerfile',
+      backendDockerfile: 'Dockerfile',
+      composeFilePath: 'docker-compose.yml',
+      packageManager: 'npm',
+      buildCommand: 'npm run build',
+      runCommand: 'npm start',
+      frontendContainerName: 'mern-frontend',
+      backendContainerName: 'mern-backend',
+      databaseContainerName: 'mern-database',
+      redisContainerName: 'mern-redis-cache',
+      nginxContainerName: 'mern-nginx-proxy',
+      frontendPort: 3001,
+      backendPort: 5001,
+      databasePort: 5431,
+      healthCheckUrl: 'http://localhost:3001',
+      healthCheckTimeout: 15,
+    };
+
     let effectiveConfig = await DockerAppConfig.findOne({ serverId: sid }).lean();
-    if (!effectiveConfig) {
-      effectiveConfig = {
-        serverId: sid,
-        appName: 'monitoring-app',
-        stackType: 'mern',
-        gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
-        gitBranch: 'main',
-        appDirectory: `/home/${server.username || 'siva'}/monitoring`,
-        frontendDirectory: 'src',
-        backendDirectory: 'src/server',
-        frontendDockerfile: 'Dockerfile',
-        backendDockerfile: 'Dockerfile',
-        composeFilePath: 'docker-compose.yml',
-        packageManager: 'npm',
-        buildCommand: 'npm run build',
-        runCommand: 'npm start',
-        frontendContainerName: 'monitoring-frontend',
-        backendContainerName: 'monitoring-backend',
-        databaseContainerName: 'monitoring-database',
-        redisContainerName: 'monitoring-redis-cache',
-        nginxContainerName: 'monitoring-nginx-proxy',
-        frontendPort: 3000,
-        backendPort: 5000,
-        databasePort: 27017,
-        healthCheckUrl: 'http://localhost:3000',
-        healthCheckTimeout: 15,
-      };
+    if (!effectiveConfig || effectiveConfig.gitRepoUrl?.includes('monitoring.git') || effectiveConfig.appName === 'monitoring-app') {
+      effectiveConfig = defaultStackConfig;
     }
 
     // Execute 1-Click Deployment

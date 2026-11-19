@@ -117,6 +117,9 @@ export interface IStackPreset {
   id: string;
   name: string;
   tagline: string;
+  appName: string;
+  gitRepoUrl: string;
+  gitBranch: string;
   badgeColor: string;
   activeGlow: string;
   activeBorder: string;
@@ -139,106 +142,121 @@ const STACK_PRESETS: IStackPreset[] = [
   {
     id: 'mern',
     name: 'MERN Stack',
-    tagline: 'React + Node/Express + Mongo',
+    tagline: 'React 19 + Express API + PostgreSQL/Mongo',
+    appName: 'mern-stack-app',
+    gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/mern-stack-app.git',
+    gitBranch: 'main',
     badgeColor: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
     activeGlow: 'bg-cyan-500/15 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.35)]',
     activeBorder: 'border-cyan-400',
     packageManager: 'npm',
     frontendContainer: 'mern-frontend',
     backendContainer: 'mern-backend',
-    databaseContainer: 'mern-mongodb',
+    databaseContainer: 'mern-database',
     redisContainer: 'mern-redis-cache',
     nginxContainer: 'mern-nginx-proxy',
-    frontendPort: 3000,
-    backendPort: 5000,
-    databasePort: 27017,
+    frontendPort: 3001,
+    backendPort: 5001,
+    databasePort: 5431,
     buildCommand: 'npm run build',
     runCommand: 'npm start',
-    healthCheckUrl: 'http://localhost:3000/api/health',
-    dockerfile: 'Dockerfile (Node LTS)',
+    healthCheckUrl: 'http://localhost:3001',
+    dockerfile: 'Dockerfile (Node 20 LTS)',
   },
   {
     id: 'python',
     name: 'Python',
-    tagline: 'FastAPI / Django + Postgres',
+    tagline: 'FastAPI / Django + Postgres Multi-Tier',
+    appName: 'python-fastapi-app',
+    gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/python-fastapi-app.git',
+    gitBranch: 'main',
     badgeColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
     activeGlow: 'bg-amber-500/15 border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.35)]',
     activeBorder: 'border-amber-400',
     packageManager: 'pip',
-    frontendContainer: 'python-web-ui',
-    backendContainer: 'python-backend-api',
-    databaseContainer: 'python-postgres-db',
+    frontendContainer: 'python-frontend',
+    backendContainer: 'python-backend',
+    databaseContainer: 'python-database',
     redisContainer: 'python-redis-cache',
     nginxContainer: 'python-nginx-proxy',
-    frontendPort: 80,
-    backendPort: 8000,
+    frontendPort: 3002,
+    backendPort: 5002,
     databasePort: 5432,
     buildCommand: 'pip install -r requirements.txt',
-    runCommand: 'uvicorn main:app --host 0.0.0.0 --port 8000',
-    healthCheckUrl: 'http://localhost:8000/docs',
+    runCommand: 'uvicorn main:app --host 0.0.0.0 --port 5002',
+    healthCheckUrl: 'http://localhost:3002',
     dockerfile: 'Dockerfile (Python 3.12)',
   },
   {
     id: 'java',
     name: 'Java (Spring)',
-    tagline: 'Spring Boot + OpenJDK 21',
+    tagline: 'Spring Boot 3.3 + OpenJDK 21 + Postgres',
+    appName: 'java-spring-boot-app',
+    gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/java-spring-boot-app.git',
+    gitBranch: 'main',
     badgeColor: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
     activeGlow: 'bg-orange-500/15 border-orange-400 shadow-[0_0_20px_rgba(249,115,22,0.35)]',
     activeBorder: 'border-orange-400',
-    packageManager: 'gradle',
-    frontendContainer: 'spring-web-portal',
-    backendContainer: 'spring-backend-service',
-    databaseContainer: 'spring-mysql-db',
-    redisContainer: 'spring-redis-cache',
-    nginxContainer: 'spring-nginx-proxy',
-    frontendPort: 80,
+    packageManager: 'mvn',
+    frontendContainer: 'java-frontend',
+    backendContainer: 'java-backend',
+    databaseContainer: 'java-database',
+    redisContainer: 'java-redis-cache',
+    nginxContainer: 'java-nginx-proxy',
+    frontendPort: 3003,
     backendPort: 8080,
-    databasePort: 3306,
-    buildCommand: './gradlew build -x test',
-    runCommand: 'java -jar build/libs/*.jar',
-    healthCheckUrl: 'http://localhost:8080/actuator/health',
+    databasePort: 5433,
+    buildCommand: 'mvn clean package -DskipTests',
+    runCommand: 'java -jar target/*.jar',
+    healthCheckUrl: 'http://localhost:3003',
     dockerfile: 'Dockerfile (OpenJDK 21 JRE)',
   },
   {
     id: 'maven',
     name: 'Maven',
     tagline: 'Apache Maven Multistage Build',
+    appName: 'maven-microservice-app',
+    gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/maven-microservice.git',
+    gitBranch: 'main',
     badgeColor: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
     activeGlow: 'bg-rose-500/15 border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.35)]',
     activeBorder: 'border-rose-400',
     packageManager: 'mvn',
-    frontendContainer: 'maven-web-portal',
-    backendContainer: 'maven-backend-api',
-    databaseContainer: 'maven-postgres-db',
+    frontendContainer: 'maven-frontend',
+    backendContainer: 'maven-backend',
+    databaseContainer: 'maven-database',
     redisContainer: 'maven-redis-cache',
     nginxContainer: 'maven-nginx-proxy',
-    frontendPort: 80,
-    backendPort: 8080,
-    databasePort: 5432,
+    frontendPort: 3005,
+    backendPort: 8085,
+    databasePort: 5435,
     buildCommand: 'mvn clean package -DskipTests',
     runCommand: 'java -jar target/*.jar',
-    healthCheckUrl: 'http://localhost:8080/health',
+    healthCheckUrl: 'http://localhost:3005',
     dockerfile: 'Dockerfile (Maven 3.9 Multi-Stage)',
   },
   {
     id: 'dotnet',
     name: '.NET Core',
-    tagline: 'ASP.NET 8.0/9.0 + C# Web API',
+    tagline: 'ASP.NET 8.0/9.0 + C# Web API Enterprise',
+    appName: 'dotnet-core-app',
+    gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/dotnet-webapi-app.git',
+    gitBranch: 'main',
     badgeColor: 'text-purple-400 bg-purple-500/10 border-purple-500/30',
     activeGlow: 'bg-purple-500/15 border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.35)]',
     activeBorder: 'border-purple-400',
     packageManager: 'dotnet',
-    frontendContainer: 'dotnet-blazor-frontend',
-    backendContainer: 'dotnet-backend-api',
-    databaseContainer: 'dotnet-sqlserver-db',
+    frontendContainer: 'dotnet-frontend',
+    backendContainer: 'dotnet-backend',
+    databaseContainer: 'dotnet-database',
     redisContainer: 'dotnet-redis-cache',
     nginxContainer: 'dotnet-nginx-proxy',
-    frontendPort: 80,
-    backendPort: 5000,
-    databasePort: 1433,
-    buildCommand: 'dotnet restore && dotnet publish -c Release -o /app/publish',
-    runCommand: 'dotnet /app/publish/app.dll',
-    healthCheckUrl: 'http://localhost:5000/healthz',
+    frontendPort: 3004,
+    backendPort: 5004,
+    databasePort: 5434,
+    buildCommand: 'dotnet restore && dotnet publish -c Release -o ./publish',
+    runCommand: 'dotnet ./publish/app.dll',
+    healthCheckUrl: 'http://localhost:3004',
     dockerfile: 'Dockerfile (ASP.NET 8.0)',
   },
 ];
@@ -366,39 +384,34 @@ export function DockerServerDetailView({
     }
   };
 
-  // Role Mappings
-  const [roleMapping, setRoleMapping] = useState({
-    frontend: 'monitoring-frontend',
-    backend: 'monitoring-backend',
-    database: 'monitoring-database',
-  });
-
   // ---------------------------------------------------------------------------
   // 1-Click Deployment Tab State
   // ---------------------------------------------------------------------------
+  const defaultUser = host.username || 'azureuser';
+  const initialPreset = STACK_PRESETS[0]; // MERN Stack
   const [deploymentConfig, setDeploymentConfig] = useState<any>({
-    appName: 'monitoring-app',
-    stackType: 'mern',
-    gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
-    gitBranch: 'main',
-    appDirectory: `/home/${host.username || 'siva'}/monitoring`,
+    appName: initialPreset.appName,
+    stackType: initialPreset.id,
+    gitRepoUrl: initialPreset.gitRepoUrl,
+    gitBranch: initialPreset.gitBranch || 'main',
+    appDirectory: `/home/${defaultUser}/apps/${initialPreset.id}`,
     frontendDirectory: 'src',
     backendDirectory: 'src/server',
-    frontendDockerfile: 'Dockerfile',
+    frontendDockerfile: initialPreset.dockerfile,
     backendDockerfile: 'Dockerfile',
     composeFilePath: 'docker-compose.yml',
-    packageManager: 'npm',
-    buildCommand: 'npm run build',
-    runCommand: 'npm start',
-    frontendContainerName: 'monitoring-frontend',
-    backendContainerName: 'monitoring-backend',
-    databaseContainerName: 'monitoring-database',
-    redisContainerName: 'monitoring-redis-cache',
-    nginxContainerName: 'monitoring-nginx-proxy',
-    frontendPort: 3000,
-    backendPort: 5000,
-    databasePort: 27017,
-    healthCheckUrl: 'http://localhost:3000',
+    packageManager: initialPreset.packageManager,
+    buildCommand: initialPreset.buildCommand,
+    runCommand: initialPreset.runCommand,
+    frontendContainerName: initialPreset.frontendContainer,
+    backendContainerName: initialPreset.backendContainer,
+    databaseContainerName: initialPreset.databaseContainer,
+    redisContainerName: initialPreset.redisContainer,
+    nginxContainerName: initialPreset.nginxContainer,
+    frontendPort: initialPreset.frontendPort,
+    backendPort: initialPreset.backendPort,
+    databasePort: initialPreset.databasePort,
+    healthCheckUrl: initialPreset.healthCheckUrl,
   });
   const [deploymentHistory, setDeploymentHistory] = useState<any[]>([]);
   const [isDeploying, setIsDeploying] = useState(false);
@@ -409,9 +422,14 @@ export function DockerServerDetailView({
 
   // Handle Selecting a Stack Preset in Model 1
   const handleSelectStack = (stack: IStackPreset) => {
+    const user = host.username || 'azureuser';
     setDeploymentConfig((prev: any) => ({
       ...prev,
+      appName: stack.appName,
       stackType: stack.id,
+      gitRepoUrl: stack.gitRepoUrl,
+      gitBranch: stack.gitBranch || 'main',
+      appDirectory: `/home/${user}/apps/${stack.id}`,
       packageManager: stack.packageManager,
       frontendContainerName: stack.frontendContainer,
       backendContainerName: stack.backendContainer,
@@ -462,17 +480,6 @@ export function DockerServerDetailView({
         setEngineInfo(data.engineInfo || null);
         setDockerStatus(data.dockerStatus);
         setDockerVersion(data.dockerVersion);
-
-        // Update default role mapping if matching containers exist
-        const cList: IDockerContainerItem[] = data.containers || [];
-        const f = cList.find((c) => c.name.includes('frontend') || c.name.includes('web') || c.name.includes('ui'));
-        const b = cList.find((c) => c.name.includes('backend') || c.name.includes('api') || c.name.includes('server'));
-        const d = cList.find((c) => c.name.includes('database') || c.name.includes('postgres') || c.name.includes('db'));
-        setRoleMapping((prev) => ({
-          frontend: f?.name || prev.frontend,
-          backend: b?.name || prev.backend,
-          database: d?.name || prev.database,
-        }));
       } else {
         showToast('error', data.error || 'Failed to connect to Docker host');
       }
@@ -569,13 +576,36 @@ export function DockerServerDetailView({
       const res = await fetch(`/api/docker/servers/${host.id}/deploy`);
       const data = await res.json();
       if (res.ok && data.success) {
-        if (data.config) setDeploymentConfig(data.config);
+        if (data.config) {
+          // If loaded config still points to monitoring.git, sanitize to active stack preset
+          if (data.config.gitRepoUrl?.includes('monitoring.git') || data.config.appName === 'monitoring-app') {
+            const user = host.username || 'azureuser';
+            const preset = STACK_PRESETS.find((s) => s.id === data.config.stackType) || STACK_PRESETS[0];
+            setDeploymentConfig((prev: any) => ({
+              ...prev,
+              ...data.config,
+              appName: preset.appName,
+              gitRepoUrl: preset.gitRepoUrl,
+              gitBranch: data.config.gitBranch || preset.gitBranch || 'main',
+              appDirectory: `/home/${user}/apps/${preset.id}`,
+              packageManager: preset.packageManager,
+              frontendContainerName: preset.frontendContainer,
+              backendContainerName: preset.backendContainer,
+              databaseContainerName: preset.databaseContainer,
+              frontendPort: preset.frontendPort,
+              backendPort: preset.backendPort,
+              databasePort: preset.databasePort,
+            }));
+          } else {
+            setDeploymentConfig(data.config);
+          }
+        }
         if (data.history) setDeploymentHistory(data.history);
       }
     } catch (err) {
       console.warn('Failed to load deploy data:', err);
     }
-  }, [host.id]);
+  }, [host.id, host.username]);
 
   useEffect(() => {
     if (activeTab === 'deployment') {
@@ -1620,6 +1650,42 @@ export function DockerServerDetailView({
             </div>
           </div>
 
+          {/* Quick Application Stack Switcher Matrix */}
+          <div className="p-3.5 rounded-xl bg-[#070B14] border border-[#1E293B] flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Layers className="w-4 h-4 text-purple-400" />
+              <span className="text-xs font-bold text-white uppercase tracking-wider">Select Stack to Deploy / Inspect:</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {STACK_PRESETS.map((stack) => {
+                const isSelected = (deploymentConfig.stackType || 'mern').toLowerCase() === stack.id;
+                const isRunning = containers.some(
+                  (c) => c.name.toLowerCase().startsWith(stack.id) && c.status.toLowerCase().includes('up')
+                );
+                return (
+                  <button
+                    key={stack.id}
+                    type="button"
+                    onClick={() => handleSelectStack(stack)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                      isSelected
+                        ? 'bg-purple-600/20 border-purple-500 text-purple-200 shadow-sm'
+                        : 'bg-[#0B1120] border-[#1E293B] text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    {renderStackIcon(stack.id)}
+                    <span>{stack.name}</span>
+                    {isRunning ? (
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Containers running on this host" />
+                    ) : (
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* 5-Step Visual Pipeline Timeline */}
           <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
             {[
@@ -1667,22 +1733,70 @@ export function DockerServerDetailView({
           {/* Active Configuration Overview Strip */}
           <div className="bg-[#070B14] border border-[#1E293B] rounded-xl p-4 text-xs space-y-3">
             <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center justify-between">
-              <span>Active Deployment Parameters (Harmonized 1:1)</span>
-              <span className="text-emerald-400 font-mono text-[10px]">Database Volume Protected</span>
+              <span className="flex items-center gap-2">
+                <Rocket className="w-3.5 h-3.5 text-purple-400" />
+                <span>Active Deployment Parameters (Harmonized 1:1)</span>
+              </span>
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const stackId = (deploymentConfig.stackType || 'mern').toLowerCase();
+                  const runningCount = containers.filter(
+                    (c) => c.name.toLowerCase().startsWith(stackId) && c.status.toLowerCase().includes('up')
+                  ).length;
+                  if (runningCount > 0) {
+                    return (
+                      <span className="text-emerald-400 font-mono text-[10px] bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        {runningCount} Containers Active on Host
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="text-amber-400 font-mono text-[10px] bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
+                      Ready for 1-Click Deploy
+                    </span>
+                  );
+                })()}
+                <span className="text-emerald-400 font-mono text-[10px] bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                  DB Volume Protected
+                </span>
+              </div>
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-slate-400 font-mono text-[11px]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-slate-400 font-mono text-[11px]">
               <div>
-                <span className="text-slate-500 block">Repository:</span>
-                <span className="text-slate-200 truncate block">{deploymentConfig.gitRepoUrl}</span>
+                <span className="text-slate-500 block">Repository & App:</span>
+                <span className="text-slate-200 truncate block font-bold text-white" title={deploymentConfig.gitRepoUrl}>
+                  {deploymentConfig.gitRepoUrl || 'Not specified'}
+                </span>
+                <span className="text-[10px] text-purple-400 font-mono mt-0.5 block">
+                  App: {deploymentConfig.appName || `${deploymentConfig.stackType || 'mern'}-app`}
+                </span>
               </div>
               <div>
-                <span className="text-slate-500 block">Branch & Directory:</span>
-                <span className="text-cyan-300 block">{deploymentConfig.gitBranch} ({deploymentConfig.appDirectory})</span>
+                <span className="text-slate-500 block">Branch & Host Directory:</span>
+                <span className="text-cyan-300 block font-semibold">
+                  {deploymentConfig.gitBranch || 'main'}
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono mt-0.5 block truncate" title={deploymentConfig.appDirectory}>
+                  {deploymentConfig.appDirectory}
+                </span>
               </div>
               <div>
-                <span className="text-slate-500 block">Containers (Frontend / Backend):</span>
+                <span className="text-slate-500 block">Frontend & Backend:</span>
                 <span className="text-purple-300 block">
-                  {deploymentConfig.frontendContainerName} (:3000) / {deploymentConfig.backendContainerName} (:5000)
+                  {deploymentConfig.frontendContainerName} (:{deploymentConfig.frontendPort || 3001})
+                </span>
+                <span className="text-blue-300 text-[10px] block">
+                  {deploymentConfig.backendContainerName} (:{deploymentConfig.backendPort || 5001})
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">Database Tier & Tool:</span>
+                <span className="text-emerald-400 block">
+                  {deploymentConfig.databaseContainerName} (:{deploymentConfig.databasePort || 5431})
+                </span>
+                <span className="text-[10px] text-amber-300 font-mono mt-0.5 block">
+                  Build: {deploymentConfig.packageManager || 'npm'} ({deploymentConfig.buildCommand || 'standard'})
                 </span>
               </div>
             </div>
@@ -1833,7 +1947,28 @@ export function DockerServerDetailView({
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 mb-1 font-semibold">Git Repository URL</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-slate-400 font-semibold">Git Repository URL</label>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-500">Preset:</span>
+                        <select
+                          value={deploymentConfig.gitRepoUrl || ''}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              setDeploymentConfig({ ...deploymentConfig, gitRepoUrl: e.target.value });
+                            }
+                          }}
+                          className="bg-[#0B1120] border border-[#1E293B] text-[10px] text-blue-400 font-mono rounded px-1.5 py-0.5 focus:outline-none cursor-pointer"
+                        >
+                          <option value="">-- Stack Repos --</option>
+                          {STACK_PRESETS.map((s) => (
+                            <option key={s.id} value={s.gitRepoUrl}>
+                              {s.name}: {s.gitRepoUrl.split('/').pop()}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                     <input
                       type="text"
                       value={deploymentConfig.gitRepoUrl || ''}
@@ -1882,7 +2017,7 @@ export function DockerServerDetailView({
                       value={deploymentConfig.appDirectory || ''}
                       onChange={(e) => setDeploymentConfig({ ...deploymentConfig, appDirectory: e.target.value })}
                       className="w-full px-3 py-2 bg-[#0B1120] border border-[#1E293B] rounded-lg text-white font-mono focus:border-blue-500 focus:outline-none"
-                      placeholder={`/home/${host.username || 'siva'}/app`}
+                      placeholder={`/home/${host.username || 'azureuser'}/apps/${currentStackId}`}
                     />
                   </div>
 

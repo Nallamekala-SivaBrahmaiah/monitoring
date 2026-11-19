@@ -723,7 +723,7 @@ export async function execute1ClickDockerDeployment(
 
   try {
     const dockerCmd = await detectDockerCommand(server);
-    const repoDir = config.appDirectory || '/home/siva/monitoring';
+    const repoDir = config.appDirectory || `/home/${server.username || 'azureuser'}/apps/${config.stackType || 'mern'}`;
     const branch = config.gitBranch || 'main';
 
     // Step 1: Git Sync
@@ -731,6 +731,9 @@ export async function execute1ClickDockerDeployment(
     const gitRes = await executeSSH(server, `
       if [ -d "${repoDir}/.git" ]; then
         cd "${repoDir}" && git fetch origin && git checkout "${branch}" && git pull origin "${branch}"
+      elif [ -n "${config.gitRepoUrl}" ]; then
+        echo "Cloning repository ${config.gitRepoUrl} into ${repoDir}..."
+        mkdir -p "$(dirname "${repoDir}")" && git clone -b "${branch}" "${config.gitRepoUrl}" "${repoDir}" 2>&1 || git clone "${config.gitRepoUrl}" "${repoDir}" 2>&1 || true
       else
         echo "Directory ${repoDir} is not a git repo. Proceeding with existing files."
       fi
@@ -814,7 +817,7 @@ export async function execute1ClickDockerDeployment(
     // Step 3: Docker Build
     steps[2].status = 'RUNNING';
     cumulativeLogs += `\n--- [Step 3: Docker Build] Building updated container images for stack "${stack}" ---\n`;
-    const targetImageName = config.backendContainerName || config.frontendContainerName || 'monitoring-app';
+    const targetImageName = config.backendContainerName || config.frontendContainerName || `${stack}-app`;
     const buildRes = await executeSSH(server, `
       cd "${repoDir}"
       if [ -f "docker-compose.yml" ] || [ -f "compose.yaml" ]; then
