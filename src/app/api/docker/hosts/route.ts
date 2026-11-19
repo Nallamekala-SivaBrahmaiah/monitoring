@@ -22,8 +22,28 @@ export async function GET(request: NextRequest) {
     // 2. Fetch all registered servers from database
     const servers = await Server.find().lean();
 
+    // Also include servers registered in NginxServer collection that are not in Server
+    let nginxServers: any[] = [];
+    try {
+      const NginxServer = (await import('@/models/NginxServer')).default;
+      nginxServers = await NginxServer.find().lean();
+    } catch {}
+
+    const existingHosts = new Set(
+      servers.map((s: any) => (s.host || s.publicIp || s.name || '').toLowerCase()).filter(Boolean)
+    );
+
+    const combinedServers: any[] = [...servers];
+    for (const ns of nginxServers) {
+      const key = (ns.host || ns.publicIp || ns.name || '').toLowerCase();
+      if (key && !existingHosts.has(key)) {
+        existingHosts.add(key);
+        combinedServers.push(ns);
+      }
+    }
+
     const hosts = await Promise.all(
-      servers.map(async (s: any) => {
+      combinedServers.map(async (s: any) => {
         const docker = s.docker || {};
         const isDetected = Boolean(docker.detected);
         const status = docker.status || (isDetected ? 'running' : 'not_installed');
@@ -37,17 +57,23 @@ export async function GET(request: NextRequest) {
         else if (status === 'permission_denied') statusMsg = 'Docker: Permission Denied';
         else if (status === 'error') statusMsg = 'Docker: Error';
 
+        const hostIp = s.host || s.publicIp || '-';
+        const defaultUser =
+          s.cloudProvider === 'azure' || hostIp.startsWith('4.') || hostIp.startsWith('20.')
+            ? (s.name?.toLowerCase().includes('azure') ? 'azureuser' : 'siva')
+            : 'ubuntu';
+
         return {
           id: s._id.toString(),
           name: s.name,
-          host: s.host || s.publicIp || '-',
+          host: hostIp,
           publicIp: s.publicIp || s.host || '-',
           privateIp: s.privateIp || '',
           port: s.port || 22,
-          username: s.username || 'ubuntu',
+          username: s.username || defaultUser,
           cloudProvider: s.cloudProvider || 'other',
           region: s.region || 'Datacenter',
-          serverStatus: s.status || 'Offline',
+          serverStatus: s.status || s.connectionStatus || 'Offline',
           osName: s.os?.name ? `${s.os.name} ${s.os.version || ''}`.trim() : 'Linux',
           dockerDetected: isDetected,
           dockerStatus: status,

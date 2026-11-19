@@ -111,6 +111,8 @@ export async function resolveDockerServer(serverId: string): Promise<any | null>
     serverDoc = await Server.findOne({
       $or: [
         { host: cleanId },
+        { publicIp: cleanId },
+        { privateIp: cleanId },
         { name: cleanId },
         { cloudResourceId: cleanId },
         { instanceId: cleanId },
@@ -119,15 +121,39 @@ export async function resolveDockerServer(serverId: string): Promise<any | null>
   }
 
   // Also check NginxServer collection as fallback if registered there
+  const NginxServer = (await import('@/models/NginxServer')).default;
   if (!serverDoc) {
-    const NginxServer = (await import('@/models/NginxServer')).default;
     if (mongoose.isValidObjectId(cleanId)) {
       serverDoc = await NginxServer.findById(cleanId).lean();
     }
     if (!serverDoc) {
       serverDoc = await NginxServer.findOne({
-        $or: [{ host: cleanId }, { name: cleanId }, { instanceId: cleanId }],
+        $or: [
+          { host: cleanId },
+          { publicIp: cleanId },
+          { name: cleanId },
+          { instanceId: cleanId },
+        ],
       }).lean();
+    }
+  }
+
+  // If serverDoc exists but lacks encryptedAuthSecret, find credentials in NginxServer or other collections
+  if (serverDoc && !serverDoc.encryptedAuthSecret) {
+    const nginxFallback: any = await NginxServer.findOne({
+      $or: [
+        ...(serverDoc.host ? [{ host: serverDoc.host }] : []),
+        ...(serverDoc.publicIp ? [{ host: serverDoc.publicIp }] : []),
+        ...(serverDoc.name ? [{ name: serverDoc.name }] : []),
+      ],
+      encryptedAuthSecret: { $exists: true, $ne: '' },
+    }).lean();
+    if (nginxFallback) {
+      serverDoc.encryptedAuthSecret = nginxFallback.encryptedAuthSecret;
+      serverDoc.authSecretIv = nginxFallback.authSecretIv;
+      serverDoc.authSecretTag = nginxFallback.authSecretTag;
+      if (!serverDoc.username && nginxFallback.username) serverDoc.username = nginxFallback.username;
+      if (!serverDoc.authMethod && nginxFallback.authMethod) serverDoc.authMethod = nginxFallback.authMethod;
     }
   }
 
@@ -151,18 +177,32 @@ export function buildDockerSSHConfig(server: any, timeoutMs: number = 10000): Co
     }
   }
 
+  const hostIp = server.host || server.publicIp || server.privateIp;
+  if (!hostIp || hostIp === '-') {
+    throw new Error(`Server ${server.name} does not have a valid host IP address`);
+  }
+
+  const defaultUser =
+    server.cloudProvider === 'azure' || hostIp.startsWith('4.') || hostIp.startsWith('20.')
+      ? (server.name?.toLowerCase().includes('azure') ? 'azureuser' : 'siva')
+      : 'ubuntu';
+
   const config: ConnectConfig = {
-    host: server.host,
+    host: hostIp,
     port: server.port || 22,
-    username: server.username || 'ubuntu',
+    username: server.username || defaultUser,
     readyTimeout: timeoutMs,
     keepaliveInterval: 10000,
     keepaliveCountMax: 3,
   };
 
-  if (server.authMethod === 'password') {
-    config.password = secret;
-  } else {
+  const isPrivateKey =
+    server.authMethod === 'privateKey' ||
+    secret.includes('BEGIN') ||
+    secret.includes('PuTTY') ||
+    secret.length > 200;
+
+  if (isPrivateKey) {
     let pemKey = secret.trim();
     if (pemKey.startsWith('PuTTY-User-Key-File')) {
       const converted = convertPPKToOpenSSH(pemKey);
@@ -171,6 +211,8 @@ export function buildDockerSSHConfig(server: any, timeoutMs: number = 10000): Co
       }
     }
     config.privateKey = pemKey;
+  } else {
+    config.password = secret;
   }
 
   return config;

@@ -35,7 +35,8 @@ export async function POST(
     await connectToDatabase();
     const { id } = await params;
     const body = await request.json();
-    const { action, container } = body;
+    const action = body.action;
+    const container = body.container || body.containerName || body.id;
 
     if (!action || !container) {
       return NextResponse.json(

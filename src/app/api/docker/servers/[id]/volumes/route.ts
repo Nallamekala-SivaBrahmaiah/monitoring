@@ -33,7 +33,8 @@ export async function POST(
     await connectToDatabase();
     const { id } = await params;
     const body = await request.json();
-    const { action, volume } = body;
+    const action = body.action;
+    const volume = body.volume || body.volumeName || body.name;
 
     if (!action || !volume) {
       return NextResponse.json({ success: false, error: 'Action and volume name required' }, { status: 400 });

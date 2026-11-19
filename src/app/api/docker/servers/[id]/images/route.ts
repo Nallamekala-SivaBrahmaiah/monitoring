@@ -33,7 +33,8 @@ export async function POST(
     await connectToDatabase();
     const { id } = await params;
     const body = await request.json();
-    const { action, image } = body;
+    const action = body.action;
+    const image = body.image || body.imageName || body.id;
 
     if (!action || !image) {
       return NextResponse.json({ success: false, error: 'Action and image name/ID required' }, { status: 400 });

@@ -33,7 +33,8 @@ export async function POST(
     await connectToDatabase();
     const { id } = await params;
     const body = await request.json();
-    const { action, network } = body;
+    const action = body.action;
+    const network = body.network || body.networkName || body.name;
 
     if (!action || !network) {
       return NextResponse.json({ success: false, error: 'Action and network name/ID required' }, { status: 400 });

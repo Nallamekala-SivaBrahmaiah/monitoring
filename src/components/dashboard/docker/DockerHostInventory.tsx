@@ -29,6 +29,7 @@ interface DockerHostInventoryProps {
   isLoading: boolean;
   onRefresh: (doSync?: boolean) => void;
   onSelectHost: (host: IDockerHostDetails) => void;
+  onOpenTerminal?: (host: IDockerHostDetails) => void;
 }
 
 export function DockerHostInventory({
@@ -36,6 +37,7 @@ export function DockerHostInventory({
   isLoading,
   onRefresh,
   onSelectHost,
+  onOpenTerminal,
 }: DockerHostInventoryProps) {
   const [search, setSearch] = useState('');
   const [providerFilter, setProviderFilter] = useState<string>('all');
@@ -345,19 +347,34 @@ export function DockerHostInventory({
                           : 'Just now'}
                       </td>
 
-                      {/* Action Button */}
+                      {/* Action Buttons */}
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectHost(host);
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm shadow-blue-600/30"
-                        >
-                          <span>Manage Docker</span>
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenTerminal?.(host);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-[#0D1526] hover:bg-[#1E293B] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
+                            title="Open SSH Terminal with saved credentials"
+                          >
+                            <Terminal className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Terminal</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectHost(host);
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm shadow-blue-600/30"
+                          >
+                            <span>Manage Docker</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

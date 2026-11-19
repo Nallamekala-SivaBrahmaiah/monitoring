@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { DockerHostInventory } from '@/components/dashboard/docker/DockerHostInventory';
 import { DockerServerDetailView } from '@/components/dashboard/docker/DockerServerDetailView';
+import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
 import { ConnectSSHModal, ConnectSSHTarget } from '@/components/dashboard/ConnectSSHModal';
 import { IDockerHostDetails } from '@/lib/docker/dockerEngine';
 
@@ -18,7 +19,11 @@ function DockerPageContent() {
   const [selectedHost, setSelectedHost] = useState<IDockerHostDetails | null>(null);
   const [isLoadingHosts, setIsLoadingHosts] = useState<boolean>(true);
 
-  // SSH Modal State
+  // Live Interactive SSH Terminal Modal (Uses Saved Credentials from DB)
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
+
+  // SSH Credentials Configuration Modal (Fallback only if no credentials saved in DB)
   const [sshModalOpen, setSshModalOpen] = useState(false);
   const [sshTarget, setSshTarget] = useState<ConnectSSHTarget | null>(null);
 
@@ -70,20 +75,19 @@ function DockerPageContent() {
     router.replace('/dashboard/docker');
   };
 
-  // Open SSH Terminal for host
+  // Open Live SSH Terminal directly with saved credentials (NO prompt for credentials)
   const handleOpenTerminal = (host: IDockerHostDetails) => {
-    setSshTarget({
+    setTerminalTarget({
+      id: host.id,
+      sshServerId: host.id,
       name: host.name,
-      host: host.host,
+      host: host.host && host.host !== '-' ? host.host : (host.publicIp || ''),
       port: host.port || 22,
-      username: host.username || 'ubuntu',
-      authMethod: 'privateKey',
-      hasSavedKey: true,
-      cloudProvider: (host.cloudProvider === 'azure' || host.cloudProvider === 'aws' || host.cloudProvider === 'on-premise' || host.cloudProvider === 'gcp')
-        ? (host.cloudProvider as any)
-        : 'other',
+      username: host.username || (host.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
+      cloudProvider: host.cloudProvider,
+      region: host.region,
     });
-    setSshModalOpen(true);
+    setTerminalOpen(true);
   };
 
   return (
@@ -105,20 +109,62 @@ function DockerPageContent() {
               isLoading={isLoadingHosts}
               onRefresh={(doSync) => fetchHosts(doSync)}
               onSelectHost={handleSelectHost}
+              onOpenTerminal={handleOpenTerminal}
             />
           )}
         </main>
       </div>
 
-      {/* Connect SSH Modal */}
+      {/* 1. Live Interactive Web Terminal - Connects automatically with Saved Credentials */}
+      {terminalOpen && terminalTarget && (
+        <SSHTerminalModal
+          isOpen={terminalOpen}
+          onClose={() => {
+            setTerminalOpen(false);
+            setTerminalTarget(null);
+          }}
+          target={terminalTarget}
+          onConfigureSSH={(tgt) => {
+            setTerminalOpen(false);
+            setSshTarget({
+              id: tgt.id || tgt.sshServerId || tgt.vmId,
+              name: tgt.name,
+              host: tgt.host && tgt.host !== '-' ? tgt.host : '',
+              port: tgt.port || 22,
+              username: tgt.username || (tgt.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
+              authMethod: 'password',
+              cloudProvider: (tgt.cloudProvider as any) || 'other',
+              region: tgt.region,
+            });
+            setSshModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* 2. Configure SSH Credentials Modal (Only shown if unconfigured or explicitly reconfiguring) */}
       {sshModalOpen && sshTarget && (
         <ConnectSSHModal
           isOpen={sshModalOpen}
-          onClose={() => setSshModalOpen(false)}
+          onClose={() => {
+            setSshModalOpen(false);
+            setSshTarget(null);
+          }}
           target={sshTarget}
           onSuccess={() => {
             setSshModalOpen(false);
             fetchHosts(true);
+            if (sshTarget) {
+              setTerminalTarget({
+                id: sshTarget.id,
+                sshServerId: sshTarget.id,
+                name: sshTarget.name,
+                host: sshTarget.host,
+                port: sshTarget.port,
+                username: sshTarget.username,
+                cloudProvider: sshTarget.cloudProvider,
+              });
+              setTerminalOpen(true);
+            }
           }}
         />
       )}
