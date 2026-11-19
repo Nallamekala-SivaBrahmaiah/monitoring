@@ -135,7 +135,6 @@ async function autoImportExistingServers() {
     const updateObj: any = {
       $setOnInsert: {
         host,
-        cloudProvider: sProvider,
         isActive: true,
       },
       $set: {
