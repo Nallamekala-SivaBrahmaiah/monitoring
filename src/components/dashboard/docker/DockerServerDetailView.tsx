@@ -273,9 +273,8 @@ export function DockerServerDetailView({
   };
 
   // ---------------------------------------------------------------------------
-  // Console Tab State (Frontend, Backend, Database, Combined)
+  // Console Tab State
   // ---------------------------------------------------------------------------
-  const [consoleRole, setConsoleRole] = useState<'frontend' | 'backend' | 'database' | 'combined'>('frontend');
   const [consoleTail, setConsoleTail] = useState<number>(200);
   const [consoleSearch, setConsoleSearch] = useState('');
   const [consoleLogs, setConsoleLogs] = useState<string>('');
@@ -432,68 +431,20 @@ export function DockerServerDetailView({
     );
   }, [containers, selectedStack]);
 
-  // Filter containers for current role
-  const containersForCurrentRole = React.useMemo(() => {
-    if (consoleRole === 'frontend') {
-      const fList = currentStackContainers.filter(
-        (c) =>
-          c.name.includes('frontend') ||
-          c.name.includes('web') ||
-          c.name.includes('ui') ||
-          c.name.includes('client')
-      );
-      return fList.length > 0 ? fList : currentStackContainers;
-    }
-    if (consoleRole === 'backend') {
-      const bList = currentStackContainers.filter(
-        (c) =>
-          c.name.includes('backend') ||
-          c.name.includes('api') ||
-          c.name.includes('server') ||
-          c.name.includes('app')
-      );
-      return bList.length > 0 ? bList : currentStackContainers;
-    }
-    if (consoleRole === 'database') {
-      const dList = currentStackContainers.filter(
-        (c) =>
-          c.name.includes('database') ||
-          c.name.includes('postgres') ||
-          c.name.includes('db') ||
-          c.name.includes('mongo') ||
-          c.name.includes('redis') ||
-          c.name.includes('sql')
-      );
-      return dList.length > 0 ? dList : currentStackContainers;
-    }
-    // combined
-    return currentStackContainers;
-  }, [currentStackContainers, consoleRole]);
-
   // Effective Target Container to query logs for
   const effectiveTargetContainer = React.useMemo(() => {
     if (selectedContainerTarget) {
+      if (selectedContainerTarget.includes(',') || selectedContainerTarget === 'all') return selectedContainerTarget;
       const exists = containers.some((c) => c.name === selectedContainerTarget);
       if (exists) return selectedContainerTarget;
     }
 
-    if (consoleRole === 'combined') {
-      if (selectedStack !== 'all') {
-        const stackContainerNames = currentStackContainers.map((c) => c.name);
-        return stackContainerNames.length > 0 ? stackContainerNames.join(',') : 'all';
-      }
-      return 'all';
+    if (currentStackContainers.length > 0) {
+      return currentStackContainers[0].name;
     }
 
-    if (containersForCurrentRole.length > 0) {
-      return containersForCurrentRole[0].name;
-    }
-
-    if (consoleRole === 'frontend') return roleMapping.frontend || (containers[0]?.name ?? 'all');
-    if (consoleRole === 'backend') return roleMapping.backend || (containers[0]?.name ?? 'all');
-    if (consoleRole === 'database') return roleMapping.database || (containers[0]?.name ?? 'all');
-    return 'all';
-  }, [selectedContainerTarget, containers, consoleRole, selectedStack, currentStackContainers, containersForCurrentRole, roleMapping]);
+    return containers[0]?.name || 'all';
+  }, [selectedContainerTarget, containers, currentStackContainers]);
 
   const fetchConsoleLogs = useCallback(async () => {
     if (isPaused) return;
@@ -522,7 +473,7 @@ export function DockerServerDetailView({
     if (activeTab === 'console') {
       fetchConsoleLogs();
     }
-  }, [activeTab, consoleRole, effectiveTargetContainer, fetchConsoleLogs]);
+  }, [activeTab, effectiveTargetContainer, fetchConsoleLogs]);
 
   // Auto-scroll terminal
   useEffect(() => {
@@ -1083,18 +1034,11 @@ export function DockerServerDetailView({
                                   type="button"
                                   onClick={() => {
                                     setSelectedContainerTarget(c.name);
-                                    if (c.name.includes('frontend') || c.name.includes('web') || c.name.includes('ui')) {
-                                      setConsoleRole('frontend');
-                                    } else if (c.name.includes('backend') || c.name.includes('api') || c.name.includes('server')) {
-                                      setConsoleRole('backend');
-                                    } else if (c.name.includes('database') || c.name.includes('postgres') || c.name.includes('db')) {
-                                      setConsoleRole('database');
-                                    } else {
-                                      setConsoleRole('combined');
-                                    }
                                     const prefix = c.name.split('-')[0].toLowerCase();
                                     if (['mern', 'python', 'java', 'dotnet'].includes(prefix)) {
                                       setSelectedStack(prefix);
+                                    } else {
+                                      setSelectedStack('all');
                                     }
                                     setActiveTab('console');
                                   }}
@@ -1323,33 +1267,15 @@ export function DockerServerDetailView({
       {/* TAB 6: APPLICATION LOGS CONSOLE (Frontend, Backend, Database, Combined) */}
       {activeTab === 'console' && (
         <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-5 space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#1E293B]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#1E293B]">
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Terminal className="w-5 h-5 text-emerald-400" />
-                <span>Multi-Role Application Log Console</span>
+                <span>Application Log Console</span>
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Real-time streaming console connected to actual containers on <strong className="text-white">{host.name}</strong>.
+                Real-time streaming console connected to live containers on <strong className="text-white">{host.name}</strong>.
               </p>
-            </div>
-
-            {/* Role Tabs */}
-            <div className="flex items-center gap-1.5 bg-[#070B14] p-1 rounded-xl border border-[#1E293B]">
-              {(['frontend', 'backend', 'database', 'combined'] as const).map((role) => (
-                <button
-                  key={role}
-                  type="button"
-                  onClick={() => setConsoleRole(role)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition cursor-pointer ${
-                    consoleRole === role
-                      ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {role} Logs
-                </button>
-              ))}
             </div>
           </div>
 
@@ -1399,7 +1325,7 @@ export function DockerServerDetailView({
             </div>
           </div>
 
-          {/* 2. Role Mapping & Console Controls Toolbar */}
+          {/* 2. Target Container & Console Controls Toolbar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-[#090E1A] p-3 rounded-xl border border-[#1E293B]">
             {/* Target Container Dropdown Selector */}
             <div className="flex items-center gap-2.5 flex-wrap">
@@ -1415,19 +1341,22 @@ export function DockerServerDetailView({
                   onChange={(e) => setSelectedContainerTarget(e.target.value)}
                   className="bg-[#070B14] border border-[#1E293B] hover:border-cyan-500/50 text-cyan-300 font-mono text-xs rounded-xl px-3 py-1.5 font-bold focus:border-cyan-500 focus:outline-none cursor-pointer transition shadow-inner"
                 >
-                  {consoleRole === 'combined' && (
-                    <option value={effectiveTargetContainer}>
-                      {selectedStack === 'all'
-                        ? '⚡ All Fleet Containers Combined'
-                        : `⚡ All ${selectedStack.toUpperCase()} Stack Containers Combined`}
+                  {selectedStack !== 'all' && currentStackContainers.length > 1 && (
+                    <option value={currentStackContainers.map(c => c.name).join(',')}>
+                      ⚡ All {selectedStack.toUpperCase()} Stack Containers Combined
                     </option>
                   )}
-                  {containersForCurrentRole.map((c) => (
+                  {selectedStack === 'all' && containers.length > 1 && (
+                    <option value="all">
+                      ⚡ All Fleet Containers Combined
+                    </option>
+                  )}
+                  {currentStackContainers.map((c) => (
                     <option key={c.id || c.name} value={c.name}>
                       {c.name} ({c.state} • {c.ports ? c.ports.split(',')[0] : 'internal'})
                     </option>
                   ))}
-                  {containersForCurrentRole.length < containers.length && (
+                  {currentStackContainers.length < containers.length && (
                     <optgroup label="── All Running Host Containers ──">
                       {containers.map((c) => (
                         <option key={`all-${c.id || c.name}`} value={c.name}>
