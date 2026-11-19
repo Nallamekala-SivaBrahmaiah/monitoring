@@ -45,23 +45,26 @@ export function OnPremisesServersTable({
   // STRICT FILTER: Only display dedicated on-premises / standalone registered servers
   // Never show auto-discovered cloud fleet instances (AWS EC2 / Azure VMs) here
   const onPremServers = useMemo(() => {
-    const rawList = servers || localServers || customServers || [];
+    if (servers !== undefined) return servers;
+    const rawList = localServers || customServers || [];
     return rawList.filter((s: any) => {
       const prov = (s.cloudProvider || '').toLowerCase();
       const resId = (s.cloudResourceId || s.instanceId || '').toLowerCase();
 
       // Filter out auto-synced cloud instances
-      if (prov === 'aws' && resId.startsWith('i-')) return false;
-      if (prov === 'azure' && (resId.includes('/subscriptions/') || resId.includes('/resourcegroups/'))) return false;
+      if (prov === 'aws' || prov === 'azure' || prov === 'gcp') return false;
+      if (resId.startsWith('i-') || resId.includes('/subscriptions/') || resId.includes('/resourcegroups/')) return false;
 
       // Include explicitly registered on-premise / standalone servers
       return (
         prov === 'on-premise' ||
+        prov === 'on-premises' ||
+        prov === 'onprem' ||
         prov === 'other' ||
         prov === 'datacenter' ||
         prov === 'bare-metal' ||
         prov === 'custom' ||
-        (!resId.startsWith('i-') && !resId.includes('/subscriptions/'))
+        !prov
       );
     });
   }, [servers, localServers, customServers]);

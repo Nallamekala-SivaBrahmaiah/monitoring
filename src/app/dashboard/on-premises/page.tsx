@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, RefreshCw, Server } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
@@ -13,23 +13,43 @@ export default function OnPremisesPage() {
   const { customServers, triggerRefresh, isRefreshing } = useMonitoring();
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [directServers, setDirectServers] = useState<any[]>([]);
 
-  // STRICT FILTER: Only count dedicated on-premises servers
-  const onPremServers = (customServers || []).filter((s: any) => {
+  const fetchOnPremDirect = async () => {
+    try {
+      const res = await fetch('/api/servers');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setDirectServers(data);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchOnPremDirect();
+  }, [isRefreshing]);
+
+  // Combine direct and context servers
+  const allAvailable = directServers.length > 0 ? directServers : customServers || [];
+
+  // STRICT FILTER: Only display dedicated on-premises servers
+  const onPremServers = allAvailable.filter((s: any) => {
     const prov = (s.cloudProvider || '').toLowerCase();
     const resId = (s.cloudResourceId || s.instanceId || '').toLowerCase();
 
     // Exclude cloud resources automatically discovered via cloud account sync
-    if (prov === 'aws' && resId.startsWith('i-')) return false;
-    if (prov === 'azure' && (resId.includes('/subscriptions/') || resId.includes('/resourcegroups/'))) return false;
+    if (prov === 'aws' || prov === 'azure' || prov === 'gcp') return false;
+    if (resId.startsWith('i-') || resId.includes('/subscriptions/') || resId.includes('/resourcegroups/')) return false;
 
     return (
       prov === 'on-premise' ||
+      prov === 'on-premises' ||
+      prov === 'onprem' ||
       prov === 'other' ||
       prov === 'datacenter' ||
       prov === 'bare-metal' ||
       prov === 'custom' ||
-      (!resId.startsWith('i-') && !resId.includes('/subscriptions/'))
+      !prov
     );
   });
 
@@ -40,8 +60,9 @@ export default function OnPremisesPage() {
 
   const offlineCount = onPremServers.length - onlineCount;
 
-  const handleServerAdded = (name: string) => {
+  const handleServerAdded = async (name: string) => {
     setToastMessage(`Server "${name}" successfully registered! Telemetry collection active.`);
+    await fetchOnPremDirect();
     triggerRefresh();
     setTimeout(() => setToastMessage(null), 5000);
   };
@@ -84,7 +105,10 @@ export default function OnPremisesPage() {
               </div>
 
               <button
-                onClick={triggerRefresh}
+                onClick={async () => {
+                  await fetchOnPremDirect();
+                  triggerRefresh();
+                }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -108,10 +132,14 @@ export default function OnPremisesPage() {
 
           {/* On-Premises Servers Inventory Table */}
           <OnPremisesServersTable
+            servers={onPremServers}
             showViewAllButton={false}
             limit={25}
             isLoading={isRefreshing}
-            onRefresh={triggerRefresh}
+            onRefresh={async () => {
+              await fetchOnPremDirect();
+              triggerRefresh();
+            }}
             onAddClick={() => setShowAddModal(true)}
           />
         </main>
@@ -126,4 +154,3 @@ export default function OnPremisesPage() {
     </div>
   );
 }
-

@@ -30,28 +30,22 @@ async function autoImportExistingServers() {
     await Promise.all([
       NginxServer.deleteMany({
         $or: [
-          { name: { $regex: /racha|nacha|rachana/i } },
-          { host: { $regex: /racha|nacha|rachana/i } },
           { host: { $in: KNOWN_FAKE_HOSTS } },
         ],
       } as any),
       Server.deleteMany({
         $or: [
-          { name: { $regex: /racha|nacha|rachana/i } },
-          { host: { $regex: /racha|nacha|rachana/i } },
           { host: { $in: KNOWN_FAKE_HOSTS } },
           { ip: { $in: KNOWN_FAKE_HOSTS } },
         ],
       } as any),
       AnsibleHost.deleteMany({
         $or: [
-          { name: { $regex: /racha|nacha|rachana/i } },
           { ip: { $in: KNOWN_FAKE_HOSTS } },
         ],
       } as any),
       CloudResource.deleteMany({
         $or: [
-          { name: { $regex: /racha|nacha|rachana/i } },
           { publicIp: { $in: KNOWN_FAKE_HOSTS } },
           { privateIp: { $in: KNOWN_FAKE_HOSTS } },
         ],
@@ -64,24 +58,20 @@ async function autoImportExistingServers() {
   const [servers, cloudResources, controllers, ansibleHosts] = await Promise.all([
     Server.find({
       host: { $ne: '44.199.21.34' },
-      name: { $not: /racha|nacha|rachana/i },
       cloudProvider: { $nin: ['on-premise', 'other'] },
     } as any).lean(),
     CloudResource.find({
       provider: { $in: ['aws', 'azure'] },
       publicIp: { $ne: '44.199.21.34' },
       privateIp: { $ne: '44.199.21.34' },
-      name: { $not: /racha|nacha|rachana/i },
       isDeleted: { $ne: true },
       status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
     }).lean(),
     AnsibleController.find({
       ipAddress: { $ne: '44.199.21.34' },
-      name: { $not: /racha|nacha|rachana/i },
     }).lean(),
     AnsibleHost.find({
       ip: { $ne: '44.199.21.34' },
-      name: { $not: /racha|nacha|rachana/i },
       provider: { $nin: ['on-premise'] },
     } as any).lean(),
   ]);
@@ -119,7 +109,6 @@ async function autoImportExistingServers() {
     const host = (s.host || s.ip || '').trim();
     if (!host || host === '44.199.21.34') continue;
     if (s.cloudProvider === 'on-premise' || s.cloudProvider === 'on-premises') continue;
-    if (/racha|nacha|rachana/i.test(s.name || '') || /racha|nacha|rachana/i.test(host)) continue;
 
     const matchedCr = cloudResources.find((cr: any) => {
       const crPub = (cr.publicIp || '').trim();
@@ -198,7 +187,6 @@ async function autoImportExistingServers() {
     const host = (cr.publicIp && cr.publicIp !== '-' ? cr.publicIp : cr.privateIp || '').trim();
     if (!host || host === '-' || host === '44.199.21.34') continue;
     if (cr.provider === 'on-premise' || cr.provider === 'on-premises') continue;
-    if (/racha|nacha|rachana/i.test(cr.name || '') || /racha|nacha|rachana/i.test(host)) continue;
 
     const creds =
       credsByLookup.get(host.toLowerCase()) ||
@@ -412,10 +400,7 @@ async function autoImportExistingServers() {
       const inst = (srv.instanceId || '').trim().toLowerCase();
       const nm = (srv.name || '').trim().toLowerCase();
 
-      const isKnownFake =
-        KNOWN_FAKE_HOSTS.includes(h) ||
-        /racha|nacha|rachana/i.test(nm) ||
-        /racha|nacha|rachana/i.test(h);
+      const isKnownFake = KNOWN_FAKE_HOSTS.includes(h);
 
       const existsInCloud =
         (h && validCloudHosts.has(h)) ||
@@ -450,7 +435,6 @@ export async function GET(req: NextRequest) {
 
     const servers = await NginxServer.find({
       host: { $nin: KNOWN_FAKE_HOSTS },
-      name: { $not: /racha|nacha|rachana/i },
       cloudProvider: { $regex: /^(?!.*premise).*$/i },
     } as any)
       .select('-encryptedAuthSecret -authSecretIv -authSecretTag')
@@ -461,7 +445,6 @@ export async function GET(req: NextRequest) {
     if (finalServers.length === 0) {
       const fallbackServers = await Server.find({
         host: { $nin: KNOWN_FAKE_HOSTS },
-        name: { $not: /racha|nacha|rachana/i },
         cloudProvider: { $in: ['aws', 'azure'] },
       } as any).select('-encryptedAuthSecret -authSecretIv -authSecretTag').lean();
       if (fallbackServers.length > 0) {
@@ -513,7 +496,6 @@ export async function GET(req: NextRequest) {
 
       if (KNOWN_FAKE_HOSTS.includes(host)) return false;
       if (provider === 'on-premise' || provider === 'on-premises' || provider === 'onpremise') return false;
-      if (/racha|nacha|rachana/i.test(name) || /racha|nacha|rachana/i.test(host)) return false;
 
       // Must be present in actual cloud resources
       const isPresentInCloud =

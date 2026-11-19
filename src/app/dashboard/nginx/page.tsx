@@ -172,7 +172,6 @@ export default function NginxDashboardPage() {
             const h = (s.host || '').trim().toLowerCase();
             const nm = (s.name || '').toLowerCase();
             if (KNOWN_FAKE_HOSTS.has(h)) return false;
-            if (/racha|nacha|rachana/i.test(nm)) return false;
             if (/premise/i.test(s.cloudProvider || '')) return false;
 
             if (registeredServers.length > 0) {

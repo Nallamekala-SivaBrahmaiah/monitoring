@@ -26,15 +26,12 @@ export async function GET(request: NextRequest) {
       await Promise.all([
         Server.deleteMany({
           $or: [
-            { name: { $regex: /racha|nacha|rachana/i } },
-            { host: { $regex: /racha|nacha|rachana/i } },
             { host: '44.199.21.34' },
             { ip: '44.199.21.34' },
           ],
         } as any),
         CloudResource.deleteMany({
           $or: [
-            { name: { $regex: /racha|nacha|rachana/i } },
             { publicIp: '44.199.21.34' },
             { privateIp: '44.199.21.34' },
           ],
@@ -47,7 +44,6 @@ export async function GET(request: NextRequest) {
 
     const query: any = {
       host: { $ne: '44.199.21.34' },
-      name: { $not: /racha|nacha|rachana/i },
     };
     if (cloudFilter && cloudFilter !== 'all') {
       query.cloudProvider = cloudFilter;
