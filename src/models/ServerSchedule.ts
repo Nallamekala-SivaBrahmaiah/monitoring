@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IServerScheduleData {
   _id: string;
   name: string;
-  provider: 'aws' | 'azure';
+  provider: 'aws' | 'azure' | 'on-premise';
   resourceId: string;
   serverName: string;
   region: string;
@@ -32,7 +32,7 @@ export interface IServerScheduleData {
 
 export interface IServerSchedule extends Document {
   name: string;
-  provider: 'aws' | 'azure';
+  provider: 'aws' | 'azure' | 'on-premise';
   resourceId: string;
   serverName: string;
   region: string;
@@ -69,7 +69,7 @@ const ServerScheduleSchema: Schema<IServerSchedule> = new Schema(
     provider: {
       type: String,
       required: true,
-      enum: ['aws', 'azure'],
+      enum: ['aws', 'azure', 'on-premise', 'other'],
       index: true,
     },
     resourceId: {

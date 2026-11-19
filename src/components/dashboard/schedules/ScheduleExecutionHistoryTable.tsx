@@ -12,6 +12,7 @@ import {
   Loader2,
   AlertTriangle,
   Trash2,
+  Server,
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { IScheduleExecutionHistory } from '@/models/ScheduleExecutionHistory';
@@ -181,6 +182,7 @@ export function ScheduleExecutionHistoryTable({
             <option value="all">All Providers</option>
             <option value="aws">AWS EC2</option>
             <option value="azure">Azure VM</option>
+            <option value="on-premise">On-Premises</option>
           </select>
 
           {/* Action Filter */}
@@ -287,6 +289,11 @@ export function ScheduleExecutionHistoryTable({
                             <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#FF9900]/10 border border-[#FF9900]/25 text-[#FF9900] font-semibold text-[10px]">
                               <AwsLogo className="w-3 h-3" />
                               <span>AWS</span>
+                            </div>
+                          ) : h.provider === 'on-premise' || (h.provider as string) === 'other' ? (
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-semibold text-[10px]">
+                              <Server className="w-2.5 h-2.5 text-emerald-400" />
+                              <span>On-Premise</span>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#0089D6]/10 border border-[#0089D6]/25 text-[#0089D6] font-semibold text-[10px]">

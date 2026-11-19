@@ -12,6 +12,7 @@ import {
   Loader2,
   Copy,
   Check,
+  Server,
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { IServerScheduleData } from '@/models/ServerSchedule';
@@ -156,6 +157,11 @@ export function ServerSchedulesTable({
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#0089D6]/15 border border-[#0089D6]/35 text-[#0089D6] font-bold text-[10px]">
                               <AzureLogo className="w-2.5 h-2.5" />
                               <span>AZURE</span>
+                            </span>
+                          ) : s.provider === 'on-premise' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 font-bold text-[10px]">
+                              <Server className="w-2.5 h-2.5 text-emerald-400" />
+                              <span>ON-PREMISE</span>
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#FF9900]/15 border border-[#FF9900]/35 text-[#FF9900] font-bold text-[10px]">

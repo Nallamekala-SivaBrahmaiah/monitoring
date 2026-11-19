@@ -112,10 +112,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Resolve canonical resource identity from CloudResource
+    // Resolve canonical resource identity from CloudResource or Server
     let canonicalResourceId = resourceId.trim();
     let canonicalRegion = region;
-    let canonicalProvider: 'aws' | 'azure' = provider === 'aws' ? 'aws' : 'azure';
+    let canonicalProvider: 'aws' | 'azure' | 'on-premise' =
+      provider === 'aws' ? 'aws' : provider === 'azure' ? 'azure' : 'on-premise';
     let canonicalServerName = serverName.trim();
     let currentState: 'Running' | 'Stopped' | 'Unknown' = 'Unknown';
 
@@ -131,13 +132,29 @@ export async function POST(req: NextRequest) {
       if (cr) {
         canonicalResourceId = cr.resourceId || canonicalResourceId;
         canonicalRegion = cr.region || canonicalRegion;
-        canonicalProvider = cr.provider === 'aws' ? 'aws' : 'azure';
+        canonicalProvider = cr.provider === 'aws' ? 'aws' : cr.provider === 'azure' ? 'azure' : 'on-premise';
         if (cr.name) canonicalServerName = cr.name;
 
         const isRun =
           (cr.status || '').toLowerCase().includes('run') ||
           ((cr as any).metadata?.powerState || '').toLowerCase().includes('run');
         currentState = isRun ? 'Running' : 'Stopped';
+      } else {
+        const srv = await Server.findOne({
+          $or: [
+            { _id: canonicalResourceId },
+            { name: canonicalServerName },
+            { host: canonicalResourceId },
+          ],
+        }).lean();
+        if (srv) {
+          canonicalProvider = 'on-premise';
+          canonicalResourceId = srv._id.toString();
+          canonicalServerName = srv.name || srv.host;
+          canonicalRegion = srv.region || 'Datacenter';
+          const isOnline = (srv.status || '').toLowerCase() === 'online';
+          currentState = isOnline ? 'Running' : 'Stopped';
+        }
       }
     } catch {}
 

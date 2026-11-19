@@ -30,7 +30,7 @@ export function OnPremisesServersTable({
 
   const fetchDirectServers = async () => {
     try {
-      const res = await fetch('/api/servers');
+      const res = await fetch(`/api/servers?_t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) setLocalServers(data);

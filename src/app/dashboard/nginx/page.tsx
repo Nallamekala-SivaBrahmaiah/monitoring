@@ -102,7 +102,7 @@ export default function NginxDashboardPage() {
 
   // Search and view filters for All Servers view
   const [searchQuery, setSearchQuery] = useState('');
-  const [cloudFilter, setCloudFilter] = useState<'online' | 'all' | 'azure' | 'aws' | 'offline'>('online');
+  const [cloudFilter, setCloudFilter] = useState<'online' | 'all' | 'azure' | 'aws' | 'on-premise' | 'offline'>('online');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
 
   // Server-specific details state
@@ -171,7 +171,6 @@ export default function NginxDashboardPage() {
             const h = (s.host || '').trim().toLowerCase();
             const nm = (s.name || '').toLowerCase();
             if (KNOWN_FAKE_HOSTS.has(h)) return false;
-            if (/premise/i.test(s.cloudProvider || '')) return false;
 
             if (registeredServers.length > 0) {
               const matched = registeredServers.some((rs: any) => {
@@ -582,6 +581,8 @@ export default function NginxDashboardPage() {
       list = list.filter((s) => s.cloudProvider === 'azure');
     } else if (cloudFilter === 'aws') {
       list = list.filter((s) => s.cloudProvider === 'aws');
+    } else if (cloudFilter === 'on-premise') {
+      list = list.filter((s) => s.cloudProvider === 'on-premise' || s.cloudProvider === 'other');
     }
 
     // Sort: Online & SSH reachable servers first!
@@ -608,6 +609,7 @@ export default function NginxDashboardPage() {
 
   const azureCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'azure').length, [servers]);
   const awsCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'aws').length, [servers]);
+  const onPremCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'on-premise' || s.cloudProvider === 'other').length, [servers]);
   const onlineCount = useMemo(() => servers.filter((s) => s.connectionStatus === 'Online').length, [servers]);
   const offlineCount = useMemo(() => servers.filter((s) => s.connectionStatus !== 'Online').length, [servers]);
 
@@ -902,6 +904,19 @@ export default function NginxDashboardPage() {
                   >
                     <AwsLogo className="w-3.5 h-3.5" />
                     <span>AWS ({awsCount})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCloudFilter('on-premise')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                      cloudFilter === 'on-premise'
+                        ? 'bg-emerald-600 text-white font-bold shadow-sm ring-1 ring-emerald-400'
+                        : 'text-emerald-400 hover:bg-emerald-500/15 hover:text-white'
+                    }`}
+                  >
+                    <Server className="w-3.5 h-3.5" />
+                    <span>On-Premises ({onPremCount})</span>
                   </button>
 
                   <button

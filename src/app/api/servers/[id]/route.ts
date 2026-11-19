@@ -108,6 +108,30 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       ],
     }).catch(() => null);
 
+    // Cascade remove from NginxServer
+    try {
+      const NginxServer = (await import('@/models/NginxServer')).default;
+      await NginxServer.deleteMany({
+        $or: [
+          { host: server.host },
+          { name: server.name },
+          { instanceId: server._id.toString() },
+        ],
+      });
+    } catch {}
+
+    // Cascade remove from ServerSchedule
+    try {
+      const ServerSchedule = (await import('@/models/ServerSchedule')).default;
+      await ServerSchedule.deleteMany({
+        $or: [
+          { resourceId: server._id.toString() },
+          { resourceId: server.host },
+          { serverName: server.name },
+        ],
+      });
+    } catch {}
+
     return NextResponse.json({ success: true, message: `Server ${server.name} removed from monitoring` });
   } catch (err: any) {
     console.error('Error deleting server:', err);

@@ -13,6 +13,9 @@ import { convertPPKToOpenSSH } from '@/lib/serverMonitoring/ppkConverter';
 import { evaluateResourceMetrics } from '@/lib/monitoring/alertEvaluationEngine';
 import { getLiveGuestOSMetrics } from '@/lib/serverMonitoring/osMetricsEngine';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 /**
  * GET /api/servers
  * List all registered servers with live metrics, hardware specs, and status.

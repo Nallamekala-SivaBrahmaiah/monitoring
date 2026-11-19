@@ -8,6 +8,9 @@ import AnsibleHost from '@/models/AnsibleHost';
 import { encryptSecret } from '@/lib/serverMonitoring/crypto';
 import { testNginxServerConnection } from '@/lib/nginx/nginxEngine';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const KNOWN_FAKE_HOSTS = [
   '4.240.109.230',
   '20.235.243.1',
@@ -55,18 +58,13 @@ async function autoImportExistingServers() {
   }
 
   const [servers, cloudResources, controllers, ansibleHosts] = await Promise.all([
-    Server.find({
-      cloudProvider: { $nin: ['on-premise', 'other'] },
-    } as any).lean(),
+    Server.find({}).lean(),
     CloudResource.find({
-      provider: { $in: ['aws', 'azure'] },
       isDeleted: { $ne: true },
       status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
     }).lean(),
     AnsibleController.find({}).lean(),
-    AnsibleHost.find({
-      provider: { $nin: ['on-premise'] },
-    } as any).lean(),
+    AnsibleHost.find({}).lean(),
   ]);
 
   // Index credentials from Server, Controller, and AnsibleHost
@@ -101,7 +99,6 @@ async function autoImportExistingServers() {
   for (const s of servers as any[]) {
     const host = (s.host || s.ip || '').trim();
     if (!host) continue;
-    if (s.cloudProvider === 'on-premise' || s.cloudProvider === 'on-premises') continue;
 
     const matchedCr = cloudResources.find((cr: any) => {
       const crPub = (cr.publicIp || '').trim();
@@ -136,14 +133,17 @@ async function autoImportExistingServers() {
     if (netRx) metricsObj.networkRx = `${(netRx / (1024 * 1024)).toFixed(1)} MB`;
     if (netTx) metricsObj.networkTx = `${(netTx / (1024 * 1024)).toFixed(1)} MB`;
 
+    const sProvider = (s.cloudProvider || 'other').toLowerCase();
+
     const updateObj: any = {
       $setOnInsert: {
         host,
-        cloudProvider: (s.cloudProvider || 'aws').toLowerCase(),
+        cloudProvider: sProvider,
         isActive: true,
       },
       $set: {
         name: s.name || `server-${host}`,
+        cloudProvider: sProvider,
         connectionStatus: isOnline ? 'Online' : (s.status === 'Failed' ? 'Failed' : 'Offline'),
         privateIp: matchedCr?.privateIp || s.privateIp || '',
         region: s.region || matchedCr?.region || '',
@@ -428,7 +428,6 @@ export async function GET(req: NextRequest) {
 
     const servers = await NginxServer.find({
       host: { $nin: KNOWN_FAKE_HOSTS },
-      cloudProvider: { $regex: /^(?!.*premise).*$/i },
     } as any)
       .select('-encryptedAuthSecret -authSecretIv -authSecretTag')
       .sort({ createdAt: -1 })
@@ -438,7 +437,6 @@ export async function GET(req: NextRequest) {
     if (finalServers.length === 0) {
       const fallbackServers = await Server.find({
         host: { $nin: KNOWN_FAKE_HOSTS },
-        cloudProvider: { $in: ['aws', 'azure'] },
       } as any).select('-encryptedAuthSecret -authSecretIv -authSecretTag').lean();
       if (fallbackServers.length > 0) {
         finalServers = fallbackServers.map((s: any) => ({
@@ -448,7 +446,7 @@ export async function GET(req: NextRequest) {
           port: s.port || 22,
           username: s.username || 'ubuntu',
           authMethod: s.authMethod || 'privateKey',
-          cloudProvider: s.cloudProvider || 'aws',
+          cloudProvider: (s.cloudProvider || 'other').toLowerCase(),
           region: s.region || '',
           connectionStatus: s.status === 'Online' ? 'Online' : 'Offline',
           metrics: {
@@ -461,12 +459,27 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Strict filter to guarantee ONLY real active cloud servers are returned
+    // Strict filter to guarantee ONLY real active cloud and registered servers are returned
     const activeCloudResources = await CloudResource.find({
       provider: { $in: ['aws', 'azure'] },
       isDeleted: { $ne: true },
       status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
     }).lean();
+
+    const registeredServers = await Server.find().lean();
+    const registeredHosts = new Set(
+      registeredServers.flatMap((s: any) => [
+        (s.host || '').trim().toLowerCase(),
+        (s.publicIp || '').trim().toLowerCase(),
+        (s.privateIp || '').trim().toLowerCase(),
+      ]).filter((ip: string) => ip && ip !== '-')
+    );
+    const registeredNames = new Set(
+      registeredServers.map((s: any) => (s.name || '').trim().toLowerCase()).filter(Boolean)
+    );
+    const registeredIds = new Set(
+      registeredServers.map((s: any) => (s._id?.toString() || '').trim().toLowerCase()).filter(Boolean)
+    );
 
     const activeCloudHosts = new Set(
       activeCloudResources.flatMap((cr: any) => [
@@ -485,18 +498,30 @@ export async function GET(req: NextRequest) {
       const host = (s.host || '').trim().toLowerCase();
       const inst = (s.instanceId || '').trim().toLowerCase();
       const name = (s.name || '').trim().toLowerCase();
+      const sId = (s._id?.toString() || '').trim().toLowerCase();
       const provider = (s.cloudProvider || '').toLowerCase().trim();
 
       if (KNOWN_FAKE_HOSTS.includes(host)) return false;
-      if (provider === 'on-premise' || provider === 'on-premises' || provider === 'onpremise') return false;
 
-      // Must be present in actual cloud resources
+      // Must be present in actual cloud resources OR in registered servers (including on-premise)
       const isPresentInCloud =
         (host && activeCloudHosts.has(host)) ||
         (inst && activeCloudIds.has(inst)) ||
         (name && activeCloudNames.has(name));
 
-      return isPresentInCloud;
+      const isPresentInRegistered =
+        (host && registeredHosts.has(host)) ||
+        (name && registeredNames.has(name)) ||
+        (sId && registeredIds.has(sId));
+
+      const isOnPrem =
+        provider === 'on-premise' ||
+        provider === 'on-premises' ||
+        provider === 'onpremise' ||
+        provider === 'other' ||
+        provider === 'datacenter';
+
+      return isPresentInCloud || isPresentInRegistered || isOnPrem;
     });
 
     const verifyRequested = req.nextUrl.searchParams.get('verify') === 'true';

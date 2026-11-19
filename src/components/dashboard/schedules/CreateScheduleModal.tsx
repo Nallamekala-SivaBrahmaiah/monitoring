@@ -21,7 +21,7 @@ interface AvailableResource {
   id: string;
   name: string;
   resourceId: string;
-  provider: 'aws' | 'azure';
+  provider: 'aws' | 'azure' | 'on-premise';
   region: string;
   currentState: string;
   ipAddress?: string;
@@ -350,7 +350,7 @@ export function CreateScheduleModal({
 
   // Form states
   const [name, setName] = useState('');
-  const [provider, setProvider] = useState<'aws' | 'azure'>('aws');
+  const [provider, setProvider] = useState<'aws' | 'azure' | 'on-premise'>('aws');
   const [selectedResourceId, setSelectedResourceId] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [stopTime, setStopTime] = useState('19:00');
@@ -674,8 +674,8 @@ export function CreateScheduleModal({
 
                   {/* Cloud Provider Switcher */}
                   <div className="space-y-1.5">
-                    <label className="font-semibold text-slate-200 text-xs">Cloud Provider</label>
-                    <div className="grid grid-cols-2 gap-3">
+                    <label className="font-semibold text-slate-200 text-xs">Infrastructure Provider</label>
+                    <div className="grid grid-cols-3 gap-2.5">
                       <button
                         type="button"
                         onClick={() => {
@@ -683,13 +683,13 @@ export function CreateScheduleModal({
                           const firstAws = resources.find((r) => r.provider === 'aws');
                           if (firstAws) setSelectedResourceId(firstAws.resourceId);
                         }}
-                        className={`flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl border font-semibold text-xs transition-all cursor-pointer ${
+                        className={`flex items-center justify-center gap-2 py-2 px-2.5 rounded-xl border font-semibold text-xs transition-all cursor-pointer ${
                           provider === 'aws'
                             ? 'bg-[#FF9900]/20 border-[#FF9900]/70 text-white shadow-md shadow-[#FF9900]/10'
                             : 'bg-[#080E1C] border-[#1E293B] text-slate-400 hover:text-white hover:bg-[#121B2F]'
                         }`}
                       >
-                        <AwsLogo className="w-4 h-4" />
+                        <AwsLogo className="w-3.5 h-3.5" />
                         <span>AWS EC2</span>
                       </button>
 
@@ -700,14 +700,31 @@ export function CreateScheduleModal({
                           const firstAzure = resources.find((r) => r.provider === 'azure');
                           if (firstAzure) setSelectedResourceId(firstAzure.resourceId);
                         }}
-                        className={`flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl border font-semibold text-xs transition-all cursor-pointer ${
+                        className={`flex items-center justify-center gap-2 py-2 px-2.5 rounded-xl border font-semibold text-xs transition-all cursor-pointer ${
                           provider === 'azure'
                             ? 'bg-[#0089D6]/20 border-[#0089D6]/70 text-white shadow-md shadow-[#0089D6]/10'
                             : 'bg-[#080E1C] border-[#1E293B] text-slate-400 hover:text-white hover:bg-[#121B2F]'
                         }`}
                       >
-                        <AzureLogo className="w-3.5 h-3.5" />
+                        <AzureLogo className="w-3 h-3" />
                         <span>Azure VM</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProvider('on-premise');
+                          const firstOnPrem = resources.find((r) => r.provider === 'on-premise');
+                          if (firstOnPrem) setSelectedResourceId(firstOnPrem.resourceId);
+                        }}
+                        className={`flex items-center justify-center gap-2 py-2 px-2.5 rounded-xl border font-semibold text-xs transition-all cursor-pointer ${
+                          provider === 'on-premise'
+                            ? 'bg-emerald-600/20 border-emerald-500/70 text-emerald-300 shadow-md shadow-emerald-500/10'
+                            : 'bg-[#080E1C] border-[#1E293B] text-slate-400 hover:text-white hover:bg-[#121B2F]'
+                        }`}
+                      >
+                        <Server className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>On-Premises</span>
                       </button>
                     </div>
                   </div>

@@ -5,7 +5,7 @@ export interface IScheduleExecutionHistory extends Document {
   scheduleName: string;
   serverName: string;
   resourceId: string;
-  provider: 'aws' | 'azure';
+  provider: 'aws' | 'azure' | 'on-premise';
   region: string;
   action: 'START' | 'STOP';
   triggerType: 'SCHEDULED' | 'MANUAL';
@@ -46,7 +46,7 @@ const ScheduleExecutionHistorySchema: Schema<IScheduleExecutionHistory> = new Sc
     provider: {
       type: String,
       required: true,
-      enum: ['aws', 'azure'],
+      enum: ['aws', 'azure', 'on-premise', 'other'],
       index: true,
     },
     region: {

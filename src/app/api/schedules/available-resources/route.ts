@@ -4,6 +4,9 @@ import CloudResource from '@/models/CloudResource';
 import Server from '@/models/Server';
 import { runFullInfrastructureReconciliation } from '@/lib/sync/reconciliationEngine';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest) {
       id: string;
       name: string;
       resourceId: string;
-      provider: 'aws' | 'azure';
+      provider: 'aws' | 'azure' | 'on-premise';
       region: string;
       currentState: 'Running' | 'Stopped' | 'Deallocated';
       ipAddress?: string;
@@ -164,6 +167,46 @@ export async function GET(request: NextRequest) {
         ipAddress: cr.publicIp || cr.privateIp || matchingServer?.host,
         sshServerId: matchingServer?._id?.toString(),
         isSSHConnected: Boolean(matchingServer && (matchingServer.status === 'Online' || matchingServer.encryptedAuthSecret)),
+      });
+    }
+
+    // 3. Add On-Premises & registered dedicated servers from Server collection
+    for (const s of servers as any[]) {
+      const prov = (s.cloudProvider || '').toLowerCase();
+      const sId = s._id.toString();
+      const sHost = (s.host || s.publicIp || s.privateIp || '').trim();
+      const sName = (s.name || sHost || 'On-Premise Server').trim();
+
+      const isOnPrem =
+        prov === 'on-premise' ||
+        prov === 'on-premises' ||
+        prov === 'onprem' ||
+        prov === 'other' ||
+        prov === 'datacenter' ||
+        prov === 'bare-metal' ||
+        prov === 'custom' ||
+        (!prov && !s.instanceId?.startsWith('i-') && !s.cloudResourceId?.includes('/subscriptions/'));
+
+      if (!isOnPrem) continue;
+
+      const dedupKey = `on-premise:${sId}`;
+      if (seenKeys.has(dedupKey) || (sHost && seenKeys.has(`on-premise:${sHost}`))) continue;
+      seenKeys.add(dedupKey);
+      if (sHost) seenKeys.add(`on-premise:${sHost}`);
+
+      const rawStatus = (s.status || '').toLowerCase();
+      const isOnline = rawStatus === 'online' || rawStatus === 'running';
+
+      availableResources.push({
+        id: sId,
+        name: sName,
+        resourceId: s.cloudResourceId || s.instanceId || sId,
+        provider: 'on-premise',
+        region: s.region || s.environment || 'Datacenter',
+        currentState: isOnline ? 'Running' : 'Stopped',
+        ipAddress: sHost,
+        sshServerId: sId,
+        isSSHConnected: Boolean(s.status === 'Online' || s.encryptedAuthSecret),
       });
     }
 

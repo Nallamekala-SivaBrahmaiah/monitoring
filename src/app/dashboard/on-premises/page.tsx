@@ -17,7 +17,7 @@ export default function OnPremisesPage() {
 
   const fetchOnPremDirect = async () => {
     try {
-      const res = await fetch('/api/servers');
+      const res = await fetch(`/api/servers?_t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) setDirectServers(data);
@@ -29,8 +29,17 @@ export default function OnPremisesPage() {
     fetchOnPremDirect();
   }, [isRefreshing]);
 
-  // Combine direct and context servers
-  const allAvailable = directServers.length > 0 ? directServers : customServers || [];
+  // Combine direct and context servers with deduplication by ID and host
+  const mergedMap = new Map<string, any>();
+  for (const s of (customServers || [])) {
+    const key = (s._id || s.id || s.host || '').toString();
+    if (key) mergedMap.set(key, s);
+  }
+  for (const s of directServers) {
+    const key = (s._id || s.id || s.host || '').toString();
+    if (key) mergedMap.set(key, s);
+  }
+  const allAvailable = mergedMap.size > 0 ? Array.from(mergedMap.values()) : directServers;
 
   // STRICT FILTER: Only display dedicated on-premises servers
   const onPremServers = allAvailable.filter((s: any) => {
