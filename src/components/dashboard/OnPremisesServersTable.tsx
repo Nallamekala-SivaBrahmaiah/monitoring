@@ -135,9 +135,9 @@ export function OnPremisesServersTable({
       addLabel="Add On-Premise Server"
       onAddClick={onAddClick}
       showViewAllButton={showViewAllButton}
-      viewAllHref="/dashboard/servers"
+      viewAllHref="/dashboard/on-premises"
       limit={limit}
-      detailUrlPrefix="/dashboard/servers"
+      detailUrlPrefix="/dashboard/on-premises"
       isLoading={isLoading}
       onRefresh={onRefresh || triggerRefresh}
       emptyMessage="No on-premises servers registered yet. Click '+ Add On-Premise Server' to integrate your server via SSH."

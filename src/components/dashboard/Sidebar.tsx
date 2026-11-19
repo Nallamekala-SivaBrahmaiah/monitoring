@@ -8,6 +8,7 @@ import {
   X,
   Check,
   LogOut,
+  Server,
 } from 'lucide-react';
 import {
   MultiCloudBrandLogo,
@@ -83,9 +84,10 @@ export function Sidebar({
     { label: 'Dashboard', href: '/', icon: DashboardIcon },
     { label: 'Cloud Accounts', href: '/dashboard/cloud-accounts', icon: CloudAccountsIcon },
     { label: 'Regions', href: '/dashboard/regions', icon: RegionsIcon },
+    { label: 'Servers', href: '/dashboard/servers', icon: ServersFleetIcon },
     { label: 'EC2 Instances', href: '/dashboard/ec2', icon: AwsEc2Logo },
     { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AzureVmLogo },
-    { label: 'On-Premises Servers', href: '/dashboard/servers', icon: ServersFleetIcon },
+    { label: 'On-Premises', href: '/dashboard/on-premises', icon: Server },
     { label: 'Server Scheduling', href: '/dashboard/schedules', icon: SchedulingIcon },
     { label: 'Maven', href: '/dashboard/maven', icon: MavenLogo },
     { label: 'Ansible', href: '/dashboard/ansible', icon: AnsibleLogo },
