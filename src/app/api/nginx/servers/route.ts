@@ -9,7 +9,6 @@ import { encryptSecret } from '@/lib/serverMonitoring/crypto';
 import { testNginxServerConnection } from '@/lib/nginx/nginxEngine';
 
 const KNOWN_FAKE_HOSTS = [
-  '44.199.21.34',
   '4.240.109.230',
   '20.235.243.1',
   '52.63.226.201',
@@ -57,21 +56,15 @@ async function autoImportExistingServers() {
 
   const [servers, cloudResources, controllers, ansibleHosts] = await Promise.all([
     Server.find({
-      host: { $ne: '44.199.21.34' },
       cloudProvider: { $nin: ['on-premise', 'other'] },
     } as any).lean(),
     CloudResource.find({
       provider: { $in: ['aws', 'azure'] },
-      publicIp: { $ne: '44.199.21.34' },
-      privateIp: { $ne: '44.199.21.34' },
       isDeleted: { $ne: true },
       status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
     }).lean(),
-    AnsibleController.find({
-      ipAddress: { $ne: '44.199.21.34' },
-    }).lean(),
+    AnsibleController.find({}).lean(),
     AnsibleHost.find({
-      ip: { $ne: '44.199.21.34' },
       provider: { $nin: ['on-premise'] },
     } as any).lean(),
   ]);
@@ -107,7 +100,7 @@ async function autoImportExistingServers() {
   // 1. Sync from Server collection
   for (const s of servers as any[]) {
     const host = (s.host || s.ip || '').trim();
-    if (!host || host === '44.199.21.34') continue;
+    if (!host) continue;
     if (s.cloudProvider === 'on-premise' || s.cloudProvider === 'on-premises') continue;
 
     const matchedCr = cloudResources.find((cr: any) => {
@@ -185,7 +178,7 @@ async function autoImportExistingServers() {
   // 2. Sync from CloudResource (AWS EC2 & Azure VMs)
   for (const cr of cloudResources as any[]) {
     const host = (cr.publicIp && cr.publicIp !== '-' ? cr.publicIp : cr.privateIp || '').trim();
-    if (!host || host === '-' || host === '44.199.21.34') continue;
+    if (!host || host === '-') continue;
     if (cr.provider === 'on-premise' || cr.provider === 'on-premises') continue;
 
     const creds =

@@ -63,10 +63,7 @@ async function run() {
       h === '3.106.216.16' ||   // fake/deleted ansible-worker-03
       h === '32.236.173.166' || // fake/deleted siva
       h === '3.106.129.147' ||  // fake/deleted siva
-      h === '4.194.249.85' ||   // stale old IP of azure
-      h === '44.199.21.34' ||   // demo host
-      /racha|nacha|rachana/i.test(n) ||
-      /racha|nacha|rachana/i.test(h);
+      h === '4.194.249.85';   // stale old IP of azure
 
     const isValid = !isExplicitFake && ((h && validHosts.has(h)) || (inst && validInstanceIds.has(inst)) || (n && validNames.has(n)));
 
@@ -89,9 +86,7 @@ async function run() {
   // Also clean up servers collection
   const delSrv = await db.collection('servers').deleteMany({
     $or: [
-      { host: { $in: ['4.240.109.230', '20.235.243.1', '52.63.226.201', '3.27.205.136', '3.107.183.202', '3.106.216.16', '32.236.173.166', '3.106.129.147', '4.194.249.85', '44.199.21.34'] } },
-      { name: { $regex: /racha|nacha|rachana/i } },
-      { host: { $regex: /racha|nacha|rachana/i } },
+      { host: { $in: ['4.240.109.230', '20.235.243.1', '52.63.226.201', '3.27.205.136', '3.107.183.202', '3.106.216.16', '32.236.173.166', '3.106.129.147', '4.194.249.85'] } },
     ]
   });
   console.log(`Cleaned ${delSrv.deletedCount} ghost servers from servers collection.`);
@@ -99,8 +94,7 @@ async function run() {
   // Also clean up ansiblehosts collection
   const delAnsible = await db.collection('ansiblehosts').deleteMany({
     $or: [
-      { ip: { $in: ['4.240.109.230', '20.235.243.1', '52.63.226.201', '3.27.205.136', '3.107.183.202', '3.106.216.16', '32.236.173.166', '3.106.129.147', '4.194.249.85', '44.199.21.34'] } },
-      { name: { $regex: /racha|nacha|rachana/i } },
+      { ip: { $in: ['4.240.109.230', '20.235.243.1', '52.63.226.201', '3.27.205.136', '3.107.183.202', '3.106.216.16', '32.236.173.166', '3.106.129.147', '4.194.249.85'] } },
     ]
   });
   console.log(`Cleaned ${delAnsible.deletedCount} ghost hosts from ansiblehosts collection.`);
@@ -108,8 +102,7 @@ async function run() {
   // Also clean up ansiblecontrollers collection
   const delCtrl = await db.collection('ansiblecontrollers').deleteMany({
     $or: [
-      { ipAddress: { $in: ['4.240.109.230', '20.235.243.1', '52.63.226.201', '3.27.205.136', '3.107.183.202', '3.106.216.16', '32.236.173.166', '3.106.129.147', '4.194.249.85', '44.199.21.34'] } },
-      { name: { $regex: /racha|nacha|rachana/i } },
+      { ipAddress: { $in: ['4.240.109.230', '20.235.243.1', '52.63.226.201', '3.27.205.136', '3.107.183.202', '3.106.216.16', '32.236.173.166', '3.106.129.147', '4.194.249.85'] } },
     ]
   });
   console.log(`Cleaned ${delCtrl.deletedCount} ghost controllers from ansiblecontrollers collection.`);

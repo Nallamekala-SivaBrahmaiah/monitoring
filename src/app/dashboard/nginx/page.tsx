@@ -153,7 +153,6 @@ export default function NginxDashboardPage() {
       const registeredServers: any[] = dataServers?.servers || [];
 
       const KNOWN_FAKE_HOSTS = new Set([
-        '44.199.21.34',
         '4.240.109.230',
         '20.235.243.1',
         '52.63.226.201',

@@ -21,30 +21,11 @@ import { getLiveGuestOSMetrics } from '@/lib/serverMonitoring/osMetricsEngine';
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();
-    // Purge deprecated test hosts
-    try {
-      await Promise.all([
-        Server.deleteMany({
-          $or: [
-            { host: '44.199.21.34' },
-            { ip: '44.199.21.34' },
-          ],
-        } as any),
-        CloudResource.deleteMany({
-          $or: [
-            { publicIp: '44.199.21.34' },
-            { privateIp: '44.199.21.34' },
-          ],
-        } as any),
-      ]);
-    } catch {}
 
     const { searchParams } = new URL(request.url);
     const cloudFilter = searchParams.get('cloudProvider');
 
-    const query: any = {
-      host: { $ne: '44.199.21.34' },
-    };
+    const query: any = {};
     if (cloudFilter && cloudFilter !== 'all') {
       query.cloudProvider = cloudFilter;
     }
@@ -458,9 +439,11 @@ export async function POST(request: NextRequest) {
       allowOfflineSave = false,
     } = body;
 
+    const resolvedName = (name && typeof name === 'string' && name.trim()) ? name.trim() : (host && typeof host === 'string' ? host.trim() : '');
+
     // 1. Input Validation
-    if (!name || typeof name !== 'string') {
-      return NextResponse.json({ error: 'Server name is required' }, { status: 400 });
+    if (!resolvedName) {
+      return NextResponse.json({ error: 'Server name or host IP is required' }, { status: 400 });
     }
     if (!host || typeof host !== 'string') {
       return NextResponse.json({ error: 'Host IP or hostname is required' }, { status: 400 });
@@ -470,7 +453,7 @@ export async function POST(request: NextRequest) {
     }
 
     const parsedPort = parseInt(port, 10) || 22;
-    const resolvedInstanceId = (instanceId || cloudResourceId || (name?.startsWith('i-') ? name : '')).trim();
+    const resolvedInstanceId = (instanceId || cloudResourceId || (resolvedName?.startsWith('i-') ? resolvedName : '')).trim();
 
     // Check if updating an existing server
     let existing: any = null;
@@ -497,9 +480,9 @@ export async function POST(request: NextRequest) {
         ],
       });
     }
-    if (!existing && name) {
+    if (!existing && resolvedName) {
       existing = await Server.findOne({
-        name: name.trim(),
+        name: resolvedName,
         ...(cloudProvider && cloudProvider !== 'other' ? { cloudProvider } : {}),
       });
     }
@@ -629,7 +612,7 @@ export async function POST(request: NextRequest) {
     // 4. Save or Update in MongoDB
     let serverDoc: any;
     if (existing) {
-      existing.name = name.trim();
+      existing.name = resolvedName;
       existing.host = host.trim();
       existing.publicIp = host.trim();
       existing.port = parsedPort;
@@ -678,7 +661,7 @@ export async function POST(request: NextRequest) {
       serverDoc = existing;
     } else {
       serverDoc = await Server.create({
-        name: name.trim(),
+        name: resolvedName,
         host: host.trim(),
         publicIp: host.trim(),
         cloudResourceId: resolvedInstanceId || (id && !mongoose.isValidObjectId(id) ? id : undefined),
@@ -729,8 +712,8 @@ export async function POST(request: NextRequest) {
           { 'tags.sshServerId': serverDoc._id.toString() },
           { publicIp: hostTrim },
           { privateIp: hostTrim },
-          { name: name.trim() },
-          { resourceId: name.trim() },
+          { name: resolvedName },
+          { resourceId: resolvedName },
         ],
       },
       {

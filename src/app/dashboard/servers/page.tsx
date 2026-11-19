@@ -1203,10 +1203,6 @@ export default function ServersPage() {
                         />
                       </label>
                     )}
-                    <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-                      <Lock className="w-2.5 h-2.5" />
-                      <span>Encrypted at rest with AES-256-GCM</span>
-                    </span>
                   </div>
                 </div>
 
