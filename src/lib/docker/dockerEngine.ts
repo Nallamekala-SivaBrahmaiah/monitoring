@@ -737,31 +737,81 @@ export async function execute1ClickDockerDeployment(
 
     // Step 2: Dependencies Install
     steps[1].status = 'RUNNING';
-    cumulativeLogs += `\n--- [Step 2: Dependencies] Installing project dependencies ---\n`;
-    const pkgMgr = config.packageManager || 'npm';
-    const depCmd = pkgMgr === 'pnpm' ? 'pnpm install' : 'npm install';
+    const stack = (config.stackType || 'mern').toLowerCase();
+    const pkgMgr = config.packageManager || (stack === 'python' ? 'pip' : stack === 'maven' ? 'mvn' : stack === 'dotnet' ? 'dotnet' : 'npm');
+    cumulativeLogs += `\n--- [Step 2: Dependencies] Installing project dependencies for stack "${stack}" (${pkgMgr}) ---\n`;
+
+    let depCommand = '';
+    if (stack === 'python') {
+      depCommand = `
+        if [ -f "requirements.txt" ]; then
+          pip install -r requirements.txt || pip3 install -r requirements.txt || true
+        elif [ -f "pyproject.toml" ]; then
+          poetry install 2>/dev/null || pip install . || true
+        else
+          echo "No Python dependency file found, skipping local installation."
+        fi
+      `;
+    } else if (stack === 'maven') {
+      depCommand = `
+        if [ -f "mvnw" ]; then
+          chmod +x mvnw && ./mvnw dependency:resolve 2>&1 || true
+        elif command -v mvn >/dev/null 2>&1; then
+          mvn dependency:resolve 2>&1 || true
+        else
+          echo "Maven binary not found locally, Docker multi-stage build will resolve artifacts."
+        fi
+      `;
+    } else if (stack === 'java') {
+      depCommand = `
+        if [ -f "gradlew" ]; then
+          chmod +x gradlew && ./gradlew --refresh-dependencies 2>&1 || true
+        elif [ -f "mvnw" ]; then
+          chmod +x mvnw && ./mvnw dependency:resolve 2>&1 || true
+        else
+          echo "Java build wrapper not found, Docker will build inside container."
+        fi
+      `;
+    } else if (stack === 'dotnet') {
+      depCommand = `
+        if command -v dotnet >/dev/null 2>&1; then
+          dotnet restore 2>&1 || true
+        else
+          echo ".NET CLI not present on host, Docker SDK multi-stage build will restore packages."
+        fi
+      `;
+    } else {
+      const depCmd = pkgMgr === 'pnpm' ? 'pnpm install' : pkgMgr === 'yarn' ? 'yarn install' : 'npm install';
+      depCommand = `
+        if [ -f "package.json" ]; then
+          ${depCmd} --legacy-peer-deps || ${depCmd}
+        else
+          echo "No package.json found, skipping dependency installation."
+        fi
+      `;
+    }
+
     const depRes = await executeSSH(server, `
       cd "${repoDir}"
-      if [ -f "package.json" ]; then
-        ${depCmd} --legacy-peer-deps || ${depCmd}
-      else
-        echo "No package.json found, skipping dependency installation."
-      fi
+      ${depCommand}
     `, 60000);
 
     cumulativeLogs += depRes.stdout + '\n';
     steps[1].status = 'SUCCESS';
-    steps[1].logs = 'Dependencies updated successfully';
+    steps[1].logs = `Dependencies resolved for ${stack.toUpperCase()} environment`;
 
     // Step 3: Docker Build
     steps[2].status = 'RUNNING';
-    cumulativeLogs += `\n--- [Step 3: Docker Build] Building updated container images ---\n`;
+    cumulativeLogs += `\n--- [Step 3: Docker Build] Building updated container images for stack "${stack}" ---\n`;
+    const targetImageName = config.backendContainerName || config.frontendContainerName || 'monitoring-app';
     const buildRes = await executeSSH(server, `
       cd "${repoDir}"
       if [ -f "docker-compose.yml" ] || [ -f "compose.yaml" ]; then
         ${dockerCmd} compose build --parallel 2>&1 || ${dockerCmd}-compose build 2>&1 || echo "Compose build finished"
       elif [ -f "Dockerfile" ]; then
-        ${dockerCmd} build -t ${config.frontendContainerName || 'monitoring-frontend'}:latest . 2>&1
+        ${dockerCmd} build -t ${targetImageName}:latest . 2>&1
+      elif [ -f "Dockerfile.jvm" ]; then
+        ${dockerCmd} build -f Dockerfile.jvm -t ${targetImageName}:latest . 2>&1
       else
         echo "No Dockerfile or compose file found. Keeping existing images."
       fi

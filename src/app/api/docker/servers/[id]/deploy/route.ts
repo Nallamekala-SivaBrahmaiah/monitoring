@@ -25,6 +25,7 @@ export async function GET(
       config = {
         serverId: sid,
         appName: 'monitoring-app',
+        stackType: 'mern',
         gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
         gitBranch: 'main',
         appDirectory: `/home/${server.username || 'siva'}/monitoring`,
@@ -34,6 +35,8 @@ export async function GET(
         backendDockerfile: 'Dockerfile',
         composeFilePath: 'docker-compose.yml',
         packageManager: 'npm',
+        buildCommand: 'npm run build',
+        runCommand: 'npm start',
         frontendContainerName: 'monitoring-frontend',
         backendContainerName: 'monitoring-backend',
         databaseContainerName: 'monitoring-database',
@@ -41,6 +44,7 @@ export async function GET(
         nginxContainerName: 'monitoring-nginx-proxy',
         frontendPort: 3000,
         backendPort: 5000,
+        databasePort: 27017,
         healthCheckUrl: 'http://localhost:3000',
         healthCheckTimeout: 15,
       };
@@ -103,6 +107,7 @@ export async function POST(
       effectiveConfig = {
         serverId: sid,
         appName: 'monitoring-app',
+        stackType: 'mern',
         gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
         gitBranch: 'main',
         appDirectory: `/home/${server.username || 'siva'}/monitoring`,
@@ -112,6 +117,8 @@ export async function POST(
         backendDockerfile: 'Dockerfile',
         composeFilePath: 'docker-compose.yml',
         packageManager: 'npm',
+        buildCommand: 'npm run build',
+        runCommand: 'npm start',
         frontendContainerName: 'monitoring-frontend',
         backendContainerName: 'monitoring-backend',
         databaseContainerName: 'monitoring-database',
@@ -119,6 +126,7 @@ export async function POST(
         nginxContainerName: 'monitoring-nginx-proxy',
         frontendPort: 3000,
         backendPort: 5000,
+        databasePort: 27017,
         healthCheckUrl: 'http://localhost:3000',
         healthCheckTimeout: 15,
       };
