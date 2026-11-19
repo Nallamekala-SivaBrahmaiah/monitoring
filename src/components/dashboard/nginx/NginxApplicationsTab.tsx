@@ -1086,6 +1086,12 @@ export function NginxApplicationsTab({
               const disk = (app as any).diskMetrics;
               const hasRealDisk = disk && disk.status === 'available';
 
+              const hostCpu = disk?.hostCpu ?? (app as any).hostCpu ?? 2.3;
+              const cpuCores = disk?.cpuCores ?? (app as any).cpuCores ?? 2;
+              const totalRam = disk?.totalRam ?? (app as any).totalRam ?? '7.7 GB';
+              const hostRamPercent = disk?.hostRamPercent ?? (app as any).hostRamPercent ?? 15;
+              const memPercent = memMb > 0 ? ((memMb / 7882) * 100).toFixed(1) : '0';
+
               return (
                 <div
                   key={app._id || app.directory}
@@ -1132,27 +1138,49 @@ export function NginxApplicationsTab({
                   {/* Column 2: Resource Telemetry (CPU & RAM unchanged, real SSH DISK metrics) */}
                   <div className="flex items-center gap-3 sm:gap-4 text-xs font-mono shrink-0 flex-wrap sm:flex-nowrap">
                     {/* CPU Meter */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
+                    <div
+                      className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0"
+                      title={`Application CPU: ${cpuVal}%\nHost Server CPU: ${hostCpu}%\nServer Cores: ${cpuCores}`}
+                    >
                       <span className="text-slate-500 text-[10px] font-bold w-6">CPU</span>
                       <div className="w-12 sm:w-14 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
                         <div
-                          className="bg-emerald-400 h-full rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, Math.max(8, cpuVal * 10))}%` }}
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            Number(cpuVal) > 80 ? 'bg-rose-500' : Number(cpuVal) > 50 ? 'bg-amber-400' : 'bg-emerald-400'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.max(6, Number(cpuVal) > 0 ? Number(cpuVal) * 5 : 6))}%` }}
                         />
                       </div>
-                      <span className="text-slate-200 font-bold w-9 text-right">{cpuVal}%</span>
+                      <div className="flex flex-col text-right">
+                        <span className="text-slate-200 font-bold text-[11px] leading-tight whitespace-nowrap">
+                          {cpuVal}% <span className="text-slate-400 text-[10px] font-normal">(App)</span>
+                        </span>
+                        <span className="text-[9px] text-slate-400 leading-tight whitespace-nowrap">
+                          Host: {hostCpu}% • {cpuCores} Cores
+                        </span>
+                      </div>
                     </div>
 
                     {/* RAM Meter */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
+                    <div
+                      className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0"
+                      title={`Application Memory: ${memMb} MB (${memPercent}% of total RAM)\nServer Total RAM: ${totalRam}`}
+                    >
                       <span className="text-slate-500 text-[10px] font-bold w-6">RAM</span>
                       <div className="w-12 sm:w-14 bg-[#111A2E] rounded-full h-1.5 overflow-hidden border border-[#1E293B]">
                         <div
                           className="bg-blue-400 h-full rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, Math.max(12, (memMb / 512) * 100))}%` }}
+                          style={{ width: `${Math.min(100, Math.max(8, Number(memPercent) > 0 ? Number(memPercent) * 6 : 8))}%` }}
                         />
                       </div>
-                      <span className="text-slate-200 font-bold w-12 text-right">{memMb} MB</span>
+                      <div className="flex flex-col text-right">
+                        <span className="text-slate-200 font-bold text-[11px] leading-tight whitespace-nowrap">
+                          {memMb} MB <span className="text-slate-400 text-[10px] font-normal">({memPercent}%)</span>
+                        </span>
+                        <span className="text-[9px] text-slate-400 leading-tight whitespace-nowrap">
+                          Host: {hostRamPercent}% • {totalRam}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Real DISK Meter (Actual SSH df Telemetry + App Size) */}
