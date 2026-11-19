@@ -27,23 +27,33 @@ export function OnPremisesServersTable({
   const router = useRouter();
   const { customServers, triggerRefresh } = useMonitoring();
 
-  // Use passed servers or all custom servers from context
-  const serverList = servers || customServers || [];
-
-  // Filter for on-premises / datacenter servers
+  // STRICT FILTER: Only display dedicated on-premises / standalone registered servers
+  // Never show auto-discovered cloud fleet instances (AWS EC2 / Azure VMs) here
   const onPremServers = useMemo(() => {
-    return serverList.filter((s: any) => {
+    const rawList = servers || customServers || [];
+    return rawList.filter((s: any) => {
       const prov = (s.cloudProvider || '').toLowerCase();
-      return prov === 'on-premise' || prov === 'other' || prov === 'datacenter' || !s.cloudResourceId;
+      const resId = (s.cloudResourceId || s.instanceId || '').toLowerCase();
+
+      // Filter out auto-synced cloud instances
+      if (prov === 'aws' && resId.startsWith('i-')) return false;
+      if (prov === 'azure' && (resId.includes('/subscriptions/') || resId.includes('/resourcegroups/'))) return false;
+
+      // Include explicitly registered on-premise / standalone servers
+      return (
+        prov === 'on-premise' ||
+        prov === 'other' ||
+        prov === 'datacenter' ||
+        prov === 'bare-metal' ||
+        prov === 'custom' ||
+        (!resId.startsWith('i-') && !resId.includes('/subscriptions/'))
+      );
     });
-  }, [serverList]);
+  }, [servers, customServers]);
 
-  // If no explicitly filtered on-prem servers, use all registered custom servers
-  const activeServers = onPremServers.length > 0 ? onPremServers : serverList;
-
-  // Map into UnifiedServerItem array
+  // Map into UnifiedServerItem array (STRICT: only onPremServers, never fall back to cloud servers)
   const unifiedServers: UnifiedServerItem[] = useMemo(() => {
-    return activeServers.map((s: any) => {
+    return onPremServers.map((s: any) => {
       const rawStatus = (s.status || '').toLowerCase();
       const isOnline =
         rawStatus === 'online' ||
@@ -113,14 +123,14 @@ export function OnPremisesServersTable({
         totalMemoryBytes: s.hardware?.totalMemoryBytes || 8589934592,
       };
     });
-  }, [activeServers]);
+  }, [onPremServers]);
 
   return (
     <UnifiedServerTable
       servers={unifiedServers}
       provider="on-prem"
       title="On-Premises Infrastructure Servers"
-      subtitle="Bare-metal, physical nodes, and datacenter virtual servers with live telemetry"
+      subtitle="Dedicated bare-metal nodes and custom integrated servers with live telemetry"
       icon={<Server className="w-4 h-4 text-emerald-400" />}
       addLabel="Add On-Premise Server"
       onAddClick={onAddClick}
@@ -130,7 +140,7 @@ export function OnPremisesServersTable({
       detailUrlPrefix="/dashboard/servers"
       isLoading={isLoading}
       onRefresh={onRefresh || triggerRefresh}
-      emptyMessage="No on-premises servers found. Click 'Add On-Premise Server' to register a server."
+      emptyMessage="No on-premises servers registered yet. Click '+ Add On-Premise Server' to integrate your server via SSH."
     />
   );
 }

@@ -14,20 +14,31 @@ export default function OnPremisesServersPage() {
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Compute Online & Offline counts from customServers
+  // STRICT FILTER: Compute Online & Offline counts from onPremServers ONLY
   const onPremServers = (customServers || []).filter((s: any) => {
     const prov = (s.cloudProvider || '').toLowerCase();
-    return prov === 'on-premise' || prov === 'other' || prov === 'datacenter' || !s.cloudResourceId;
+    const resId = (s.cloudResourceId || s.instanceId || '').toLowerCase();
+
+    // Filter out auto-synced cloud instances
+    if (prov === 'aws' && resId.startsWith('i-')) return false;
+    if (prov === 'azure' && (resId.includes('/subscriptions/') || resId.includes('/resourcegroups/'))) return false;
+
+    return (
+      prov === 'on-premise' ||
+      prov === 'other' ||
+      prov === 'datacenter' ||
+      prov === 'bare-metal' ||
+      prov === 'custom' ||
+      (!resId.startsWith('i-') && !resId.includes('/subscriptions/'))
+    );
   });
 
-  const activeList = onPremServers.length > 0 ? onPremServers : customServers || [];
-
-  const onlineCount = activeList.filter((s: any) => {
+  const onlineCount = onPremServers.filter((s: any) => {
     const st = (s.status || '').toLowerCase();
     return st === 'online' || st === 'running' || Boolean(s.isSSHConnected && st !== 'offline');
   }).length;
 
-  const offlineCount = activeList.length - onlineCount;
+  const offlineCount = onPremServers.length - onlineCount;
 
   const handleServerAdded = (name: string) => {
     setToastMessage(`Server "${name}" successfully registered! Telemetry collection active.`);

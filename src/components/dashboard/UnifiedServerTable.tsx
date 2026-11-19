@@ -435,7 +435,11 @@ export function UnifiedServerTable({
             <button
               type="button"
               onClick={onAddClick}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#0D1526] hover:bg-[#15203A] text-slate-200 border border-[#1E293B] transition-colors cursor-pointer shadow-sm"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer shadow-sm ${
+                isOnPrem
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
+                  : 'bg-[#0D1526] hover:bg-[#15203A] text-slate-200 border border-[#1E293B]'
+              }`}
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{addLabel}</span>
@@ -506,16 +510,28 @@ export function UnifiedServerTable({
           </table>
         </div>
       ) : (
-        <div className="py-10 px-4 text-center space-y-2">
+        <div className="py-12 px-4 text-center space-y-3">
           {isLoading ? (
             <div className="flex items-center justify-center gap-2 text-slate-400 text-xs">
-              <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
+              <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
               <span>Loading infrastructure instances...</span>
             </div>
           ) : (
-            <p className="text-xs text-slate-400">
-              {emptyMessage || 'No instances in this cloud section match the current search or filter.'}
-            </p>
+            <div className="space-y-3 max-w-md mx-auto">
+              <p className="text-xs text-slate-400">
+                {emptyMessage || 'No instances in this cloud section match the current search or filter.'}
+              </p>
+              {addLabel && onAddClick && (
+                <button
+                  type="button"
+                  onClick={onAddClick}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/40 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{addLabel}</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

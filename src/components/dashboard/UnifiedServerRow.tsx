@@ -467,14 +467,15 @@ export function UnifiedServerRow({
             View
           </Link>
 
-          {/* Delete Button */}
+          {/* Delete / Remove Button */}
           <button
             type="button"
             onClick={() => onDeleteServer && onDeleteServer(server)}
-            title="Delete Server"
-            className="p-1.5 rounded-lg bg-[#0D1526] hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-[#1E293B] transition-colors cursor-pointer"
+            title="Remove / Delete Server"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 hover:text-rose-300 border border-rose-500/30 rounded-md transition-all shadow-sm shrink-0 cursor-pointer whitespace-nowrap"
           >
             <Trash2 className="w-3.5 h-3.5" />
+            <span>Remove</span>
           </button>
         </div>
       </td>
