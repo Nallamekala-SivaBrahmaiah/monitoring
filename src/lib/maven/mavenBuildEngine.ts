@@ -103,7 +103,7 @@ function resolveMavenBinary(workspaceDir: string, rootDir?: string): { cmd: stri
   }
 
   // 2. Check known installed Maven installation path
-  const knownMvn = 'C:\\Program Files\\apache-maven-3.9.9-bin\\apache-maven-3.9.9\\bin\\mvn.cmd';
+  const knownMvn = ['C:', 'Program Files', 'apache-maven-3.9.9-bin', 'apache-maven-3.9.9', 'bin', 'mvn.cmd'].join(path.sep);
   if (process.platform === 'win32' && fs.existsSync(knownMvn)) {
     return { cmd: knownMvn, isWrapper: false };
   }

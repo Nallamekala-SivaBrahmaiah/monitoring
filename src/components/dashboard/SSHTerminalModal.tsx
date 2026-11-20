@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import '@xterm/xterm/css/xterm.css';
 
 export interface SSHTerminalTarget {
   id?: string;
