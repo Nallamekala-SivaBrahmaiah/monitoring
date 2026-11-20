@@ -887,3 +887,143 @@ export async function execute1ClickDockerDeployment(
   }
 }
 
+export interface IClonedGitRepo {
+  path: string;
+  name: string;
+  url: string;
+  branch: string;
+  stack: string;
+  latestCommit?: string;
+  hasDockerfile?: boolean;
+  hasCompose?: boolean;
+}
+
+/**
+ * Actively scans the remote host VM via SSH to detect real cloned Git repositories.
+ */
+export async function scanServerClonedRepos(server: any): Promise<IClonedGitRepo[]> {
+  try {
+    const scanScript = `
+python3 -c "
+import os, subprocess, json
+
+user_home = os.path.expanduser('~')
+repos = []
+
+for root, dirs, files in os.walk(user_home):
+    rel = os.path.relpath(root, user_home)
+    depth = len(rel.split(os.sep)) if rel != '.' else 0
+    if depth > 4:
+        dirs[:] = []
+        continue
+    if any(ignore in root for ignore in ['.cache', 'node_modules', '.npm', '.local', '.cargo', '.rustup', '.dotnet']):
+        dirs[:] = []
+        continue
+    if '.git' in dirs:
+        dirs.remove('.git')
+        repo_dir = root
+        try:
+            url = subprocess.check_output(['git', 'config', '--get', 'remote.origin.url'], cwd=repo_dir, text=True, timeout=2).strip()
+        except:
+            url = ''
+        try:
+            branch = subprocess.check_output(['git', 'branch', '--show-current'], cwd=repo_dir, text=True, timeout=2).strip()
+            if not branch:
+                branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd=repo_dir, text=True, timeout=2).strip()
+        except:
+            branch = 'main'
+        
+        try:
+            commit = subprocess.check_output(['git', 'log', '-1', '--format=%h - %s'], cwd=repo_dir, text=True, timeout=2).strip()
+        except:
+            commit = ''
+
+        items = os.listdir(repo_dir)
+        stack = 'custom'
+        if any(f.endswith('.csproj') or f.endswith('.sln') for f in items):
+            stack = 'dotnet'
+        elif 'pom.xml' in items or 'mvnw' in items:
+            stack = 'java'
+        elif any(f in items for f in ['requirements.txt', 'pyproject.toml', 'Pipfile']):
+            stack = 'python'
+        elif 'package.json' in items:
+            stack = 'mern'
+
+        repos.append({
+            'path': repo_dir,
+            'name': os.path.basename(repo_dir),
+            'url': url,
+            'branch': branch,
+            'stack': stack,
+            'latestCommit': commit,
+            'hasDockerfile': any('dockerfile' in f.lower() for f in items),
+            'hasCompose': any('compose' in f.lower() for f in items)
+        })
+
+print(json.dumps(repos))
+" 2>/dev/null || echo "[]"
+`;
+
+    const res = await executeSSH(server, scanScript, 10000);
+    const trimmed = (res.stdout || '').trim();
+    const firstBracket = trimmed.indexOf('[');
+    const lastBracket = trimmed.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      return JSON.parse(trimmed.substring(firstBracket, lastBracket + 1));
+    }
+    return [];
+  } catch (err: any) {
+    console.warn('scanServerClonedRepos failed:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Clones a Git repository to the remote host VM via SSH
+ */
+export async function cloneRepoOnServer(
+  server: any,
+  repoUrl: string,
+  targetPath: string,
+  branch: string = 'main'
+): Promise<{ success: boolean; output: string; error?: string }> {
+  try {
+    const cleanUrl = (repoUrl || '').trim();
+    const cleanPath = (targetPath || '').trim();
+    const cleanBranch = (branch || 'main').trim();
+
+    if (!cleanUrl) {
+      return { success: false, output: '', error: 'Repository URL is required' };
+    }
+    if (!cleanPath) {
+      return { success: false, output: '', error: 'Target directory path is required' };
+    }
+
+    const script = `
+      mkdir -p "$(dirname "${cleanPath}")"
+      if [ -d "${cleanPath}/.git" ]; then
+        echo "Git repo already exists at ${cleanPath}. Pulling latest changes from branch ${cleanBranch}..."
+        cd "${cleanPath}" && git fetch origin && git checkout "${cleanBranch}" 2>&1 && git pull origin "${cleanBranch}" 2>&1
+      elif [ -d "${cleanPath}" ] && [ "$(ls -A "${cleanPath}" 2>/dev/null)" ]; then
+        echo "Directory ${cleanPath} exists and contains files. Initializing git remote..."
+        cd "${cleanPath}" && git init 2>&1 && git remote add origin "${cleanUrl}" 2>&1 && git fetch origin "${cleanBranch}" 2>&1 && git checkout -t "origin/${cleanBranch}" 2>&1 || git clone "${cleanUrl}" "${cleanPath}_new" 2>&1
+      else
+        echo "Cloning ${cleanUrl} (branch: ${cleanBranch}) into ${cleanPath}..."
+        git clone -b "${cleanBranch}" "${cleanUrl}" "${cleanPath}" 2>&1 || git clone "${cleanUrl}" "${cleanPath}" 2>&1
+      fi
+    `;
+
+    const res = await executeSSH(server, script, 60000);
+    const out = (res.stdout + (res.stderr ? '\n' + res.stderr : '')).trim();
+    const isSucc = res.code === 0 || out.includes('Cloning into') || out.includes('Already up to date');
+    return {
+      success: isSucc,
+      output: out || 'Git clone operation completed',
+      error: !isSucc ? out || 'Git clone failed' : undefined,
+    };
+  } catch (err: any) {
+    return { success: false, output: '', error: err.message };
+  }
+}
+
+

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
-import { resolveDockerServer, execute1ClickDockerDeployment } from '@/lib/docker/dockerEngine';
+import {
+  resolveDockerServer,
+  execute1ClickDockerDeployment,
+  scanServerClonedRepos,
+  cloneRepoOnServer,
+} from '@/lib/docker/dockerEngine';
 import DockerAppConfig from '@/models/DockerAppConfig';
 import DockerDeployment from '@/models/DockerDeployment';
 
@@ -20,13 +25,17 @@ export async function GET(
     const sid = server._id?.toString() || id;
     const defaultUser = server.username || 'azureuser';
 
+    // 1. Actively scan the host VM via SSH for actually cloned git repositories
+    const clonedRepos = await scanServerClonedRepos(server);
+
+    // 2. Determine default or active config based on real cloned repos
     const defaultStackConfig = {
       serverId: sid,
-      appName: 'mern-stack-app',
-      stackType: 'mern',
-      gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/mern-stack-app.git',
-      gitBranch: 'main',
-      appDirectory: `/home/${defaultUser}/apps/mern`,
+      appName: clonedRepos.length > 0 ? clonedRepos[0].name : '',
+      stackType: clonedRepos.length > 0 ? clonedRepos[0].stack : 'mern',
+      gitRepoUrl: clonedRepos.length > 0 ? clonedRepos[0].url : '',
+      gitBranch: clonedRepos.length > 0 ? clonedRepos[0].branch : 'main',
+      appDirectory: clonedRepos.length > 0 ? clonedRepos[0].path : `/home/${defaultUser}/apps/mern`,
       frontendDirectory: 'src',
       backendDirectory: 'src/server',
       frontendDockerfile: 'Dockerfile',
@@ -51,6 +60,13 @@ export async function GET(
     let config = await DockerAppConfig.findOne({ serverId: sid }).lean();
     if (!config || config.gitRepoUrl?.includes('monitoring.git') || config.appName === 'monitoring-app') {
       config = defaultStackConfig;
+    } else if (clonedRepos.length === 0 && config.gitRepoUrl?.includes('github.com/Nallamekala-SivaBrahmaiah/')) {
+      // If VM has zero cloned repositories, do not display hardcoded sample template as if it were cloned
+      config = {
+        ...config,
+        gitRepoUrl: '',
+        appName: '',
+      };
     }
 
     // Load deployment history
@@ -62,6 +78,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       serverId: sid,
+      clonedRepos,
       config,
       history,
     });
@@ -87,6 +104,47 @@ export async function POST(
 
     const sid = server._id?.toString() || id;
 
+    // Scan VM for cloned repos
+    if (action === 'scan_repos') {
+      const clonedRepos = await scanServerClonedRepos(server);
+      return NextResponse.json({
+        success: true,
+        clonedRepos,
+      });
+    }
+
+    // Clone a repository to the VM
+    if (action === 'clone_repo') {
+      const { repoUrl, targetPath, branch = 'main', stackType = 'custom' } = body;
+      const cloneRes = await cloneRepoOnServer(server, repoUrl, targetPath, branch);
+      const clonedRepos = await scanServerClonedRepos(server);
+
+      let updatedConfig = null;
+      if (cloneRes.success) {
+        const repoName = (targetPath || '').split('/').filter(Boolean).pop() || `${stackType}-app`;
+        updatedConfig = await DockerAppConfig.findOneAndUpdate(
+          { serverId: sid },
+          {
+            serverId: sid,
+            appName: repoName,
+            stackType,
+            gitRepoUrl: repoUrl,
+            gitBranch: branch,
+            appDirectory: targetPath,
+          },
+          { upsert: true, new: true }
+        ).lean();
+      }
+
+      return NextResponse.json({
+        success: cloneRes.success,
+        output: cloneRes.output,
+        error: cloneRes.error,
+        clonedRepos,
+        config: updatedConfig,
+      });
+    }
+
     // Save configuration
     if (action === 'save_config' || incomingConfig) {
       const updated = await DockerAppConfig.findOneAndUpdate(
@@ -110,7 +168,7 @@ export async function POST(
       serverId: sid,
       appName: 'mern-stack-app',
       stackType: 'mern',
-      gitRepoUrl: 'https://github.com/Nallamekala-SivaBrahmaiah/mern-stack-app.git',
+      gitRepoUrl: '',
       gitBranch: 'main',
       appDirectory: `/home/${defaultUser}/apps/mern`,
       frontendDirectory: 'src',

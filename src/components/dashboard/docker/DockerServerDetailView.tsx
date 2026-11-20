@@ -46,6 +46,7 @@ import {
   IDockerImageItem,
   IDockerVolumeItem,
   IDockerNetworkItem,
+  IClonedGitRepo,
 } from '@/lib/docker/dockerEngine';
 
 interface DockerServerDetailViewProps {
@@ -390,10 +391,10 @@ export function DockerServerDetailView({
   const defaultUser = host.username || 'azureuser';
   const initialPreset = STACK_PRESETS[0]; // MERN Stack
   const [deploymentConfig, setDeploymentConfig] = useState<any>({
-    appName: initialPreset.appName,
+    appName: '',
     stackType: initialPreset.id,
-    gitRepoUrl: initialPreset.gitRepoUrl,
-    gitBranch: initialPreset.gitBranch || 'main',
+    gitRepoUrl: '',
+    gitBranch: 'main',
     appDirectory: `/home/${defaultUser}/apps/${initialPreset.id}`,
     frontendDirectory: 'src',
     backendDirectory: 'src/server',
@@ -420,16 +421,34 @@ export function DockerServerDetailView({
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
+  // Real Cloned Git Repos on Host VM State
+  const [clonedRepos, setClonedRepos] = useState<IClonedGitRepo[]>([]);
+  const [isScanningRepos, setIsScanningRepos] = useState(false);
+  const [cloneModalOpen, setCloneModalOpen] = useState(false);
+  const [isCloning, setIsCloning] = useState(false);
+  const [cloneForm, setCloneForm] = useState({
+    repoUrl: '',
+    branch: 'main',
+    targetPath: `/home/${defaultUser}/apps/mern`,
+    stack: 'mern',
+  });
+  const [cloneOutput, setCloneOutput] = useState('');
+
   // Handle Selecting a Stack Preset in Model 1
   const handleSelectStack = (stack: IStackPreset) => {
     const user = host.username || 'azureuser';
+    // Check if the Azure VM has a real cloned repository for this stack
+    const matching = clonedRepos.find(
+      (r) => r.stack === stack.id || r.path.toLowerCase().includes(stack.id)
+    );
+
     setDeploymentConfig((prev: any) => ({
       ...prev,
-      appName: stack.appName,
       stackType: stack.id,
-      gitRepoUrl: stack.gitRepoUrl,
-      gitBranch: stack.gitBranch || 'main',
-      appDirectory: `/home/${user}/apps/${stack.id}`,
+      appName: matching ? matching.name : '',
+      gitRepoUrl: matching ? matching.url : '',
+      gitBranch: matching ? matching.branch : 'main',
+      appDirectory: matching ? matching.path : `/home/${user}/apps/${stack.id}`,
       packageManager: stack.packageManager,
       frontendContainerName: stack.frontendContainer,
       backendContainerName: stack.backendContainer,
@@ -444,6 +463,98 @@ export function DockerServerDetailView({
       healthCheckUrl: stack.healthCheckUrl,
       frontendDockerfile: stack.dockerfile,
     }));
+  };
+
+  // Scan host VM for cloned repositories
+  const handleScanHostRepos = async () => {
+    setIsScanningRepos(true);
+    try {
+      const res = await fetch(`/api/docker/servers/${host.id}/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'scan_repos' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const repos: IClonedGitRepo[] = data.clonedRepos || [];
+        setClonedRepos(repos);
+        const currentStack = (deploymentConfig.stackType || 'mern').toLowerCase();
+        const matching = repos.find(
+          (r) => r.stack === currentStack || r.path.toLowerCase().includes(currentStack)
+        );
+        if (matching) {
+          setDeploymentConfig((prev: any) => ({
+            ...prev,
+            appName: matching.name,
+            gitRepoUrl: matching.url,
+            gitBranch: matching.branch,
+            appDirectory: matching.path,
+          }));
+          showToast('success', `Found cloned repo on VM: ${matching.name} (${matching.url})`);
+        } else if (repos.length > 0) {
+          showToast('success', `Found ${repos.length} cloned repositories on VM: ${repos.map(r => r.name).join(', ')}`);
+        } else {
+          showToast('success', 'Host scan complete: No Git repositories cloned on this VM yet');
+        }
+      } else {
+        showToast('error', data.error || 'Failed to scan host for git repositories');
+      }
+    } catch (err: any) {
+      showToast('error', err.message || 'Network error scanning host repositories');
+    } finally {
+      setIsScanningRepos(false);
+    }
+  };
+
+  // Clone a Git Repository directly to host VM
+  const handleCloneRepoToHost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cloneForm.repoUrl) {
+      showToast('error', 'Please provide a valid Git Repository URL');
+      return;
+    }
+    setIsCloning(true);
+    setCloneOutput('Connecting to Azure VM via SSH and running git clone...\n');
+    try {
+      const target = cloneForm.targetPath || `/home/${host.username || 'azureuser'}/apps/${cloneForm.stack}`;
+      const res = await fetch(`/api/docker/servers/${host.id}/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'clone_repo',
+          repoUrl: cloneForm.repoUrl,
+          targetPath: target,
+          branch: cloneForm.branch || 'main',
+          stackType: cloneForm.stack,
+        }),
+      });
+      const data = await res.json();
+      setCloneOutput(data.output || (data.error ? `[ERROR] ${data.error}` : 'Git clone completed'));
+      if (res.ok && data.success) {
+        const repos: IClonedGitRepo[] = data.clonedRepos || [];
+        setClonedRepos(repos);
+        const newlyCloned = repos.find((r) => r.path === target || r.url === cloneForm.repoUrl);
+        if (newlyCloned) {
+          setDeploymentConfig((prev: any) => ({
+            ...prev,
+            stackType: newlyCloned.stack || cloneForm.stack,
+            appName: newlyCloned.name,
+            gitRepoUrl: newlyCloned.url,
+            gitBranch: newlyCloned.branch,
+            appDirectory: newlyCloned.path,
+          }));
+        }
+        showToast('success', `Successfully cloned repository to ${target} on Azure VM!`);
+        setTimeout(() => setCloneModalOpen(false), 1800);
+      } else {
+        showToast('error', data.error || 'Git clone failed on host VM');
+      }
+    } catch (err: any) {
+      setCloneOutput((prev) => prev + `\n[NETWORK ERROR] ${err.message}`);
+      showToast('error', err.message);
+    } finally {
+      setIsCloning(false);
+    }
   };
 
   // Helper to render the appropriate SVG icon for a stack
@@ -576,28 +687,32 @@ export function DockerServerDetailView({
       const res = await fetch(`/api/docker/servers/${host.id}/deploy`);
       const data = await res.json();
       if (res.ok && data.success) {
+        const repos: IClonedGitRepo[] = data.clonedRepos || [];
+        setClonedRepos(repos);
+
         if (data.config) {
-          // If loaded config still points to monitoring.git, sanitize to active stack preset
-          if (data.config.gitRepoUrl?.includes('monitoring.git') || data.config.appName === 'monitoring-app') {
-            const user = host.username || 'azureuser';
-            const preset = STACK_PRESETS.find((s) => s.id === data.config.stackType) || STACK_PRESETS[0];
+          const currentStack = (data.config.stackType || 'mern').toLowerCase();
+          const matching = repos.find(
+            (r) => r.stack === currentStack || r.path.toLowerCase().includes(currentStack)
+          );
+
+          if (matching) {
             setDeploymentConfig((prev: any) => ({
               ...prev,
               ...data.config,
-              appName: preset.appName,
-              gitRepoUrl: preset.gitRepoUrl,
-              gitBranch: data.config.gitBranch || preset.gitBranch || 'main',
-              appDirectory: `/home/${user}/apps/${preset.id}`,
-              packageManager: preset.packageManager,
-              frontendContainerName: preset.frontendContainer,
-              backendContainerName: preset.backendContainer,
-              databaseContainerName: preset.databaseContainer,
-              frontendPort: preset.frontendPort,
-              backendPort: preset.backendPort,
-              databasePort: preset.databasePort,
+              appName: matching.name,
+              gitRepoUrl: matching.url,
+              gitBranch: matching.branch,
+              appDirectory: matching.path,
             }));
           } else {
-            setDeploymentConfig(data.config);
+            // No cloned repo on VM for this stack -> do not display fake URL
+            setDeploymentConfig((prev: any) => ({
+              ...prev,
+              ...data.config,
+              appName: '',
+              gitRepoUrl: '',
+            }));
           }
         }
         if (data.history) setDeploymentHistory(data.history);
@@ -605,7 +720,7 @@ export function DockerServerDetailView({
     } catch (err) {
       console.warn('Failed to load deploy data:', err);
     }
-  }, [host.id, host.username]);
+  }, [host.id]);
 
   useEffect(() => {
     if (activeTab === 'deployment') {
@@ -1662,6 +1777,9 @@ export function DockerServerDetailView({
                 const isRunning = containers.some(
                   (c) => c.name.toLowerCase().startsWith(stack.id) && c.status.toLowerCase().includes('up')
                 );
+                const isCloned = clonedRepos.some(
+                  (r) => r.stack === stack.id || r.path.toLowerCase().includes(stack.id)
+                );
                 return (
                   <button
                     key={stack.id}
@@ -1675,10 +1793,13 @@ export function DockerServerDetailView({
                   >
                     {renderStackIcon(stack.id)}
                     <span>{stack.name}</span>
-                    {isRunning ? (
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                      isCloned ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}>
+                      {isCloned ? 'Cloned' : 'Not Cloned'}
+                    </span>
+                    {isRunning && (
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Containers running on this host" />
-                    ) : (
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
                     )}
                   </button>
                 );
@@ -1731,76 +1852,149 @@ export function DockerServerDetailView({
           </div>
 
           {/* Active Configuration Overview Strip */}
-          <div className="bg-[#070B14] border border-[#1E293B] rounded-xl p-4 text-xs space-y-3">
-            <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Rocket className="w-3.5 h-3.5 text-purple-400" />
-                <span>Active Deployment Parameters (Harmonized 1:1)</span>
-              </span>
-              <div className="flex items-center gap-2">
-                {(() => {
-                  const stackId = (deploymentConfig.stackType || 'mern').toLowerCase();
-                  const runningCount = containers.filter(
-                    (c) => c.name.toLowerCase().startsWith(stackId) && c.status.toLowerCase().includes('up')
-                  ).length;
-                  if (runningCount > 0) {
-                    return (
-                      <span className="text-emerald-400 font-mono text-[10px] bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        {runningCount} Containers Active on Host
-                      </span>
-                    );
-                  }
-                  return (
-                    <span className="text-amber-400 font-mono text-[10px] bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
-                      Ready for 1-Click Deploy
+          {(() => {
+            const currentStack = (deploymentConfig.stackType || 'mern').toLowerCase();
+            const activePreset = STACK_PRESETS.find((s) => s.id === currentStack) || STACK_PRESETS[0];
+            const matchingCloned = clonedRepos.find(
+              (r) => r.stack === currentStack || r.path.toLowerCase().includes(currentStack) || (r.url && r.url === deploymentConfig.gitRepoUrl)
+            );
+
+            return (
+              <div className="bg-[#070B14] border border-[#1E293B] rounded-xl p-4 text-xs space-y-3">
+                <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex flex-wrap items-center justify-between gap-2">
+                  <span className="flex items-center gap-2">
+                    <Rocket className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Active Deployment Parameters (Harmonized 1:1)</span>
+                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleScanHostRepos}
+                      disabled={isScanningRepos}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#0B1120] hover:bg-[#142038] text-cyan-300 hover:text-white border border-[#1E293B] text-[10px] font-semibold cursor-pointer transition disabled:opacity-50"
+                      title="Actively scan Azure VM for newly cloned git repositories"
+                    >
+                      <RefreshCw className={`w-3 h-3 text-cyan-400 ${isScanningRepos ? 'animate-spin' : ''}`} />
+                      <span>{isScanningRepos ? 'Scanning VM...' : 'Scan VM Repos'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCloneForm({
+                          repoUrl: '',
+                          branch: 'main',
+                          targetPath: `/home/${host.username || 'azureuser'}/apps/${currentStack}`,
+                          stack: currentStack,
+                        });
+                        setCloneOutput('');
+                        setCloneModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-[10px] font-semibold cursor-pointer transition"
+                    >
+                      <GitBranch className="w-3 h-3 text-blue-400" />
+                      <span>+ Clone Repo to VM</span>
+                    </button>
+                    {(() => {
+                      const runningCount = containers.filter(
+                        (c) => c.name.toLowerCase().startsWith(currentStack) && c.status.toLowerCase().includes('up')
+                      ).length;
+                      if (runningCount > 0) {
+                        return (
+                          <span className="text-emerald-400 font-mono text-[10px] bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            {runningCount} Containers Active on Host
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="text-amber-400 font-mono text-[10px] bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
+                          Ready for 1-Click Deploy
+                        </span>
+                      );
+                    })()}
+                    <span className="text-emerald-400 font-mono text-[10px] bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                      DB Volume Protected
                     </span>
-                  );
-                })()}
-                <span className="text-emerald-400 font-mono text-[10px] bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                  DB Volume Protected
-                </span>
+                  </div>
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-slate-400 font-mono text-[11px]">
+                  <div>
+                    <span className="text-slate-500 block">Repository & App:</span>
+                    {matchingCloned ? (
+                      <>
+                        <span className="text-emerald-300 truncate block font-bold" title={matchingCloned.url}>
+                          {matchingCloned.url || 'Local Cloned Git Repo'}
+                        </span>
+                        <span className="text-[10px] text-emerald-400 font-mono mt-0.5 block truncate">
+                          Cloned: {matchingCloned.name} ({matchingCloned.branch})
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-amber-400 font-semibold block text-[11px] flex items-center gap-1.5 mt-0.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>Not Cloned on Azure VM</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCloneForm({
+                              repoUrl: '',
+                              branch: 'main',
+                              targetPath: `/home/${host.username || 'azureuser'}/apps/${currentStack}`,
+                              stack: currentStack,
+                            });
+                            setCloneOutput('');
+                            setCloneModalOpen(true);
+                          }}
+                          className="text-[10px] text-cyan-400 hover:text-cyan-300 underline font-semibold mt-1 inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <GitBranch className="w-3 h-3" />
+                          <span>+ Clone {activePreset.name} Repo</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Branch & Host Directory:</span>
+                    {matchingCloned ? (
+                      <>
+                        <span className="text-cyan-300 block font-semibold">{matchingCloned.branch}</span>
+                        <span className="text-[10px] text-slate-300 font-mono mt-0.5 block truncate" title={matchingCloned.path}>
+                          {matchingCloned.path}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-slate-500 block font-mono">Branch: -</span>
+                        <span className="text-[10px] text-slate-500 font-mono mt-0.5 block truncate" title={deploymentConfig.appDirectory}>
+                          Target: {deploymentConfig.appDirectory}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Frontend & Backend:</span>
+                    <span className="text-purple-300 block">
+                      {deploymentConfig.frontendContainerName} (:{deploymentConfig.frontendPort || 3001})
+                    </span>
+                    <span className="text-blue-300 text-[10px] block">
+                      {deploymentConfig.backendContainerName} (:{deploymentConfig.backendPort || 5001})
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Database Tier & Tool:</span>
+                    <span className="text-emerald-400 block">
+                      {deploymentConfig.databaseContainerName} (:{deploymentConfig.databasePort || 5431})
+                    </span>
+                    <span className="text-[10px] text-amber-300 font-mono mt-0.5 block">
+                      Build: {deploymentConfig.packageManager || 'npm'} ({deploymentConfig.buildCommand || 'standard'})
+                    </span>
+                  </div>
+                </div>
               </div>
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-slate-400 font-mono text-[11px]">
-              <div>
-                <span className="text-slate-500 block">Repository & App:</span>
-                <span className="text-slate-200 truncate block font-bold text-white" title={deploymentConfig.gitRepoUrl}>
-                  {deploymentConfig.gitRepoUrl || 'Not specified'}
-                </span>
-                <span className="text-[10px] text-purple-400 font-mono mt-0.5 block">
-                  App: {deploymentConfig.appName || `${deploymentConfig.stackType || 'mern'}-app`}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 block">Branch & Host Directory:</span>
-                <span className="text-cyan-300 block font-semibold">
-                  {deploymentConfig.gitBranch || 'main'}
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono mt-0.5 block truncate" title={deploymentConfig.appDirectory}>
-                  {deploymentConfig.appDirectory}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 block">Frontend & Backend:</span>
-                <span className="text-purple-300 block">
-                  {deploymentConfig.frontendContainerName} (:{deploymentConfig.frontendPort || 3001})
-                </span>
-                <span className="text-blue-300 text-[10px] block">
-                  {deploymentConfig.backendContainerName} (:{deploymentConfig.backendPort || 5001})
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 block">Database Tier & Tool:</span>
-                <span className="text-emerald-400 block">
-                  {deploymentConfig.databaseContainerName} (:{deploymentConfig.databasePort || 5431})
-                </span>
-                <span className="text-[10px] text-amber-300 font-mono mt-0.5 block">
-                  Build: {deploymentConfig.packageManager || 'npm'} ({deploymentConfig.buildCommand || 'standard'})
-                </span>
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* Deployment Execution Terminal */}
           <div className="space-y-2">
@@ -2147,6 +2341,125 @@ export function DockerServerDetailView({
           </div>
         );
       })()}
+
+      {/* ========================================================================= */}
+      {/* CLONE GIT REPOSITORY TO VM MODAL                                          */}
+      {/* ========================================================================= */}
+      {cloneModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl w-full max-w-xl p-6 space-y-5 shadow-2xl animate-in zoom-in-95 my-8">
+            <div className="flex items-center justify-between border-b border-[#1E293B] pb-3.5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                  <GitBranch className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <span>Clone Git Repository to Azure VM</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Clones your source code directly onto host <strong className="text-white">{host.name} ({host.host})</strong> via SSH.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCloneModalOpen(false)}
+                className="w-8 h-8 rounded-lg bg-[#070B14] hover:bg-[#18233C] text-slate-400 hover:text-white flex items-center justify-center border border-[#1E293B] transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCloneRepoToHost} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1.5 font-semibold">Target Application Tech Stack</label>
+                <div className="grid grid-cols-5 gap-2">
+                  {STACK_PRESETS.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setCloneForm((prev) => ({
+                        ...prev,
+                        stack: s.id,
+                        targetPath: `/home/${host.username || 'azureuser'}/apps/${s.id}`
+                      }))}
+                      className={`p-2 rounded-lg border text-center transition cursor-pointer ${
+                        cloneForm.stack === s.id
+                          ? 'bg-blue-600/20 border-blue-500 text-white font-bold shadow-sm'
+                          : 'bg-[#0B1120] border-[#1E293B] text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center mb-1">{renderStackIcon(s.id)}</div>
+                      <span className="text-[10px] block truncate">{s.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold">Git Repository URL (HTTPS or SSH)</label>
+                <input
+                  type="text"
+                  required
+                  value={cloneForm.repoUrl}
+                  onChange={(e) => setCloneForm({ ...cloneForm, repoUrl: e.target.value })}
+                  placeholder="https://github.com/organization/my-app.git"
+                  className="w-full px-3 py-2 bg-[#0B1120] border border-[#1E293B] rounded-lg text-white font-mono focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1 font-semibold">Git Branch</label>
+                  <input
+                    type="text"
+                    value={cloneForm.branch}
+                    onChange={(e) => setCloneForm({ ...cloneForm, branch: e.target.value })}
+                    placeholder="main"
+                    className="w-full px-3 py-2 bg-[#0B1120] border border-[#1E293B] rounded-lg text-white font-mono focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1 font-semibold">Target Path on VM</label>
+                  <input
+                    type="text"
+                    required
+                    value={cloneForm.targetPath}
+                    onChange={(e) => setCloneForm({ ...cloneForm, targetPath: e.target.value })}
+                    placeholder={`/home/${host.username || 'azureuser'}/apps/app`}
+                    className="w-full px-3 py-2 bg-[#0B1120] border border-[#1E293B] rounded-lg text-white font-mono focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {cloneOutput && (
+                <div className="bg-[#03060C] border border-[#1E293B] rounded-lg p-3 font-mono text-[11px] text-slate-300 max-h-36 overflow-y-auto whitespace-pre-wrap select-text">
+                  {cloneOutput}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#1E293B]">
+                <button
+                  type="button"
+                  onClick={() => setCloneModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-[#070B14] hover:bg-[#18233C] text-slate-400 hover:text-white font-semibold border border-[#1E293B] transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCloning}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold shadow-lg shadow-blue-600/30 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isCloning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitBranch className="w-3.5 h-3.5" />}
+                  <span>{isCloning ? 'Cloning to VM...' : 'Clone Repository to VM'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* UNIFIED DOCKER INSPECT MODAL (Containers, Images, Volumes, Networks)     */}
