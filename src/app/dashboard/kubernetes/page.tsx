@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   Search,
   RotateCw,
-  Globe,
   Layers,
   Box,
   Server,
@@ -55,14 +54,11 @@ export default function KubernetesStudioPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('Kubernetes');
 
-  // Interactive YAML inspection drawer
+  // Interactive YAML inspection modal
   const [selectedResource, setSelectedResource] =
     useState<K8sUnifiedResource | null>(null);
-  const [isYamlDrawerOpen, setIsYamlDrawerOpen] = useState(true);
+  const [isYamlModalOpen, setIsYamlModalOpen] = useState(false);
   const [copiedYaml, setCopiedYaml] = useState(false);
-
-  // Active highlighted topology node
-  const [highlightedNode, setHighlightedNode] = useState<string>('loadbalancer');
 
   // Fetch unified resources from API
   const fetchResources = async () => {
@@ -75,14 +71,6 @@ export default function KubernetesStudioPage() {
         setTelemetry(data.telemetry || null);
         if (data.clusters && Array.isArray(data.clusters)) {
           setAvailableClusters(data.clusters);
-        }
-        // Default selected resource for YAML inspection if none
-        if (data.resources && data.resources.length > 0 && !selectedResource) {
-          const defaultRes =
-            data.resources.find(
-              (r: K8sUnifiedResource) => r.name === 'loadbalancer'
-            ) || data.resources[0];
-          setSelectedResource(defaultRes);
         }
       }
     } catch (err) {
@@ -260,20 +248,6 @@ export default function KubernetesStudioPage() {
     );
   };
 
-  // Node selection handler for topology diagram
-  const selectTopologyNode = (nodeName: string, kindName?: string) => {
-    setHighlightedNode(nodeName);
-    setIsYamlDrawerOpen(true);
-    const target = resources.find(
-      (r) =>
-        r.name.toLowerCase().includes(nodeName.toLowerCase()) ||
-        (kindName && r.kind.toLowerCase() === kindName.toLowerCase())
-    );
-    if (target) {
-      setSelectedResource(target);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#070B14] text-slate-100 flex flex-col font-sans selection:bg-sky-500/30 selection:text-white">
       <Sidebar />
@@ -292,7 +266,7 @@ export default function KubernetesStudioPage() {
                   <span>Multi-Cloud Kubernetes Studio</span>
                 </h1>
                 <p className="text-[11px] text-slate-400 hidden sm:block">
-                  Unified enterprise orchestration, ingress topology routing &amp; live resource telemetry
+                  Unified enterprise orchestration, workloads, services, and live resource telemetry
                 </p>
               </div>
             </div>
@@ -482,332 +456,7 @@ export default function KubernetesStudioPage() {
             </div>
           </div>
 
-          {/* 3. MIDDLE SECTION: INTERACTIVE INGRESS-TO-WORKLOAD TOPOLOGY & YAML DRAWER */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
-            {/* Topology Flow Canvas */}
-            <div
-              className={`transition-all duration-300 bg-[#0B1120] border border-[#162238] rounded-xl p-4 shadow-sm flex flex-col justify-between ${
-                isYamlDrawerOpen ? 'lg:col-span-8' : 'lg:col-span-12'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#162238]">
-                <div className="flex items-center gap-2">
-                  <Network className="w-4 h-4 text-sky-400" />
-                  <span className="text-xs font-bold text-slate-200">
-                    Ingress &amp; Service Traffic Routing Topology
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 font-mono">
-                    Live Cluster Route Map
-                  </span>
-                </div>
-                {!isYamlDrawerOpen && (
-                  <button
-                    onClick={() => setIsYamlDrawerOpen(true)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#111A2E] hover:bg-[#162238] text-slate-300 border border-[#1E293B] rounded-lg transition-colors"
-                  >
-                    <FileCode className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Open YAML Inspector</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Topology Flow Diagram Nodes */}
-              <div className="py-6 px-2 overflow-x-auto">
-                <div className="min-w-[680px] flex items-center justify-between gap-3 relative">
-                  {/* Node 1: Internet Traffic */}
-                  <div
-                    onClick={() => selectTopologyNode('traffic', 'Ingress')}
-                    className={`flex flex-col items-center cursor-pointer transition-transform hover:scale-105 ${
-                      highlightedNode === 'traffic' ? 'scale-105' : ''
-                    }`}
-                  >
-                    <div className="w-14 h-14 rounded-full bg-[#111A2E] border-2 border-slate-600 hover:border-sky-400 flex items-center justify-center text-slate-300 shadow-lg relative group">
-                      <Globe className="w-6 h-6 text-sky-400 animate-spin" style={{ animationDuration: '24s' }} />
-                      <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-[#0B1120]"></div>
-                    </div>
-                    <span className="mt-2 text-xs font-semibold text-slate-300">Internet Traffic</span>
-                    <span className="text-[10px] text-slate-500 font-mono">0.0.0.0/0</span>
-                  </div>
-
-                  {/* Flow Arrow 1 */}
-                  <div className="flex-1 flex items-center justify-center px-1">
-                    <div className="h-0.5 w-full bg-gradient-to-r from-slate-600 via-emerald-500 to-emerald-400 relative">
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 border-t-2 border-r-2 border-emerald-400 rotate-45"></div>
-                    </div>
-                  </div>
-
-                  {/* Node 2: Nginx Ingress Controller */}
-                  <div
-                    onClick={() => selectTopologyNode('nginx ingress controller', 'Ingress')}
-                    className={`flex flex-col items-center cursor-pointer transition-transform hover:scale-105 ${
-                      highlightedNode === 'nginx ingress controller' ? 'scale-105' : ''
-                    }`}
-                  >
-                    <div className="w-14 h-14 rounded-xl bg-emerald-950/40 border-2 border-emerald-500 hover:border-emerald-400 flex items-center justify-center text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.25)] relative">
-                      <span className="text-xl font-black font-mono">N</span>
-                    </div>
-                    <span className="mt-2 text-xs font-semibold text-slate-200 text-center leading-tight">
-                      Nginx Ingress<br />Controller
-                    </span>
-                    <span className="text-[10px] text-emerald-400 font-mono">TLS 443</span>
-                  </div>
-
-                  {/* Flow Arrow 2 */}
-                  <div className="flex-1 flex items-center justify-center px-1">
-                    <div className="h-0.5 w-full bg-gradient-to-r from-emerald-500 via-sky-500 to-sky-400 relative">
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 border-t-2 border-r-2 border-sky-400 rotate-45"></div>
-                    </div>
-                  </div>
-
-                  {/* Node 3: LoadBalancer Service (api-gateway) */}
-                  <div
-                    onClick={() => selectTopologyNode('loadbalancer', 'Service')}
-                    className={`flex flex-col items-center cursor-pointer transition-transform hover:scale-105 ${
-                      highlightedNode === 'loadbalancer' ? 'scale-105' : ''
-                    }`}
-                  >
-                    <div className="w-14 h-14 rounded-xl bg-sky-950/40 border-2 border-sky-500 hover:border-sky-400 flex items-center justify-center text-sky-400 shadow-[0_0_20px_rgba(56,189,248,0.25)] relative">
-                      <Layers className="w-7 h-7 text-sky-400" />
-                    </div>
-                    <span className="mt-2 text-xs font-semibold text-slate-200 text-center leading-tight">
-                      LoadBalancer Service<br />
-                      <span className="text-sky-400 font-mono text-[10px]">(api-gateway)</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">20.106.88.42:80</span>
-                  </div>
-
-                  {/* Flow Arrow 3 */}
-                  <div className="flex-1 flex items-center justify-center px-1">
-                    <div className="h-0.5 w-full bg-gradient-to-r from-sky-500 via-indigo-500 to-indigo-400 relative">
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 border-t-2 border-r-2 border-indigo-400 rotate-45"></div>
-                    </div>
-                  </div>
-
-                  {/* Node 4: ReplicaSet */}
-                  <div
-                    onClick={() => selectTopologyNode('api-gateway-7f99cb', 'ReplicaSet')}
-                    className={`flex flex-col items-center cursor-pointer transition-transform hover:scale-105 ${
-                      highlightedNode === 'api-gateway-7f99cb' ? 'scale-105' : ''
-                    }`}
-                  >
-                    <div className="w-14 h-14 rounded-xl bg-indigo-950/40 border-2 border-indigo-500 hover:border-indigo-400 flex items-center justify-center text-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.25)] relative">
-                      <Box className="w-7 h-7 text-indigo-400" />
-                    </div>
-                    <span className="mt-2 text-xs font-semibold text-slate-200">ReplicaSet</span>
-                    <span className="text-[10px] text-indigo-300 font-mono">3 / 3 Replicas</span>
-                  </div>
-
-                  {/* Branching Connecting Line to 3 Pods */}
-                  <div className="w-8 flex items-center justify-center relative">
-                    <svg className="w-8 h-32" viewBox="0 0 32 128" fill="none">
-                      <path
-                        d="M2 64 C16 64, 16 16, 30 16"
-                        stroke="#6366f1"
-                        strokeWidth="2"
-                        fill="none"
-                      />
-                      <path
-                        d="M2 64 L30 64"
-                        stroke="#6366f1"
-                        strokeWidth="2"
-                        fill="none"
-                      />
-                      <path
-                        d="M2 64 C16 64, 16 112, 30 112"
-                        stroke="#6366f1"
-                        strokeWidth="2"
-                        fill="none"
-                      />
-                    </svg>
-                  </div>
-
-                  {/* Branching Live Pod Nodes (3 Cards with Custom Metric Bars) */}
-                  <div className="flex flex-col gap-2.5">
-                    {/* Pod 1 */}
-                    <div
-                      onClick={() => selectTopologyNode('api-gateway-7f99cb-v9px2', 'Pod')}
-                      className="p-2 rounded-lg bg-[#111A2E] border border-emerald-500/40 hover:border-emerald-400 cursor-pointer transition-colors shadow-sm min-w-[170px]"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <Box className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                        <span className="text-[11px] font-mono font-bold text-white truncate max-w-[120px]">
-                          pod-v9px2
-                        </span>
-                      </div>
-                      <div className="space-y-1 text-[10px]">
-                        <div>
-                          <div className="flex justify-between text-slate-400 font-mono">
-                            <span>CPU</span>
-                            <span className="text-emerald-400 font-bold">35.1% 3c</span>
-                          </div>
-                          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-0.5">
-                            <div className="bg-emerald-400 h-full rounded-full" style={{ width: '35.1%' }}></div>
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex justify-between text-slate-400 font-mono">
-                            <span>RAM</span>
-                            <span className="text-sky-400 font-bold">42% 9.1 GB</span>
-                          </div>
-                          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-0.5">
-                            <div className="bg-sky-400 h-full rounded-full" style={{ width: '42%' }}></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Pod 2 */}
-                    <div
-                      onClick={() => selectTopologyNode('api-gateway-7f99cb-k8mq1', 'Pod')}
-                      className="p-2 rounded-lg bg-[#111A2E] border border-emerald-500/40 hover:border-emerald-400 cursor-pointer transition-colors shadow-sm min-w-[170px]"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <Box className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                        <span className="text-[11px] font-mono font-bold text-white truncate max-w-[120px]">
-                          pod-k8mq1
-                        </span>
-                      </div>
-                      <div className="space-y-1 text-[10px]">
-                        <div>
-                          <div className="flex justify-between text-slate-400 font-mono">
-                            <span>CPU</span>
-                            <span className="text-emerald-400 font-bold">24.5% 4c</span>
-                          </div>
-                          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-0.5">
-                            <div className="bg-emerald-400 h-full rounded-full" style={{ width: '24.5%' }}></div>
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex justify-between text-slate-400 font-mono">
-                            <span>RAM</span>
-                            <span className="text-sky-400 font-bold">32% 16.2 GB</span>
-                          </div>
-                          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-0.5">
-                            <div className="bg-sky-400 h-full rounded-full" style={{ width: '32%' }}></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Pod 3 */}
-                    <div
-                      onClick={() => selectTopologyNode('api-gateway-7f99cb-zt4x8', 'Pod')}
-                      className="p-2 rounded-lg bg-[#111A2E] border border-emerald-500/40 hover:border-emerald-400 cursor-pointer transition-colors shadow-sm min-w-[170px]"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <Box className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                        <span className="text-[11px] font-mono font-bold text-white truncate max-w-[120px]">
-                          pod-zt4x8
-                        </span>
-                      </div>
-                      <div className="space-y-1 text-[10px]">
-                        <div>
-                          <div className="flex justify-between text-slate-400 font-mono">
-                            <span>CPU</span>
-                            <span className="text-emerald-400 font-bold">18.7% 2c</span>
-                          </div>
-                          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-0.5">
-                            <div className="bg-emerald-400 h-full rounded-full" style={{ width: '18.7%' }}></div>
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex justify-between text-slate-400 font-mono">
-                            <span>RAM</span>
-                            <span className="text-sky-400 font-bold">14% 7.7 GB</span>
-                          </div>
-                          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-0.5">
-                            <div className="bg-sky-400 h-full rounded-full" style={{ width: '14%' }}></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Topology Footer Tip */}
-              <div className="text-[11px] text-slate-400 flex items-center justify-between pt-2 border-t border-[#162238]">
-                <span>Click any node above to inspect its real syntax-highlighted Kubernetes manifest.</span>
-                <span className="text-slate-500 font-mono">Status: Connected &amp; Synced</span>
-              </div>
-            </div>
-
-            {/* Right Side: YAML Inspection Drawer */}
-            {isYamlDrawerOpen && (
-              <div className="lg:col-span-4 bg-[#0B1120] border border-[#162238] rounded-xl flex flex-col shadow-sm max-h-[460px] overflow-hidden">
-                <div className="p-3 border-b border-[#162238] flex items-center justify-between bg-[#0E1628]">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileCode className="w-4 h-4 text-sky-400 flex-shrink-0" />
-                    <span className="text-xs font-bold text-white truncate">
-                      YAML Inspection
-                    </span>
-                    {selectedResource && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 truncate">
-                        {selectedResource.name}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={handleCopyYaml}
-                      className="p-1 text-slate-400 hover:text-white bg-[#111A2E] hover:bg-[#162238] border border-[#1E293B] rounded transition-colors"
-                      title="Copy Manifest YAML"
-                    >
-                      {copiedYaml ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setIsYamlDrawerOpen(false)}
-                      className="p-1 text-slate-400 hover:text-white bg-[#111A2E] hover:bg-[#162238] border border-[#1E293B] rounded transition-colors"
-                      title="Close drawer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* YAML Code Area */}
-                <div className="p-3 flex-1 overflow-auto bg-[#070B14] font-mono text-[11px] leading-relaxed text-slate-300">
-                  {selectedResource ? (
-                    <pre className="whitespace-pre">
-                      {selectedResource.manifestYaml
-                        .split('\n')
-                        .map((line, idx) => {
-                          const isKey = line.includes(':') && !line.trim().startsWith('-');
-                          const parts = line.split(':');
-                          return (
-                            <div key={idx} className="hover:bg-slate-800/30 px-1 rounded flex">
-                              <span className="w-6 text-slate-600 text-right pr-2 select-none">
-                                {idx + 1}
-                              </span>
-                              <span>
-                                {isKey ? (
-                                  <>
-                                    <span className="text-sky-400 font-semibold">{parts[0]}:</span>
-                                    <span className="text-amber-300">{parts.slice(1).join(':')}</span>
-                                  </>
-                                ) : (
-                                  <span className="text-emerald-300">{line}</span>
-                                )}
-                              </span>
-                            </div>
-                          );
-                        })}
-                    </pre>
-                  ) : (
-                    <div className="p-6 text-center text-slate-500">
-                      Select a resource to view YAML
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 4. BOTTOM SECTION: NAVIGATION TABS & DATA TABLE */}
+          {/* 3. KUBERNETES DATA TABLE & NAVIGATION TABS */}
           <div className="bg-[#0B1120] border border-[#162238] rounded-xl overflow-hidden shadow-sm">
             {/* Tabs and Namespace Selector Header */}
             <div className="p-3 border-b border-[#162238] flex flex-wrap items-center justify-between gap-3 bg-[#0E1628]/60">
@@ -855,7 +504,7 @@ export default function KubernetesStudioPage() {
               </div>
             </div>
 
-            {/* Data Grid Table (Exact Match to Screenshot) */}
+            {/* Data Grid Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-300">
                 <thead>
@@ -868,6 +517,7 @@ export default function KubernetesStudioPage() {
                     <th className="py-3 px-4 min-w-[130px]">CPU</th>
                     <th className="py-3 px-4 min-w-[140px]">RAM</th>
                     <th className="py-3 px-4 min-w-[140px]">Disk</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#162238]/60 font-medium">
@@ -878,8 +528,7 @@ export default function KubernetesStudioPage() {
                         key={item.id}
                         onClick={() => {
                           setSelectedResource(item);
-                          setIsYamlDrawerOpen(true);
-                          setHighlightedNode(item.name);
+                          setIsYamlModalOpen(true);
                         }}
                         className={`cursor-pointer transition-colors ${
                           isSelected
@@ -962,6 +611,21 @@ export default function KubernetesStudioPage() {
                             ></div>
                           </div>
                         </td>
+
+                        {/* Actions Column */}
+                        <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => {
+                              setSelectedResource(item);
+                              setIsYamlModalOpen(true);
+                            }}
+                            className="px-2.5 py-1 text-[11px] font-semibold bg-[#111A2E] hover:bg-[#18233C] text-sky-400 hover:text-sky-300 border border-[#1E293B] hover:border-sky-500/40 rounded-lg transition-colors inline-flex items-center gap-1.5"
+                            title="Inspect Kubernetes YAML manifest"
+                          >
+                            <FileCode className="w-3.5 h-3.5" />
+                            <span>Inspect</span>
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -975,6 +639,97 @@ export default function KubernetesStudioPage() {
               )}
             </div>
           </div>
+
+          {/* 4. MODAL: FULLSCREEN/OVERLAY YAML INSPECTION MODAL */}
+          {isYamlModalOpen && selectedResource && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+              <div className="bg-[#0B1120] border border-[#162238] rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+                {/* Modal Header */}
+                <div className="p-4 border-b border-[#162238] flex items-center justify-between bg-[#0E1628]">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-sky-500/15 flex items-center justify-center text-sky-400 border border-sky-500/30">
+                      <FileCode className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold text-white font-mono">{selectedResource.name}</h3>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 font-sans font-semibold">
+                          {selectedResource.kind}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 font-mono">
+                        namespace: {selectedResource.namespace} • cluster: {selectedResource.cluster}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCopyYaml}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors shadow-sm"
+                    >
+                      {copiedYaml ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-slate-300" />
+                          <span>Copy YAML</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setIsYamlModalOpen(false)}
+                      className="p-1.5 text-slate-400 hover:text-white bg-[#111A2E] hover:bg-[#18233C] border border-[#1E293B] rounded-lg transition-colors"
+                      title="Close"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Modal YAML Manifest Code */}
+                <div className="p-4 flex-1 overflow-auto bg-[#070B14] font-mono text-xs leading-relaxed text-slate-300">
+                  <pre className="whitespace-pre">
+                    {selectedResource.manifestYaml.split('\n').map((line, idx) => {
+                      const isKey = line.includes(':') && !line.trim().startsWith('-');
+                      const parts = line.split(':');
+                      return (
+                        <div key={idx} className="hover:bg-slate-800/30 px-1 rounded flex">
+                          <span className="w-8 text-slate-600 text-right pr-3 select-none">
+                            {idx + 1}
+                          </span>
+                          <span>
+                            {isKey ? (
+                              <>
+                                <span className="text-sky-400 font-semibold">{parts[0]}:</span>
+                                <span className="text-amber-300">{parts.slice(1).join(':')}</span>
+                              </>
+                            ) : (
+                              <span className="text-emerald-300">{line}</span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </pre>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-3 border-t border-[#162238] bg-[#0E1628] flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                  <span>Resource status: {selectedResource.status}</span>
+                  <button
+                    onClick={() => setIsYamlModalOpen(false)}
+                    className="px-3 py-1 bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>
