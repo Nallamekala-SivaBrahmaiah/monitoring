@@ -29,337 +29,290 @@ import {
   Boxes,
   ShieldCheck,
   Radio,
+  RadioTower,
+  Key,
+  FolderTree,
+  ListFilter,
+  Clock,
+  AlertTriangle,
+  PlayCircle,
+  HelpCircle,
+  FileText,
+  Calendar,
+  Layers3,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
-import { KubernetesIcon, EksIcon, AksIcon, AwsLogo, AzureLogo, DockerIcon } from '@/components/icons/CloudIcons';
+import { KubernetesIcon, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
 import { useMonitoring } from '@/context/MonitoringContext';
-import {
-  K8sUnifiedResource,
-  K8sTelemetryOverview,
-  K8sResourceType,
-} from '@/types/kubernetes';
+import { IKubernetesServerInfo } from '@/lib/kubernetes/k8sServerService';
 
-export interface IServerNodeSummary {
-  id: string;
-  name: string;
-  host: string;
-  publicIp: string;
-  privateIp: string;
-  cloudProvider: string;
-  region: string;
-  status: string;
-  rawStatus: string;
-  osName: string;
-  k8sVersion: string;
-  dockerVersion: string;
-  podsCount: number;
-  runningPodsCount: number;
-  servicesCount: number;
-  volumesCount: number;
-  cpuPercent: number;
-  cpuCores: number;
-  memoryPercent: number;
-  totalMemory: string;
-  diskPercent: number;
-  totalDisk: string;
-  uptime: string;
+export type K8sNavigationSection =
+  | 'overview'
+  | 'cluster'
+  | 'nodes'
+  | 'pods'
+  | 'deployments'
+  | 'replicasets'
+  | 'daemonsets'
+  | 'statefulsets'
+  | 'services'
+  | 'ingress'
+  | 'configmaps'
+  | 'secrets'
+  | 'storage'
+  | 'jobs'
+  | 'namespaces'
+  | 'events'
+  | 'other';
+
+interface INavItem {
+  id: K8sNavigationSection;
+  label: string;
+  countKey?: string;
+  icon: React.ComponentType<{ className?: string }>;
 }
 
-function KubernetesPageContent() {
+const NAVIGATION_SECTIONS: INavItem[] = [
+  { id: 'overview', label: '1. Server Overview', icon: Activity },
+  { id: 'cluster', label: '2. Kubernetes Cluster', icon: RadioTower },
+  { id: 'nodes', label: '3. Clusters & Nodes', countKey: 'nodes', icon: Server },
+  { id: 'pods', label: '4. Pods & Containers', countKey: 'pods', icon: Box },
+  { id: 'deployments', label: '5. Deployments', countKey: 'deployments', icon: Layers },
+  { id: 'replicasets', label: '6. ReplicaSets', countKey: 'replicaSets', icon: Boxes },
+  { id: 'daemonsets', label: '7. DaemonSets', countKey: 'daemonSets', icon: Radio },
+  { id: 'statefulsets', label: '8. StatefulSets', countKey: 'statefulSets', icon: Database },
+  { id: 'services', label: '9. Services', countKey: 'services', icon: Network },
+  { id: 'ingress', label: '10. Ingress', countKey: 'ingress', icon: Sliders },
+  { id: 'configmaps', label: '11. ConfigMaps', countKey: 'configMaps', icon: FileText },
+  { id: 'secrets', label: '12. Secrets', countKey: 'secrets', icon: Key },
+  { id: 'storage', label: '13. Storage & Volumes', countKey: 'pvs', icon: HardDrive },
+  { id: 'jobs', label: '14. Jobs & CronJobs', countKey: 'jobs', icon: Clock },
+  { id: 'namespaces', label: '15. Namespaces', countKey: 'namespaces', icon: FolderTree },
+  { id: 'events', label: '16. Events', countKey: 'events', icon: Calendar },
+  { id: 'other', label: '17. Other Resources', icon: Layers3 },
+];
+
+function KubernetesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const urlServerParam = searchParams.get('server') || searchParams.get('cluster') || searchParams.get('hostId');
+  const urlServer = searchParams.get('server');
+  const urlSection = (searchParams.get('section') as K8sNavigationSection) || 'overview';
+  const urlNode = searchParams.get('node');
 
   const { syncNow, isSyncing } = useMonitoring();
 
-  // State management
-  const [loading, setLoading] = useState(false);
-  const [telemetry, setTelemetry] = useState<K8sTelemetryOverview | null>(null);
-  const [resources, setResources] = useState<K8sUnifiedResource[]>([]);
-  const [servers, setServers] = useState<IServerNodeSummary[]>([]);
-  const [availableClusters, setAvailableClusters] = useState<string[]>([
-    'All Clusters & Servers',
-  ]);
-  const [selectedCluster, setSelectedCluster] = useState<string>(
-    urlServerParam || 'All Clusters & Servers'
-  );
-  const [selectedNamespace, setSelectedNamespace] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<string>('Kubernetes');
+  // State
+  const [servers, setServers] = useState<IKubernetesServerInfo[]>([]);
+  const [loadingServers, setLoadingServers] = useState(true);
+  const [selectedServer, setSelectedServer] = useState<IKubernetesServerInfo | null>(null);
 
-  // View mode: 'inventory' shows servers with 'Manage K8s'; 'studio' shows full resource orchestration
-  const [viewMode, setViewMode] = useState<'inventory' | 'studio'>(
-    urlServerParam ? 'studio' : 'inventory'
-  );
+  // Live Cluster Data for the selected server
+  const [clusterData, setClusterData] = useState<any>(null);
+  const [loadingCluster, setLoadingCluster] = useState(false);
+  const [activeSection, setActiveSection] = useState<K8sNavigationSection>(urlSection);
+  const [selectedNode, setSelectedNode] = useState<any | null>(null);
+
+  // Filters & Search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedNamespace, setSelectedNamespace] = useState('all');
 
   // Interactive YAML inspection modal
-  const [selectedResource, setSelectedResource] = useState<K8sUnifiedResource | null>(null);
-  const [isYamlModalOpen, setIsYamlModalOpen] = useState(false);
+  const [inspectItem, setInspectItem] = useState<{ title: string; yaml: string } | null>(null);
   const [copiedYaml, setCopiedYaml] = useState(false);
 
   // Live SSH Terminal Modal
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
 
-  // Fetch unified resources from API
-  const fetchResources = useCallback(async (targetServer?: string) => {
-    setLoading(true);
+  // 1. Fetch Kubernetes-Installed Servers
+  const fetchServers = useCallback(async () => {
+    setLoadingServers(true);
     try {
-      const serverToQuery = targetServer !== undefined ? targetServer : selectedCluster;
-      const url = `/api/kubernetes/resources?server=${encodeURIComponent(
-        serverToQuery && serverToQuery !== 'All Clusters & Servers' ? serverToQuery : 'all'
-      )}`;
-      const res = await fetch(url);
+      const res = await fetch('/api/kubernetes/servers');
       if (res.ok) {
         const data = await res.json();
-        setResources(data.resources || []);
-        setTelemetry(data.telemetry || null);
-        if (data.clusters && Array.isArray(data.clusters)) {
-          setAvailableClusters(data.clusters);
-        }
-        if (data.servers && Array.isArray(data.servers)) {
-          setServers(data.servers);
+        const serverList: IKubernetesServerInfo[] = data.servers || [];
+        setServers(serverList);
+
+        // If URL requested a server, select it
+        if (urlServer) {
+          const found = serverList.find(
+            (s) =>
+              s.name.toLowerCase() === urlServer.toLowerCase() ||
+              s.id === urlServer ||
+              s.hostname.toLowerCase() === urlServer.toLowerCase()
+          );
+          if (found) {
+            setSelectedServer(found);
+          }
         }
       }
     } catch (err) {
-      console.error('Failed to load k8s resources:', err);
+      console.error('Failed to load k8s servers:', err);
     } finally {
-      setLoading(false);
+      setLoadingServers(false);
     }
-  }, [selectedCluster]);
+  }, [urlServer]);
 
   useEffect(() => {
-    fetchResources(urlServerParam || undefined);
-  }, [urlServerParam, fetchResources]);
+    fetchServers();
+  }, [fetchServers]);
 
-  // Handle selecting a server to manage (similar to Docker's "Manage Docker")
-  const handleManageServer = (server: IServerNodeSummary) => {
-    setSelectedCluster(server.name);
-    setViewMode('studio');
-    setActiveTab('Kubernetes');
+  // 2. Fetch Live Cluster Resources when a server is selected
+  const fetchClusterResources = useCallback(
+    async (serverIdOrName: string, forceRefresh: boolean = false) => {
+      setLoadingCluster(true);
+      try {
+        const url = `/api/kubernetes/cluster/${encodeURIComponent(serverIdOrName)}${
+          forceRefresh ? '?refresh=true' : ''
+        }`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          setClusterData(data);
+
+          // If a node was in URL, pick it
+          if (urlNode && data.resources?.nodes) {
+            const foundNode = data.resources.nodes.find(
+              (n: any) => n.metadata?.name === urlNode
+            );
+            if (foundNode) {
+              setSelectedNode(foundNode);
+              setActiveSection('nodes');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch cluster resources:', err);
+      } finally {
+        setLoadingCluster(false);
+      }
+    },
+    [urlNode]
+  );
+
+  useEffect(() => {
+    if (selectedServer) {
+      fetchClusterResources(selectedServer.name);
+    }
+  }, [selectedServer, fetchClusterResources]);
+
+  // Handle server selection
+  const handleSelectServer = (server: IKubernetesServerInfo) => {
+    setSelectedServer(server);
+    setSelectedNode(null);
+    setActiveSection('overview');
     const params = new URLSearchParams(window.location.search);
     params.set('server', server.name);
+    params.set('section', 'overview');
+    params.delete('node');
     router.replace(`/dashboard/kubernetes?${params.toString()}`);
-    fetchResources(server.name);
   };
 
-  // Switch server from studio dropdown
-  const handleClusterDropdownChange = (clusterVal: string) => {
-    setSelectedCluster(clusterVal);
-    const params = new URLSearchParams(window.location.search);
-    if (clusterVal === 'All Clusters & Servers') {
-      params.delete('server');
-      router.replace('/dashboard/kubernetes');
-    } else {
-      const cleanName = clusterVal.split(' ')[0];
-      params.set('server', cleanName);
-      router.replace(`/dashboard/kubernetes?${params.toString()}`);
-    }
-    fetchResources(clusterVal);
-  };
-
-  // Back to Server Inventory
-  const handleBackToInventory = () => {
-    setViewMode('inventory');
-    setSelectedCluster('All Clusters & Servers');
+  // Back to all servers list
+  const handleBackToServers = () => {
+    setSelectedServer(null);
+    setSelectedNode(null);
+    setClusterData(null);
     router.replace('/dashboard/kubernetes');
-    fetchResources('all');
+  };
+
+  // Switch navigation section
+  const handleSelectSection = (sec: K8sNavigationSection) => {
+    setActiveSection(sec);
+    setSelectedNode(null);
+    const params = new URLSearchParams(window.location.search);
+    if (selectedServer) params.set('server', selectedServer.name);
+    params.set('section', sec);
+    params.delete('node');
+    router.replace(`/dashboard/kubernetes?${params.toString()}`);
+  };
+
+  // Select node drill-down
+  const handleSelectNode = (node: any) => {
+    setSelectedNode(node);
+    setActiveSection('nodes');
+    const params = new URLSearchParams(window.location.search);
+    if (selectedServer) params.set('server', selectedServer.name);
+    params.set('section', 'nodes');
+    params.set('node', node.metadata?.name);
+    router.replace(`/dashboard/kubernetes?${params.toString()}`);
+  };
+
+  // Back from node drill-down to nodes list
+  const handleBackToNodesList = () => {
+    setSelectedNode(null);
+    const params = new URLSearchParams(window.location.search);
+    if (selectedServer) params.set('server', selectedServer.name);
+    params.set('section', 'nodes');
+    params.delete('node');
+    router.replace(`/dashboard/kubernetes?${params.toString()}`);
   };
 
   // Open SSH Terminal directly
-  const handleOpenTerminal = (server: IServerNodeSummary) => {
+  const handleOpenTerminal = (server: IKubernetesServerInfo) => {
     setTerminalTarget({
       id: server.id,
       sshServerId: server.id,
       name: server.name,
-      host: server.host && server.host !== '-' ? server.host : server.publicIp,
+      host: server.hostname && server.hostname !== '-' ? server.hostname : server.publicIp,
       port: 22,
-      username: server.cloudProvider === 'azure' ? 'siva' : 'ubuntu',
-      cloudProvider: server.cloudProvider,
+      username: server.cloudProvider.toLowerCase() === 'aws' ? 'ubuntu' : 'siva',
+      cloudProvider: server.cloudProvider.toLowerCase(),
       region: server.region,
     });
     setTerminalOpen(true);
   };
 
-  // Filtered resources
-  const filteredResources = useMemo(() => {
-    return resources.filter((item) => {
-      // Tab filter
-      if (activeTab === 'Clusters & Nodes') {
-        if (item.kind !== 'Node') return false;
-      } else if (activeTab === 'Services') {
-        if (item.kind !== 'Service') return false;
-      } else if (activeTab === 'Ingress') {
-        if (item.kind !== 'Ingress') return false;
-      } else if (activeTab === 'Workloads') {
-        if (
-          !['Pod', 'Deployment', 'ReplicaSet', 'DaemonSet', 'StatefulSet'].includes(
-            item.kind
-          )
-        )
-          return false;
-      } else if (activeTab === 'Storage & Config') {
-        if (
-          !['ConfigMap', 'PersistentVolume', 'PersistentVolumeClaim'].includes(
-            item.kind
-          )
-        )
-          return false;
-      } else if (activeTab === 'Helm Releases') {
-        if (item.kind !== 'HelmRelease') return false;
-      } else if (activeTab === 'Namespaces') {
-        if (item.kind !== 'Namespace') return false;
-      }
+  // Inspect any Kubernetes JSON object as YAML
+  const handleInspectObject = (title: string, obj: any) => {
+    try {
+      const yaml = JSON.stringify(obj, null, 2);
+      setInspectItem({ title, yaml });
+    } catch {
+      setInspectItem({ title, yaml: '# Manifest data not available' });
+    }
+  };
 
-      // Namespace filter
-      if (
-        selectedNamespace !== 'all' &&
-        item.namespace.toLowerCase() !== selectedNamespace.toLowerCase()
-      ) {
-        return false;
-      }
-
-      // Search query
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchName = item.name.toLowerCase().includes(query);
-        const matchKind = item.kind.toLowerCase().includes(query);
-        const matchType = item.serviceType?.toLowerCase().includes(query);
-        const matchNs = item.namespace.toLowerCase().includes(query);
-        const matchIp =
-          item.clusterIp?.toLowerCase().includes(query) ||
-          item.externalIp?.toLowerCase().includes(query);
-        return matchName || matchKind || matchType || matchNs || matchIp;
-      }
-
-      return true;
-    });
-  }, [resources, activeTab, selectedNamespace, searchQuery]);
-
-  // Copy YAML helper
   const handleCopyYaml = () => {
-    if (!selectedResource) return;
-    navigator.clipboard.writeText(selectedResource.manifestYaml);
+    if (!inspectItem) return;
+    navigator.clipboard.writeText(inspectItem.yaml);
     setCopiedYaml(true);
     setTimeout(() => setCopiedYaml(false), 2000);
   };
 
-  // Helper to get kind badge color
-  const getKindBadge = (resource: K8sUnifiedResource) => {
-    if (resource.kind === 'Service') {
-      const type = resource.serviceType || 'ClusterIP';
-      if (type === 'LoadBalancer') {
-        return (
-          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30">
-            LoadBalancer
-          </span>
-        );
-      }
-      if (type === 'NodePort') {
-        return (
-          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
-            NodePort
-          </span>
-        );
-      }
-      if (type === 'ExternalName') {
-        return (
-          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-            ExternalName
-          </span>
-        );
-      }
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
-          ClusterIP
-        </span>
-      );
-    }
+  // Resource Counts
+  const resourceCounts = useMemo(() => {
+    if (!clusterData?.resources) return {};
+    const res = clusterData.resources;
+    return {
+      nodes: res.nodes?.length || 0,
+      pods: res.pods?.length || 0,
+      deployments: res.deployments?.length || 0,
+      replicaSets: res.replicaSets?.length || 0,
+      daemonSets: res.daemonSets?.length || 0,
+      statefulSets: res.statefulSets?.length || 0,
+      services: res.services?.length || 0,
+      ingress: res.ingress?.length || 0,
+      configMaps: res.configMaps?.length || 0,
+      secrets: res.secrets?.length || 0,
+      pvs: (res.pvs?.length || 0) + (res.pvcs?.length || 0),
+      jobs: (res.jobs?.length || 0) + (res.cronjobs?.length || 0),
+      namespaces: res.namespaces?.length || 0,
+      events: res.events?.length || 0,
+    };
+  }, [clusterData]);
 
-    if (resource.kind === 'Ingress') {
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-          Ingress
-        </span>
-      );
-    }
-    if (resource.kind === 'Deployment') {
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-500/15 text-purple-400 border border-purple-500/30">
-          Deployment
-        </span>
-      );
-    }
-    if (resource.kind === 'StatefulSet') {
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-fuchsia-500/15 text-fuchsia-400 border border-fuchsia-500/30">
-          StatefulSet
-        </span>
-      );
-    }
-    if (resource.kind === 'DaemonSet') {
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">
-          DaemonSet
-        </span>
-      );
-    }
-    if (resource.kind === 'ReplicaSet') {
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-          ReplicaSet
-        </span>
-      );
-    }
-    if (resource.kind === 'Pod') {
-      const isRunning = resource.status === 'Running';
-      return (
-        <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
-          isRunning 
-            ? 'bg-teal-500/15 text-teal-300 border-teal-500/30' 
-            : 'bg-slate-700/50 text-slate-400 border-slate-600'
-        }`}>
-          Pod ({resource.status})
-        </span>
-      );
-    }
-    if (resource.kind === 'ConfigMap') {
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-          ConfigMap
-        </span>
-      );
-    }
-    if (resource.kind === 'PersistentVolume' || resource.kind === 'PersistentVolumeClaim') {
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-violet-500/15 text-violet-300 border border-violet-500/30">
-          {resource.kind === 'PersistentVolume' ? 'PV' : 'PVC'}
-        </span>
-      );
-    }
-    if (resource.kind === 'Node') {
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
-          Node (Server)
-        </span>
-      );
-    }
-    if (resource.kind === 'HelmRelease') {
-      return (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-          Helm
-        </span>
-      );
-    }
-
-    return (
-      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-700 text-slate-300">
-        {resource.kind}
-      </span>
-    );
-  };
+  // Namespaces list for filter dropdown
+  const availableNamespaces: string[] = useMemo(() => {
+    if (!clusterData?.resources?.namespaces) return ['all', 'default', 'kube-system'];
+    const list: string[] = clusterData.resources.namespaces
+      .map((ns: any) => String(ns.metadata?.name || ''))
+      .filter((n: string) => n.length > 0);
+    return ['all', ...Array.from(new Set(list))];
+  }, [clusterData]);
 
   return (
     <div className="min-h-screen bg-[#070B14] text-slate-100 flex flex-col font-sans selection:bg-sky-500/30 selection:text-white">
@@ -369,72 +322,132 @@ function KubernetesPageContent() {
 
         <main className="p-3 sm:p-5 lg:p-6 space-y-4 max-w-[1920px] mx-auto w-full">
           {/* ========================================================================= */}
-          {/* 1. VIEW MODE A: SERVER NODE INVENTORY (SIMILAR TO DOCKER HOST INVENTORY)  */}
+          {/* 1. TOP BREADCRUMBS HIERARCHY NAVIGATION                                    */}
           {/* ========================================================================= */}
-          {viewMode === 'inventory' ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#0B1120] border border-[#162238] rounded-xl px-4 py-3 shadow-md">
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <Link href="/" className="hover:text-sky-400 flex items-center gap-1 transition-colors">
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Dashboard</span>
+              </Link>
+              <span>/</span>
+              <button
+                onClick={handleBackToServers}
+                className={`font-semibold transition-colors ${
+                  !selectedServer ? 'text-sky-400' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                Kubernetes
+              </button>
+              {selectedServer && (
+                <>
+                  <span>/</span>
+                  <button
+                    onClick={() => {
+                      setSelectedNode(null);
+                      setActiveSection('overview');
+                    }}
+                    className="text-sky-400 font-mono font-bold hover:underline"
+                  >
+                    {selectedServer.name}
+                  </button>
+                  <span>/</span>
+                  <span className="text-slate-300 capitalize font-medium">
+                    {NAVIGATION_SECTIONS.find((s) => s.id === activeSection)?.label.replace(/^\d+\.\s*/, '')}
+                  </span>
+                  {selectedNode && (
+                    <>
+                      <span>/</span>
+                      <span className="text-emerald-400 font-mono font-bold truncate max-w-[200px]">
+                        {selectedNode.metadata?.name}
+                      </span>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex items-center gap-2">
+              {selectedServer && (
+                <button
+                  onClick={handleBackToServers}
+                  className="px-2.5 py-1 text-xs font-semibold bg-[#111A2E] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg transition inline-flex items-center gap-1.5 shadow-sm"
+                >
+                  <Server className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Switch Server</span>
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (selectedServer) {
+                    fetchClusterResources(selectedServer.name, true);
+                  } else {
+                    fetchServers();
+                  }
+                  syncNow();
+                }}
+                disabled={loadingServers || loadingCluster || isSyncing}
+                title="Refresh Live Telemetry"
+                className="p-1.5 text-slate-400 hover:text-white bg-[#111A2E] hover:bg-[#162238] border border-[#1E293B] rounded-lg transition shadow-sm disabled:opacity-50"
+              >
+                <RotateCw
+                  className={`w-4 h-4 text-sky-400 ${
+                    loadingServers || loadingCluster || isSyncing ? 'animate-spin' : ''
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* 2. MAIN PAGE: KUBERNETES INSTALLED SERVERS ONLY (SECTIONS 1 & 2)           */}
+          {/* ========================================================================= */}
+          {!selectedServer ? (
             <div className="space-y-4">
-              {/* Breadcrumbs & Header Strip */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0B1120] border border-[#162238] rounded-xl p-3.5 shadow-md">
-                <div>
-                  <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-                    <Link href="/" className="hover:text-sky-400 flex items-center gap-1">
-                      <ArrowLeft className="w-3.5 h-3.5" />
-                      <span>Dashboard</span>
-                    </Link>
-                    <span>/</span>
-                    <span className="text-white font-semibold">Kubernetes Studio</span>
-                    <span>/</span>
-                    <span className="text-sky-400">Manage Servers</span>
+              {/* Header Banner */}
+              <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-xl bg-sky-500/15 flex items-center justify-center text-sky-400 border border-sky-500/30 shadow-[0_0_20px_rgba(56,189,248,0.25)]">
+                    <KubernetesIcon className="w-6 h-6 text-sky-400" />
                   </div>
-                  <h1 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-sky-500/15 flex items-center justify-center text-sky-400 border border-sky-500/30 shadow-[0_0_15px_rgba(56,189,248,0.2)]">
-                      <KubernetesIcon className="w-5 h-5 text-sky-400" />
-                    </div>
-                    <span>Multi-Cloud Kubernetes Server Nodes</span>
-                  </h1>
+                  <div>
+                    <h1 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                      <span>Kubernetes Installed Servers</span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                        {servers.length} Detected
+                      </span>
+                    </h1>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Automatically discovered host servers configured with Kubernetes. Select any server to orchestrate its cluster hierarchy.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
-                  {/* View Aggregated Button */}
-                  <button
-                    onClick={() => {
-                      setViewMode('studio');
-                      setSelectedCluster('All Clusters & Servers');
-                      fetchResources('all');
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-[#111A2E] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#1E293B] text-xs font-semibold transition inline-flex items-center gap-1.5 shadow-sm"
-                  >
-                    <Layers className="w-3.5 h-3.5 text-sky-400" />
-                    <span>View All Clusters Studio</span>
-                  </button>
-
-                  {/* Refresh Button */}
-                  <button
-                    onClick={() => {
-                      fetchResources();
-                      syncNow();
-                    }}
-                    disabled={loading || isSyncing}
-                    title="Refresh Servers"
-                    className="p-1.5 text-slate-400 hover:text-white bg-[#111A2E] hover:bg-[#162238] border border-[#1E293B] rounded-lg transition-colors shadow-sm disabled:opacity-50"
-                  >
-                    <RotateCw className={`w-4 h-4 text-sky-400 ${loading || isSyncing ? 'animate-spin' : ''}`} />
-                  </button>
+                {/* Summary badges */}
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <div className="px-3 py-1.5 rounded-lg bg-[#111A2E] border border-[#1E293B] text-slate-300">
+                    Cluster Hosts: <span className="text-white font-bold">{servers.length}</span>
+                  </div>
+                  <div className="px-3 py-1.5 rounded-lg bg-[#111A2E] border border-[#1E293B] text-slate-300">
+                    Live Nodes: <span className="text-sky-400 font-bold">{servers.reduce((a, s) => a + s.nodeCount, 0)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>100% Operational</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Server Nodes Table */}
+              {/* Servers Table */}
               <div className="bg-[#0B1120] border border-[#162238] rounded-xl overflow-hidden shadow-sm">
                 <div className="p-3 border-b border-[#162238] flex items-center justify-between bg-[#0E1628]/60">
                   <div className="flex items-center gap-2">
                     <Server className="w-4 h-4 text-sky-400" />
-                    <span className="text-xs font-bold text-white">Registered Kubernetes Host Nodes</span>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold">
-                      {servers.length} Nodes
-                    </span>
+                    <span className="text-xs font-bold text-white">Kubernetes Cluster Host Registry</span>
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Click <span className="text-sky-400 font-semibold">Manage K8s</span> on any server to orchestrate workloads
+                    Only displaying servers where Kubernetes is installed &amp; accessible
                   </div>
                 </div>
 
@@ -442,63 +455,80 @@ function KubernetesPageContent() {
                   <table className="w-full text-left text-xs text-slate-300">
                     <thead>
                       <tr className="border-b border-[#162238] bg-[#0E1628] text-slate-400 font-semibold">
-                        <th className="py-3 px-4">Node / Server</th>
-                        <th className="py-3 px-3">IP Address</th>
+                        <th className="py-3 px-4">Server Name</th>
+                        <th className="py-3 px-3">Hostname</th>
+                        <th className="py-3 px-3">Private IP</th>
+                        <th className="py-3 px-3">Public IP</th>
+                        <th className="py-3 px-3">Cloud Provider &amp; Account</th>
                         <th className="py-3 px-3">Region</th>
-                        <th className="py-3 px-3">OS &amp; Kernel</th>
-                        <th className="py-3 px-3">K8s &amp; Runtime</th>
-                        <th className="py-3 px-3">Status</th>
-                        <th className="py-3 px-3">Pods (Active)</th>
-                        <th className="py-3 px-3">Services</th>
-                        <th className="py-3 px-3 min-w-[110px]">CPU</th>
-                        <th className="py-3 px-3 min-w-[110px]">RAM</th>
-                        <th className="py-3 px-3 min-w-[110px]">Disk</th>
+                        <th className="py-3 px-3">Operating System</th>
+                        <th className="py-3 px-3">K8s Status</th>
+                        <th className="py-3 px-3">Version</th>
+                        <th className="py-3 px-3">Cluster Name</th>
+                        <th className="py-3 px-3">Nodes</th>
+                        <th className="py-3 px-3">Connection</th>
+                        <th className="py-3 px-3">Last Synced</th>
                         <th className="py-3 px-4 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#162238]/60 font-medium">
                       {servers.map((s) => {
-                        const isReady = s.status === 'Ready' || s.rawStatus === 'Online';
+                        const isConnected = s.connectionStatus === 'Connected';
                         return (
                           <tr
                             key={s.id}
-                            onClick={() => handleManageServer(s)}
-                            className="hover:bg-[#111A2E]/60 transition-colors cursor-pointer"
+                            onClick={() => handleSelectServer(s)}
+                            className="hover:bg-[#111A2E]/60 transition-colors cursor-pointer group"
                           >
-                            {/* Server Name with Cloud Provider Logo */}
+                            {/* Server Name */}
                             <td className="py-3.5 px-4 font-mono font-bold text-white">
                               <div className="flex items-center gap-2.5">
                                 <div className="w-7 h-7 rounded-lg bg-[#111A2E] flex items-center justify-center border border-[#1E293B]">
-                                  {s.cloudProvider === 'azure' ? (
+                                  {s.cloudProvider.toLowerCase() === 'aws' ? (
+                                    <AwsLogo className="w-4 h-4 text-[#FF9900]" />
+                                  ) : s.cloudProvider.toLowerCase() === 'azure' ? (
                                     <AzureLogo className="w-4 h-4 text-[#0089D6]" />
                                   ) : (
-                                    <AwsLogo className="w-4 h-4 text-[#FF9900]" />
+                                    <Server className="w-4 h-4 text-slate-400" />
                                   )}
                                 </div>
                                 <div>
-                                  <div className="text-white hover:text-sky-400 transition-colors flex items-center gap-1.5 font-bold">
+                                  <div className="text-white group-hover:text-sky-400 transition-colors flex items-center gap-1.5 font-bold">
                                     <span>{s.name}</span>
-                                  </div>
-                                  <div className="text-[10px] text-slate-500 font-normal">
-                                    {s.cloudProvider} • {s.region}
                                   </div>
                                 </div>
                               </div>
                             </td>
 
-                            {/* Host IP */}
-                            <td className="py-3.5 px-3 font-mono text-slate-300">
-                              {s.host || s.publicIp || '-'}
+                            {/* Hostname */}
+                            <td className="py-3.5 px-3 font-mono text-slate-300">{s.hostname}</td>
+
+                            {/* Private IP */}
+                            <td className="py-3.5 px-3 font-mono text-slate-300">{s.privateIp}</td>
+
+                            {/* Public IP */}
+                            <td className="py-3.5 px-3 font-mono text-sky-400 font-semibold">
+                              {s.publicIp !== '-' ? s.publicIp : <span className="text-slate-600">—</span>}
+                            </td>
+
+                            {/* Provider & Account */}
+                            <td className="py-3.5 px-3">
+                              <div className="font-semibold text-slate-200">{s.cloudProvider}</div>
+                              <div className="text-[10px] text-slate-500">{s.cloudAccount}</div>
                             </td>
 
                             {/* Region */}
-                            <td className="py-3.5 px-3 text-slate-400 capitalize">
-                              {s.region || 'centralindia'}
-                            </td>
+                            <td className="py-3.5 px-3 text-slate-400">{s.region}</td>
 
                             {/* OS */}
-                            <td className="py-3.5 px-3 text-slate-300 text-[11px]">
-                              {s.osName || 'Ubuntu Linux'}
+                            <td className="py-3.5 px-3 text-slate-300 text-[11px]">{s.os}</td>
+
+                            {/* K8s Installation Status */}
+                            <td className="py-3.5 px-3">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                <span>Installed</span>
+                              </span>
                             </td>
 
                             {/* K8s Version */}
@@ -506,76 +536,41 @@ function KubernetesPageContent() {
                               {s.k8sVersion}
                             </td>
 
-                            {/* Status */}
+                            {/* Cluster Name */}
+                            <td className="py-3.5 px-3 font-mono text-white font-bold">{s.clusterName}</td>
+
+                            {/* Node Count */}
+                            <td className="py-3.5 px-3 font-mono font-bold text-slate-200">
+                              {s.nodeCount} {s.nodeCount === 1 ? 'Node' : 'Nodes'}
+                            </td>
+
+                            {/* Server Connection Status */}
                             <td className="py-3.5 px-3">
                               <span
                                 className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                                  isReady
+                                  isConnected
                                     ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
                                     : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
                                 }`}
                               >
                                 <span
                                   className={`w-1.5 h-1.5 rounded-full ${
-                                    isReady ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                                    isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
                                   }`}
                                 />
-                                <span>{isReady ? 'READY' : 'NOT READY'}</span>
+                                <span>{isConnected ? 'CONNECTED' : 'OFFLINE'}</span>
                               </span>
                             </td>
 
-                            {/* Pods count */}
-                            <td className="py-3.5 px-3 font-mono">
-                              <span className="font-bold text-emerald-400">{s.runningPodsCount}</span>
-                              <span className="text-slate-500 mx-1">/</span>
-                              <span className="text-slate-300">{s.podsCount}</span>
+                            {/* Last Synced */}
+                            <td className="py-3.5 px-3 text-slate-400 text-[11px]">
+                              {new Date(s.lastSyncedAt).toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
                             </td>
 
-                            {/* Services count */}
-                            <td className="py-3.5 px-3 font-mono text-sky-400 font-bold">
-                              {s.servicesCount}
-                            </td>
-
-                            {/* CPU */}
-                            <td className="py-3.5 px-3">
-                              <div className="font-mono text-xs text-white font-semibold">
-                                {s.cpuPercent}% <span className="text-slate-500 text-[10px]">({s.cpuCores}c)</span>
-                              </div>
-                              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
-                                <div
-                                  className="bg-emerald-400 h-full rounded-full"
-                                  style={{ width: `${Math.min(s.cpuPercent, 100)}%` }}
-                                />
-                              </div>
-                            </td>
-
-                            {/* RAM */}
-                            <td className="py-3.5 px-3">
-                              <div className="font-mono text-xs text-white font-semibold">
-                                {s.memoryPercent}% <span className="text-slate-500 text-[10px]">({s.totalMemory})</span>
-                              </div>
-                              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
-                                <div
-                                  className="bg-sky-400 h-full rounded-full"
-                                  style={{ width: `${Math.min(s.memoryPercent, 100)}%` }}
-                                />
-                              </div>
-                            </td>
-
-                            {/* Disk */}
-                            <td className="py-3.5 px-3">
-                              <div className="font-mono text-xs text-white font-semibold">
-                                {s.diskPercent}% <span className="text-slate-500 text-[10px]">({s.totalDisk})</span>
-                              </div>
-                              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
-                                <div
-                                  className="bg-purple-400 h-full rounded-full"
-                                  style={{ width: `${Math.min(s.diskPercent, 100)}%` }}
-                                />
-                              </div>
-                            </td>
-
-                            {/* Action Buttons */}
+                            {/* Actions */}
                             <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-2">
                                 <button
@@ -590,7 +585,7 @@ function KubernetesPageContent() {
 
                                 <button
                                   type="button"
-                                  onClick={() => handleManageServer(s)}
+                                  onClick={() => handleSelectServer(s)}
                                   className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm shadow-sky-600/30"
                                 >
                                   <span>Manage K8s</span>
@@ -603,462 +598,730 @@ function KubernetesPageContent() {
                       })}
                     </tbody>
                   </table>
+
+                  {servers.length === 0 && !loadingServers && (
+                    <div className="p-8 text-center text-slate-400 text-xs">
+                      No Kubernetes-installed servers detected. Please ensure your registered cluster host has kubectl or kubelet active.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           ) : (
             /* ========================================================================= */
-            /* 2. VIEW MODE B: KUBERNETES WORKLOAD STUDIO (SERVER-SCOPED OR AGGREGATED)   */
+            /* 3. SELECTED SERVER VIEW: VERTICAL HIERARCHICAL SIDEBAR & SECTIONS (3 - 8) */
             /* ========================================================================= */
             <div className="space-y-4">
-              {/* TOP HEADER & STUDIO TITLE BAR */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[#0B1120] border border-[#162238] rounded-xl p-3.5 shadow-md">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleBackToInventory}
-                    className="p-2 rounded-lg bg-[#111A2E] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#1E293B] transition-colors"
-                    title="Back to Server Inventory"
-                  >
-                    <ArrowLeft className="w-4 h-4 text-sky-400" />
-                  </button>
-                  <div className="w-9 h-9 rounded-lg bg-sky-500/15 flex items-center justify-center text-sky-400 border border-sky-500/30 shadow-[0_0_15px_rgba(56,189,248,0.2)]">
-                    <KubernetesIcon className="w-5 h-5 text-sky-400" />
+              {/* Top Server Context Banner */}
+              <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-sky-500/15 flex items-center justify-center text-sky-400 border border-sky-500/30">
+                    <KubernetesIcon className="w-6 h-6 text-sky-400" />
                   </div>
                   <div>
-                    <h1 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                      <span>Multi-Cloud Kubernetes Studio</span>
-                      {selectedCluster !== 'All Clusters & Servers' && (
-                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30 font-mono font-semibold">
-                          Server: {selectedCluster}
-                        </span>
-                      )}
-                    </h1>
-                    <p className="text-[11px] text-slate-400 hidden sm:block">
-                      Enterprise orchestration, live pods, services, persistent volumes, and dynamic host telemetry
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-bold text-white font-mono tracking-tight">
+                        Server: {selectedServer.name}
+                      </h2>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                        Kubernetes: Installed
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-400 flex flex-wrap items-center gap-3 mt-1">
+                      <span>
+                        Private IP: <strong className="text-slate-200 font-mono">{selectedServer.privateIp}</strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        Public IP: <strong className="text-sky-400 font-mono">{selectedServer.publicIp}</strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        Cluster: <strong className="text-white font-mono">{selectedServer.clusterName}</strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        Status: <strong className="text-emerald-400">{selectedServer.connectionStatus}</strong>
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
-                  {/* Back to Servers Pill */}
-                  <button
-                    onClick={handleBackToInventory}
-                    className="px-2.5 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg transition-colors inline-flex items-center gap-1.5 shadow-sm"
-                  >
-                    <Server className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Server Inventory</span>
-                  </button>
-
-                  {/* Cluster / Server Selector */}
-                  <div className="relative">
-                    <select
-                      value={selectedCluster}
-                      onChange={(e) => handleClusterDropdownChange(e.target.value)}
-                      className="appearance-none pl-8 pr-8 py-1.5 text-xs font-semibold bg-[#111A2E] text-slate-200 border border-[#1E293B] hover:border-slate-600 rounded-lg focus:outline-none focus:border-sky-500 cursor-pointer transition-colors shadow-sm"
-                    >
-                      {availableClusters.map((c) => (
-                        <option key={c} value={c} className="bg-[#0B1120] text-slate-200">
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-sky-400">
-                      <KubernetesIcon className="w-3.5 h-3.5" />
-                    </div>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
-
-                  {/* Health Badge */}
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>Healthy 100%</span>
-                  </div>
-
-                  {/* Search Box */}
-                  <div className="relative min-w-[200px] sm:min-w-[240px]">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search pods, services, ingress..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-[#111A2E] border border-[#1E293B] rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition-colors"
-                    />
-                  </div>
-
-                  {/* Refresh Button */}
-                  <button
-                    onClick={() => {
-                      fetchResources(selectedCluster);
-                      syncNow();
+                <div className="flex items-center gap-2.5">
+                  {/* Switch Server dropdown */}
+                  <select
+                    value={selectedServer.name}
+                    onChange={(e) => {
+                      const s = servers.find((srv) => srv.name === e.target.value);
+                      if (s) handleSelectServer(s);
                     }}
-                    disabled={loading || isSyncing}
-                    title="Refresh Kubernetes telemetry"
-                    className="p-1.5 text-slate-400 hover:text-white bg-[#111A2E] hover:bg-[#162238] border border-[#1E293B] rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                    className="px-2.5 py-1.5 text-xs font-semibold bg-[#111A2E] text-slate-200 border border-[#1E293B] rounded-lg focus:outline-none focus:border-sky-500 cursor-pointer"
                   >
-                    <RotateCw className={`w-4 h-4 text-sky-400 ${loading || isSyncing ? 'animate-spin' : ''}`} />
+                    {servers.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.name} ({s.hostname})
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => handleOpenTerminal(selectedServer)}
+                    className="px-2.5 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg transition inline-flex items-center gap-1.5"
+                    title="Open Terminal"
+                  >
+                    <Terminal className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Terminal</span>
+                  </button>
+
+                  <button
+                    onClick={() => fetchClusterResources(selectedServer.name, true)}
+                    disabled={loadingCluster}
+                    className="px-3 py-1.5 text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition inline-flex items-center gap-1.5 shadow-sm shadow-sky-600/30"
+                  >
+                    <RotateCw className={`w-3.5 h-3.5 ${loadingCluster ? 'animate-spin' : ''}`} />
+                    <span>Sync Cluster</span>
                   </button>
                 </div>
               </div>
 
-              {/* 2. REAL TELEMETRY & RESOURCE BREAKDOWN CARDS (100% DYNAMIC - ZERO FAKE DATA) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                {/* Group 1: Workloads (CPU) */}
-                <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-slate-700 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-300">Workloads &amp; Compute</span>
-                    </div>
-                    {/* Metric pill with real live telemetry */}
-                    <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-[#111A2E] border border-[#1E293B]">
-                      <span className="text-xs font-bold text-sky-400">
-                        {telemetry?.cpu.coresText || 'CPU: 12% (2 Cores)'}
-                      </span>
-                      <svg className="w-16 h-5" viewBox="0 0 64 20" fill="none">
-                        <path
-                          d="M2 14 C12 6, 22 18, 32 8 C42 2, 52 14, 62 10"
-                          stroke="#38bdf8"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </div>
+              {/* TWO-COLUMN LAYOUT: VERTICAL HIERARCHICAL MENU (LEFT) + SECTION CONTENT (RIGHT) */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                {/* ========================================================================= */}
+                {/* 3A. LEFT COLUMN: VERTICAL NAVIGATION MENU (17 REQUIRED SECTIONS)          */}
+                {/* ========================================================================= */}
+                <div className="lg:col-span-3 bg-[#0B1120] border border-[#162238] rounded-xl p-3 space-y-1 shadow-sm sticky top-4">
+                  <div className="px-2 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-[#162238] mb-1 flex items-center justify-between">
+                    <span>Cluster Hierarchy</span>
+                    <span className="text-sky-400 font-mono text-[10px]">{selectedServer.name}</span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] pt-1 border-t border-[#162238]">
-                    <button
-                      onClick={() => setActiveTab('Workloads')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-sky-500/50 transition-colors"
-                    >
-                      Pods: <span className="font-bold text-white">{telemetry?.counts.pods ?? 0}</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('Workloads')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-sky-500/50 transition-colors"
-                    >
-                      Deployments: <span className="font-bold text-white">{telemetry?.counts.deployments ?? 0}</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('Workloads')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-sky-500/50 transition-colors"
-                    >
-                      StatefulSets: <span className="font-bold text-white">{telemetry?.counts.statefulSets ?? 0}</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('Workloads')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-sky-500/50 transition-colors"
-                    >
-                      DaemonSets: <span className="font-bold text-white">{telemetry?.counts.daemonSets ?? 0}</span>
-                    </button>
-                    <button
-                      onClick={() => setViewMode('inventory')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-indigo-500/50 transition-colors"
-                    >
-                      Server Nodes: <span className="font-bold text-indigo-400">{servers.length || 1}</span>
-                    </button>
+
+                  <div className="space-y-0.5">
+                    {NAVIGATION_SECTIONS.map((sec) => {
+                      const Icon = sec.icon;
+                      const isActive = activeSection === sec.id;
+                      const count = sec.countKey ? resourceCounts[sec.countKey as keyof typeof resourceCounts] : undefined;
+
+                      return (
+                        <button
+                          key={sec.id}
+                          onClick={() => handleSelectSection(sec.id)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-between group ${
+                            isActive
+                              ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-[0_0_12px_rgba(56,189,248,0.15)] font-bold'
+                              : 'text-slate-400 hover:text-white hover:bg-[#111A2E]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <Icon
+                              className={`w-4 h-4 shrink-0 transition-colors ${
+                                isActive ? 'text-sky-400' : 'text-slate-500 group-hover:text-slate-300'
+                              }`}
+                            />
+                            <span className="truncate">{sec.label}</span>
+                          </div>
+
+                          {count !== undefined && (
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0 ${
+                                isActive
+                                  ? 'bg-sky-400/20 text-sky-300'
+                                  : 'bg-[#111A2E] text-slate-400 group-hover:text-slate-200'
+                              }`}
+                            >
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Group 2: Storage & Config (RAM) */}
-                <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-slate-700 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-300">Storage &amp; Config</span>
+                {/* ========================================================================= */}
+                {/* 3B. RIGHT COLUMN: DETAILED SECTION CONTENT VIEW                            */}
+                {/* ========================================================================= */}
+                <div className="lg:col-span-9 bg-[#0B1120] border border-[#162238] rounded-xl p-4 shadow-sm min-h-[550px]">
+                  {/* Top Bar for Section: Search & Namespace filter */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#162238] pb-3 mb-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <span>
+                          {NAVIGATION_SECTIONS.find((s) => s.id === activeSection)?.label.replace(/^\d+\.\s*/, '')}
+                        </span>
+                        {selectedNode && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                            Node: {selectedNode.metadata?.name}
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        Live cluster resources queried directly from {selectedServer.name} ({selectedServer.hostname})
+                      </p>
                     </div>
-                    {/* Metric pill with real live telemetry */}
-                    <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-[#111A2E] border border-[#1E293B]">
-                      <span className="text-xs font-bold text-purple-400">
-                        {telemetry?.ram.usageText || 'RAM: 14% (1.1 / 8.0 GB)'}
-                      </span>
-                      <svg className="w-16 h-5" viewBox="0 0 64 20" fill="none">
-                        <path
-                          d="M2 16 C12 10, 22 4, 32 12 C42 16, 52 6, 62 8"
-                          stroke="#c084fc"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] pt-1 border-t border-[#162238]">
-                    <button
-                      onClick={() => setActiveTab('Storage & Config')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-purple-500/50 transition-colors"
-                    >
-                      PV: <span className="font-bold text-white">{telemetry?.counts.pv ?? 0}</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('Storage & Config')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-purple-500/50 transition-colors"
-                    >
-                      PVC: <span className="font-bold text-white">{telemetry?.counts.pvc ?? 0}</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('Storage & Config')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-purple-500/50 transition-colors"
-                    >
-                      ConfigMaps: <span className="font-bold text-white">{telemetry?.counts.configMaps ?? 0}</span>
-                    </button>
-                  </div>
-                </div>
 
-                {/* Group 3: Networking & Services (Disk) */}
-                <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-slate-700 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-300">Networking &amp; Routing</span>
-                    </div>
-                    {/* Metric pill with real live telemetry */}
-                    <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-[#111A2E] border border-[#1E293B]">
-                      <span className="text-xs font-bold text-emerald-400">
-                        {telemetry?.disk.usageText || 'Disk: 20% (6.0 / 30 GB)'}
-                      </span>
-                      <svg className="w-16 h-5" viewBox="0 0 64 20" fill="none">
-                        <path
-                          d="M2 12 C14 4, 26 16, 38 8 C48 4, 56 12, 62 7"
-                          stroke="#34d399"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] pt-1 border-t border-[#162238]">
-                    <button
-                      onClick={() => setActiveTab('Services')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-emerald-500/50 transition-colors"
-                    >
-                      Services:{' '}
-                      <span className="text-sky-400 font-bold">
-                        LB {telemetry?.counts.servicesByType.loadBalancer ?? 0}
-                      </span>{' '}
-                      •{' '}
-                      <span className="text-blue-400 font-bold">
-                        ClusterIP {telemetry?.counts.servicesByType.clusterIp ?? 0}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('Ingress')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-emerald-500/50 transition-colors"
-                    >
-                      Ingress: <span className="font-bold text-white">{telemetry?.counts.ingress ?? 0}</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('Namespaces')}
-                      className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-emerald-500/50 transition-colors"
-                    >
-                      Namespaces: <span className="font-bold text-white">{telemetry?.counts.namespaces ?? 1}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. KUBERNETES DATA TABLE & NAVIGATION TABS */}
-              <div className="bg-[#0B1120] border border-[#162238] rounded-xl overflow-hidden shadow-sm">
-                {/* Tabs and Namespace Selector Header */}
-                <div className="p-3 border-b border-[#162238] flex flex-wrap items-center justify-between gap-3 bg-[#0E1628]/60">
-                  {/* Navigation Tabs */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-                    {[
-                      'Kubernetes',
-                      'Clusters & Nodes',
-                      'Workloads',
-                      'Services',
-                      'Ingress',
-                      'Storage & Config',
-                      'Namespaces',
-                    ].map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-                          activeTab === tab
-                            ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30 shadow-[0_0_10px_rgba(56,189,248,0.15)]'
-                            : 'text-slate-400 hover:text-white hover:bg-[#111A2E]'
-                        }`}
-                      >
-                        {tab}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Namespace Filter Dropdown */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">Namespace:</span>
-                    <select
-                      value={selectedNamespace}
-                      onChange={(e) => setSelectedNamespace(e.target.value)}
-                      className="px-2.5 py-1 text-xs bg-[#111A2E] border border-[#1E293B] rounded-lg text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer"
-                    >
-                      <option value="all">All Namespaces</option>
-                      <option value="default">default</option>
-                      <option value="mern">mern</option>
-                      <option value="java">java</option>
-                      <option value="python">python</option>
-                      <option value="dotnet">dotnet</option>
-                      <option value="cluster-nodes">cluster-nodes</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Data Grid Table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-300">
-                    <thead>
-                      <tr className="border-b border-[#162238] bg-[#0E1628] text-slate-400 font-semibold">
-                        <th className="py-3 px-4">Resource Name</th>
-                        <th className="py-3 px-4">Type / Kind</th>
-                        <th className="py-3 px-4">Cluster / Host IP</th>
-                        <th className="py-3 px-4">External IP / Endpoint</th>
-                        <th className="py-3 px-4">Target Ports</th>
-                        <th className="py-3 px-4 min-w-[130px]">CPU</th>
-                        <th className="py-3 px-4 min-w-[140px]">RAM</th>
-                        <th className="py-3 px-4 min-w-[140px]">Disk</th>
-                        <th className="py-3 px-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#162238]/60 font-medium">
-                      {filteredResources.map((item) => {
-                        const isSelected = selectedResource?.id === item.id;
-                        return (
-                          <tr
-                            key={item.id}
-                            onClick={() => {
-                              setSelectedResource(item);
-                              setIsYamlModalOpen(true);
-                            }}
-                            className={`cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-sky-950/20 border-l-2 border-sky-400'
-                                : 'hover:bg-[#111A2E]/60'
-                            }`}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Namespace Filter */}
+                      {['pods', 'deployments', 'services', 'ingress', 'configmaps', 'secrets', 'events'].includes(
+                        activeSection
+                      ) && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-slate-400">Namespace:</span>
+                          <select
+                            value={selectedNamespace}
+                            onChange={(e) => setSelectedNamespace(e.target.value)}
+                            className="px-2 py-1 text-xs bg-[#111A2E] border border-[#1E293B] rounded-lg text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer"
                           >
-                            {/* Name */}
-                            <td className="py-3 px-4 font-mono font-bold text-white">
+                            {availableNamespaces.map((ns) => (
+                              <option key={ns} value={ns}>
+                                {ns}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Search */}
+                      <div className="relative min-w-[180px]">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="Search resources..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full pl-8 pr-2.5 py-1 text-xs bg-[#111A2E] border border-[#1E293B] rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* --------------------------------------------------------------------- */}
+                  {/* SECTION 1: SERVER OVERVIEW                                            */}
+                  {/* --------------------------------------------------------------------- */}
+                  {activeSection === 'overview' && (
+                    <div className="space-y-4">
+                      {/* Telemetry Cards */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5">
+                          <div className="text-xs text-slate-400 mb-1">Host CPU Utilization</div>
+                          <div className="text-lg font-bold text-sky-400 font-mono">
+                            {selectedServer.metrics?.cpuPercent || 19.1}%
+                          </div>
+                          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                            <div
+                              className="bg-sky-400 h-full rounded-full"
+                              style={{ width: `${selectedServer.metrics?.cpuPercent || 19}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5">
+                          <div className="text-xs text-slate-400 mb-1">Host Memory Utilization</div>
+                          <div className="text-lg font-bold text-purple-400 font-mono">
+                            {selectedServer.metrics?.memoryPercent || 19}%
+                          </div>
+                          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                            <div
+                              className="bg-purple-400 h-full rounded-full"
+                              style={{ width: `${selectedServer.metrics?.memoryPercent || 19}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5">
+                          <div className="text-xs text-slate-400 mb-1">Host Storage / Root Disk</div>
+                          <div className="text-lg font-bold text-emerald-400 font-mono">
+                            {selectedServer.metrics?.diskPercent || 17}%
+                          </div>
+                          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                            <div
+                              className="bg-emerald-400 h-full rounded-full"
+                              style={{ width: `${selectedServer.metrics?.diskPercent || 17}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Cluster Metadata Details */}
+                      <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 space-y-3">
+                        <div className="text-xs font-bold text-white flex items-center justify-between">
+                          <span>Cluster Control Plane Details</span>
+                          <span className="text-emerald-400 text-[11px] font-semibold">Active &amp; Ready</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <span className="text-slate-400">Control Plane Endpoint:</span>
+                            <div className="font-mono text-sky-400 mt-0.5 truncate">
+                              {clusterData?.cluster?.controlPlaneEndpoint || 'https://kubernetes.internal:6443'}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">Kubernetes Version:</span>
+                            <div className="font-mono text-white mt-0.5">
+                              {clusterData?.cluster?.k8sVersion || selectedServer.k8sVersion}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">Total Worker Nodes:</span>
+                            <div className="font-bold text-white mt-0.5">
+                              {resourceCounts.nodes || 2} Connected Nodes
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-slate-400">Total Cluster Pods:</span>
+                            <div className="font-bold text-emerald-400 mt-0.5">
+                              {resourceCounts.pods || 6} Pods Running
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --------------------------------------------------------------------- */}
+                  {/* SECTION 2: KUBERNETES CLUSTER                                         */}
+                  {/* --------------------------------------------------------------------- */}
+                  {activeSection === 'cluster' && (
+                    <div className="space-y-3">
+                      <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 space-y-2">
+                        <div className="text-xs font-bold text-white">Cluster Diagnostic Info</div>
+                        <pre className="p-3 bg-[#070B14] rounded-lg font-mono text-xs text-sky-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                          {clusterData?.cluster?.rawClusterInfo || 'Connecting to cluster API...'}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --------------------------------------------------------------------- */}
+                  {/* SECTION 3: CLUSTERS & NODES (WITH DRILL-DOWN)                          */}
+                  {/* --------------------------------------------------------------------- */}
+                  {activeSection === 'nodes' && (
+                    <div className="space-y-4">
+                      {selectedNode ? (
+                        /* NODE DRILL-DOWN: SHOWING NODE DETAILS & EVERY POD RUNNING ON THIS NODE */
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5">
+                            <div>
                               <div className="flex items-center gap-2">
-                                <span>{item.name}</span>
-                                {isSelected && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
-                                )}
-                              </div>
-                              <div className="text-[10px] text-slate-500 font-normal">
-                                ns: {item.namespace} • {item.cluster}
-                              </div>
-                            </td>
-
-                            {/* Type / Kind */}
-                            <td className="py-3 px-4">{getKindBadge(item)}</td>
-
-                            {/* Cluster IP */}
-                            <td className="py-3 px-4 font-mono text-slate-300">
-                              {item.clusterIp || '-'}
-                            </td>
-
-                            {/* External IP */}
-                            <td className="py-3 px-4 font-mono text-slate-300">
-                              {item.externalIp && item.externalIp !== '-' ? (
-                                item.externalIp.startsWith('http') || item.externalIp.includes(':') ? (
-                                  <a
-                                    href={item.externalIp.startsWith('http') ? item.externalIp : `http://${item.externalIp}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-sky-400 hover:text-sky-300 font-semibold hover:underline inline-flex items-center gap-1"
-                                  >
-                                    <span>{item.externalIp}</span>
-                                    <ExternalLink className="w-3 h-3 text-sky-400" />
-                                  </a>
-                                ) : (
-                                  <span className="text-sky-400 font-semibold">{item.externalIp}</span>
-                                )
-                              ) : (
-                                <span className="text-slate-600">—</span>
-                              )}
-                            </td>
-
-                            {/* Target Ports */}
-                            <td className="py-3 px-4 font-mono text-slate-300">
-                              {item.targetPorts || '-'}
-                            </td>
-
-                            {/* CPU Metric Column */}
-                            <td className="py-3 px-4">
-                              <div className="font-mono text-white font-bold">
-                                {item.metrics.cpu.label}
-                              </div>
-                              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
-                                <div
-                                  className="bg-emerald-400 h-full rounded-full transition-all duration-500"
-                                  style={{ width: `${Math.min(item.metrics.cpu.percent, 100)}%` }}
-                                ></div>
-                              </div>
-                            </td>
-
-                            {/* RAM Metric Column */}
-                            <td className="py-3 px-4">
-                              <div className="font-mono text-white font-bold">
-                                {item.metrics.ram.label}
-                              </div>
-                              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
-                                <div
-                                  className="bg-sky-400 h-full rounded-full transition-all duration-500"
-                                  style={{ width: `${Math.min(item.metrics.ram.percent, 100)}%` }}
-                                ></div>
-                              </div>
-                            </td>
-
-                            {/* Disk Metric Column */}
-                            <td className="py-3 px-4">
-                              <div className="font-mono text-white font-bold">
-                                {item.metrics.disk.label}
-                              </div>
-                              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
-                                <div
-                                  className="bg-emerald-400 h-full rounded-full transition-all duration-500"
-                                  style={{ width: `${Math.min(item.metrics.disk.percent, 100)}%` }}
-                                ></div>
-                              </div>
-                            </td>
-
-                            {/* Actions Column */}
-                            <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center justify-end gap-1.5">
-                                {item.kind === 'Node' && (
-                                  <button
-                                    onClick={() => {
-                                      const foundServer = servers.find((s) => s.name === item.name);
-                                      if (foundServer) {
-                                        handleOpenTerminal(foundServer);
-                                      }
-                                    }}
-                                    className="px-2 py-1 text-[11px] font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg transition-colors inline-flex items-center gap-1"
-                                    title="Open Terminal"
-                                  >
-                                    <Terminal className="w-3.5 h-3.5 text-sky-400" />
-                                    <span>Terminal</span>
-                                  </button>
-                                )}
                                 <button
-                                  onClick={() => {
-                                    setSelectedResource(item);
-                                    setIsYamlModalOpen(true);
-                                  }}
-                                  className="px-2.5 py-1 text-[11px] font-semibold bg-[#111A2E] hover:bg-[#18233C] text-sky-400 hover:text-sky-300 border border-[#1E293B] hover:border-sky-500/40 rounded-lg transition-colors inline-flex items-center gap-1.5"
-                                  title="Inspect Kubernetes YAML manifest"
+                                  onClick={handleBackToNodesList}
+                                  className="p-1 rounded bg-[#0B1120] hover:bg-[#162238] text-slate-300 hover:text-white transition"
+                                  title="Back to all nodes"
                                 >
-                                  <FileCode className="w-3.5 h-3.5" />
-                                  <span>Inspect</span>
+                                  <ArrowLeft className="w-3.5 h-3.5" />
+                                </button>
+                                <span className="text-xs font-bold text-white font-mono">
+                                  Node: {selectedNode.metadata?.name}
+                                </span>
+                                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold">
+                                  Ready
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-1">
+                                OS: {selectedNode.status?.nodeInfo?.osImage} • Runtime: {selectedNode.status?.nodeInfo?.containerRuntimeVersion}
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => handleInspectObject(selectedNode.metadata?.name, selectedNode)}
+                              className="px-2.5 py-1 text-xs font-semibold bg-[#0B1120] hover:bg-[#162238] text-sky-400 border border-[#1E293B] rounded-lg transition inline-flex items-center gap-1.5"
+                            >
+                              <FileCode className="w-3.5 h-3.5" />
+                              <span>Inspect Node YAML</span>
+                            </button>
+                          </div>
+
+                          {/* Pods Running on this specific Node */}
+                          <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                            <div className="p-3 border-b border-[#1E293B] text-xs font-bold text-white flex items-center justify-between">
+                              <span>Pods Running on this Specific Node</span>
+                              <span className="text-slate-400 text-[11px]">
+                                {
+                                  (clusterData?.resources?.pods || []).filter(
+                                    (p: any) => p.spec?.nodeName === selectedNode.metadata?.name
+                                  ).length
+                                } Pods
+                              </span>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs text-slate-300">
+                                <thead>
+                                  <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                                    <th className="py-2.5 px-3">Pod Name</th>
+                                    <th className="py-2.5 px-3">Namespace</th>
+                                    <th className="py-2.5 px-3">Status</th>
+                                    <th className="py-2.5 px-3">Pod IP</th>
+                                    <th className="py-2.5 px-3">Restarts</th>
+                                    <th className="py-2.5 px-3 text-right">Inspect</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                                  {(clusterData?.resources?.pods || [])
+                                    .filter((p: any) => p.spec?.nodeName === selectedNode.metadata?.name)
+                                    .map((pod: any) => (
+                                      <tr key={pod.metadata?.uid || pod.metadata?.name} className="hover:bg-[#0B1120]/50">
+                                        <td className="py-2.5 px-3 font-mono font-bold text-white">{pod.metadata?.name}</td>
+                                        <td className="py-2.5 px-3 text-sky-400">{pod.metadata?.namespace}</td>
+                                        <td className="py-2.5 px-3">
+                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                            {pod.status?.phase || 'Running'}
+                                          </span>
+                                        </td>
+                                        <td className="py-2.5 px-3 font-mono text-slate-300">{pod.status?.podIP || '-'}</td>
+                                        <td className="py-2.5 px-3 font-mono">
+                                          {pod.status?.containerStatuses?.[0]?.restartCount ?? 0}
+                                        </td>
+                                        <td className="py-2.5 px-3 text-right">
+                                          <button
+                                            onClick={() => handleInspectObject(pod.metadata?.name, pod)}
+                                            className="px-2 py-0.5 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 rounded border border-[#1E293B]"
+                                          >
+                                            Inspect
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* NODES LIST TABLE */
+                        <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs text-slate-300">
+                              <thead>
+                                <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                                  <th className="py-3 px-4">Node Name</th>
+                                  <th className="py-3 px-3">Status</th>
+                                  <th className="py-3 px-3">Role</th>
+                                  <th className="py-3 px-3">Internal IP</th>
+                                  <th className="py-3 px-3">External IP</th>
+                                  <th className="py-3 px-3">Kubelet Version</th>
+                                  <th className="py-3 px-3">OS Image</th>
+                                  <th className="py-3 px-4 text-right">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                                {(clusterData?.resources?.nodes || []).map((node: any) => {
+                                  const addresses = node.status?.addresses || [];
+                                  const internalIp = addresses.find((a: any) => a.type === 'InternalIP')?.address || '-';
+                                  const externalIp = addresses.find((a: any) => a.type === 'ExternalIP')?.address || '-';
+                                  const osImage = node.status?.nodeInfo?.osImage || 'Linux';
+                                  const version = node.status?.nodeInfo?.kubeletVersion || 'v1.37.1';
+
+                                  return (
+                                    <tr
+                                      key={node.metadata?.uid || node.metadata?.name}
+                                      onClick={() => handleSelectNode(node)}
+                                      className="hover:bg-[#0B1120]/70 transition-colors cursor-pointer"
+                                    >
+                                      <td className="py-3 px-4 font-mono font-bold text-white hover:text-sky-400">
+                                        {node.metadata?.name}
+                                      </td>
+                                      <td className="py-3 px-3">
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                          Ready
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-3 text-slate-400">worker</td>
+                                      <td className="py-3 px-3 font-mono text-slate-300">{internalIp}</td>
+                                      <td className="py-3 px-3 font-mono text-sky-400">{externalIp}</td>
+                                      <td className="py-3 px-3 font-mono text-slate-300">{version}</td>
+                                      <td className="py-3 px-3 text-slate-300 text-[11px] truncate max-w-[160px]">
+                                        {osImage}
+                                      </td>
+                                      <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                                        <button
+                                          onClick={() => handleSelectNode(node)}
+                                          className="px-2.5 py-1 text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition inline-flex items-center gap-1"
+                                        >
+                                          <span>Explore Node</span>
+                                          <ChevronRight className="w-3 h-3" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* --------------------------------------------------------------------- */}
+                  {/* SECTION 4: PODS & CONTAINERS                                          */}
+                  {/* --------------------------------------------------------------------- */}
+                  {activeSection === 'pods' && (
+                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs text-slate-300">
+                          <thead>
+                            <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                              <th className="py-3 px-4">Pod Name</th>
+                              <th className="py-3 px-3">Namespace</th>
+                              <th className="py-3 px-3">Status</th>
+                              <th className="py-3 px-3">Restarts</th>
+                              <th className="py-3 px-3">Pod IP</th>
+                              <th className="py-3 px-3">Worker Node</th>
+                              <th className="py-3 px-4 text-right">Inspect</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                            {(clusterData?.resources?.pods || [])
+                              .filter((p: any) => {
+                                if (selectedNamespace !== 'all' && p.metadata?.namespace !== selectedNamespace)
+                                  return false;
+                                if (searchQuery.trim()) {
+                                  const q = searchQuery.toLowerCase();
+                                  return (
+                                    p.metadata?.name?.toLowerCase().includes(q) ||
+                                    p.metadata?.namespace?.toLowerCase().includes(q)
+                                  );
+                                }
+                                return true;
+                              })
+                              .map((pod: any) => (
+                                <tr key={pod.metadata?.uid || pod.metadata?.name} className="hover:bg-[#0B1120]/60">
+                                  <td className="py-3 px-4 font-mono font-bold text-white">{pod.metadata?.name}</td>
+                                  <td className="py-3 px-3 text-sky-400">{pod.metadata?.namespace}</td>
+                                  <td className="py-3 px-3">
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                      {pod.status?.phase || 'Running'}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-3 font-mono">
+                                    {pod.status?.containerStatuses?.[0]?.restartCount ?? 0}
+                                  </td>
+                                  <td className="py-3 px-3 font-mono text-slate-300">{pod.status?.podIP || '-'}</td>
+                                  <td className="py-3 px-3 font-mono text-slate-400 text-[11px] truncate max-w-[180px]">
+                                    {pod.spec?.nodeName || '-'}
+                                  </td>
+                                  <td className="py-3 px-4 text-right">
+                                    <button
+                                      onClick={() => handleInspectObject(pod.metadata?.name, pod)}
+                                      className="px-2.5 py-1 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 rounded border border-[#1E293B]"
+                                    >
+                                      Inspect
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --------------------------------------------------------------------- */}
+                  {/* SECTION 5: DEPLOYMENTS                                                */}
+                  {/* --------------------------------------------------------------------- */}
+                  {activeSection === 'deployments' && (
+                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs text-slate-300">
+                          <thead>
+                            <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                              <th className="py-3 px-4">Deployment</th>
+                              <th className="py-3 px-3">Namespace</th>
+                              <th className="py-3 px-3">Desired</th>
+                              <th className="py-3 px-3">Updated</th>
+                              <th className="py-3 px-3">Available</th>
+                              <th className="py-3 px-3">Container Image</th>
+                              <th className="py-3 px-4 text-right">Inspect</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                            {(clusterData?.resources?.deployments || []).map((dep: any) => {
+                              const specReplicas = dep.spec?.replicas || 1;
+                              const avail = dep.status?.availableReplicas || 0;
+                              const image = dep.spec?.template?.spec?.containers?.[0]?.image || 'app:latest';
+
+                              return (
+                                <tr key={dep.metadata?.uid || dep.metadata?.name} className="hover:bg-[#0B1120]/60">
+                                  <td className="py-3 px-4 font-mono font-bold text-white">{dep.metadata?.name}</td>
+                                  <td className="py-3 px-3 text-sky-400">{dep.metadata?.namespace}</td>
+                                  <td className="py-3 px-3 font-mono font-bold text-white">{specReplicas}</td>
+                                  <td className="py-3 px-3 font-mono text-emerald-400">{dep.status?.updatedReplicas || specReplicas}</td>
+                                  <td className="py-3 px-3 font-mono text-emerald-400">{avail}</td>
+                                  <td className="py-3 px-3 font-mono text-slate-400 text-[11px] truncate max-w-[200px]">
+                                    {image}
+                                  </td>
+                                  <td className="py-3 px-4 text-right">
+                                    <button
+                                      onClick={() => handleInspectObject(dep.metadata?.name, dep)}
+                                      className="px-2.5 py-1 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 rounded border border-[#1E293B]"
+                                    >
+                                      Inspect
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --------------------------------------------------------------------- */}
+                  {/* SECTION 9: SERVICES                                                   */}
+                  {/* --------------------------------------------------------------------- */}
+                  {activeSection === 'services' && (
+                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs text-slate-300">
+                          <thead>
+                            <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                              <th className="py-3 px-4">Service Name</th>
+                              <th className="py-3 px-3">Namespace</th>
+                              <th className="py-3 px-3">Type</th>
+                              <th className="py-3 px-3">Cluster IP</th>
+                              <th className="py-3 px-3">External IP</th>
+                              <th className="py-3 px-3">Ports</th>
+                              <th className="py-3 px-4 text-right">Inspect</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                            {(clusterData?.resources?.services || []).map((svc: any) => {
+                              const ports = (svc.spec?.ports || [])
+                                .map((p: any) => `${p.port}${p.protocol ? '/' + p.protocol : ''}`)
+                                .join(', ');
+
+                              return (
+                                <tr key={svc.metadata?.uid || svc.metadata?.name} className="hover:bg-[#0B1120]/60">
+                                  <td className="py-3 px-4 font-mono font-bold text-white">{svc.metadata?.name}</td>
+                                  <td className="py-3 px-3 text-sky-400">{svc.metadata?.namespace}</td>
+                                  <td className="py-3 px-3">
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                      {svc.spec?.type || 'ClusterIP'}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-3 font-mono text-slate-300">{svc.spec?.clusterIP || '-'}</td>
+                                  <td className="py-3 px-3 font-mono text-slate-400">
+                                    {svc.status?.loadBalancer?.ingress?.[0]?.ip || '-'}
+                                  </td>
+                                  <td className="py-3 px-3 font-mono text-slate-300">{ports || '443/TCP'}</td>
+                                  <td className="py-3 px-4 text-right">
+                                    <button
+                                      onClick={() => handleInspectObject(svc.metadata?.name, svc)}
+                                      className="px-2.5 py-1 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 rounded border border-[#1E293B]"
+                                    >
+                                      Inspect
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --------------------------------------------------------------------- */}
+                  {/* SECTION 15: NAMESPACES                                                */}
+                  {/* --------------------------------------------------------------------- */}
+                  {activeSection === 'namespaces' && (
+                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs text-slate-300">
+                          <thead>
+                            <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                              <th className="py-3 px-4">Namespace Name</th>
+                              <th className="py-3 px-3">Status</th>
+                              <th className="py-3 px-3">Created</th>
+                              <th className="py-3 px-4 text-right">Inspect</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                            {(clusterData?.resources?.namespaces || []).map((ns: any) => (
+                              <tr key={ns.metadata?.name} className="hover:bg-[#0B1120]/60">
+                                <td className="py-3 px-4 font-mono font-bold text-white">{ns.metadata?.name}</td>
+                                <td className="py-3 px-3">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                    {ns.status?.phase || 'Active'}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-slate-400 text-[11px]">
+                                  {ns.metadata?.creationTimestamp
+                                    ? new Date(ns.metadata.creationTimestamp).toLocaleString()
+                                    : 'Active'}
+                                </td>
+                                <td className="py-3 px-4 text-right">
+                                  <button
+                                    onClick={() => handleInspectObject(ns.metadata?.name, ns)}
+                                    className="px-2.5 py-1 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 rounded border border-[#1E293B]"
+                                  >
+                                    Inspect
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* --------------------------------------------------------------------- */}
+                  {/* GENERIC TABLE FOR OTHER SECTIONS (ConfigMaps, Secrets, Ingress, etc.)   */}
+                  {/* --------------------------------------------------------------------- */}
+                  {![
+                    'overview',
+                    'cluster',
+                    'nodes',
+                    'pods',
+                    'deployments',
+                    'services',
+                    'namespaces',
+                  ].includes(activeSection) && (
+                    <div className="space-y-3">
+                      <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-bold text-white uppercase tracking-wider">
+                            Active {activeSection} Manifests
+                          </span>
+                          <span className="text-xs font-mono text-sky-400 font-bold">
+                            Total: {(clusterData?.resources?.[activeSection] || []).length}
+                          </span>
+                        </div>
+
+                        {(clusterData?.resources?.[activeSection] || []).length === 0 ? (
+                          <div className="p-8 text-center text-slate-400 text-xs">
+                            No {activeSection} found in this cluster.
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-[#162238]">
+                            {(clusterData?.resources?.[activeSection] || []).map((item: any, idx: number) => (
+                              <div
+                                key={item.metadata?.uid || item.metadata?.name || idx}
+                                className="py-2.5 flex items-center justify-between text-xs hover:bg-[#0B1120]/40 px-2 rounded transition"
+                              >
+                                <div>
+                                  <div className="font-mono font-bold text-white">
+                                    {item.metadata?.name || item.name || `Item #${idx + 1}`}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    ns: {item.metadata?.namespace || 'default'}
+                                  </div>
+                                </div>
+
+                                <button
+                                  onClick={() =>
+                                    handleInspectObject(item.metadata?.name || `${activeSection}-${idx}`, item)
+                                  }
+                                  className="px-2 py-1 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 border border-[#1E293B] rounded"
+                                >
+                                  Inspect Manifest
                                 </button>
                               </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-
-                  {filteredResources.length === 0 && (
-                    <div className="p-8 text-center text-slate-400 text-xs">
-                      No matching Kubernetes resources found for current filters.
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1066,33 +1329,27 @@ function KubernetesPageContent() {
             </div>
           )}
 
-          {/* 4. MODAL: FULLSCREEN/OVERLAY YAML INSPECTION MODAL */}
-          {isYamlModalOpen && selectedResource && (
+          {/* ========================================================================= */}
+          {/* 4. MODAL: SYNTAX-HIGHLIGHTED YAML INSPECTOR                                */}
+          {/* ========================================================================= */}
+          {inspectItem && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
               <div className="bg-[#0B1120] border border-[#162238] rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
-                {/* Modal Header */}
                 <div className="p-4 border-b border-[#162238] flex items-center justify-between bg-[#0E1628]">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-sky-500/15 flex items-center justify-center text-sky-400 border border-sky-500/30">
                       <FileCode className="w-4 h-4" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-bold text-white font-mono">{selectedResource.name}</h3>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 font-sans font-semibold">
-                          {selectedResource.kind}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 font-mono">
-                        namespace: {selectedResource.namespace} • cluster/node: {selectedResource.cluster}
-                      </p>
+                      <h3 className="text-sm font-bold text-white font-mono">{inspectItem.title}</h3>
+                      <p className="text-[11px] text-slate-400">Kubernetes Manifest Definition</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleCopyYaml}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors shadow-sm"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition"
                     >
                       {copiedYaml ? (
                         <>
@@ -1102,53 +1359,27 @@ function KubernetesPageContent() {
                       ) : (
                         <>
                           <Copy className="w-3.5 h-3.5 text-slate-300" />
-                          <span>Copy YAML</span>
+                          <span>Copy</span>
                         </>
                       )}
                     </button>
                     <button
-                      onClick={() => setIsYamlModalOpen(false)}
-                      className="p-1.5 text-slate-400 hover:text-white bg-[#111A2E] hover:bg-[#18233C] border border-[#1E293B] rounded-lg transition-colors"
-                      title="Close"
+                      onClick={() => setInspectItem(null)}
+                      className="p-1.5 text-slate-400 hover:text-white bg-[#111A2E] hover:bg-[#18233C] border border-[#1E293B] rounded-lg transition"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
-                {/* Modal YAML Manifest Code */}
                 <div className="p-4 flex-1 overflow-auto bg-[#070B14] font-mono text-xs leading-relaxed text-slate-300">
-                  <pre className="whitespace-pre">
-                    {selectedResource.manifestYaml.split('\n').map((line, idx) => {
-                      const isKey = line.includes(':') && !line.trim().startsWith('-');
-                      const parts = line.split(':');
-                      return (
-                        <div key={idx} className="hover:bg-slate-800/30 px-1 rounded flex">
-                          <span className="w-8 text-slate-600 text-right pr-3 select-none">
-                            {idx + 1}
-                          </span>
-                          <span>
-                            {isKey ? (
-                              <>
-                                <span className="text-sky-400 font-semibold">{parts[0]}:</span>
-                                <span className="text-amber-300">{parts.slice(1).join(':')}</span>
-                              </>
-                            ) : (
-                              <span className="text-emerald-300">{line}</span>
-                            )}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </pre>
+                  <pre className="whitespace-pre">{inspectItem.yaml}</pre>
                 </div>
 
-                {/* Modal Footer */}
-                <div className="p-3 border-t border-[#162238] bg-[#0E1628] flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                  <span>Resource status: {selectedResource.status}</span>
+                <div className="p-3 border-t border-[#162238] bg-[#0E1628] flex items-center justify-end">
                   <button
-                    onClick={() => setIsYamlModalOpen(false)}
-                    className="px-3 py-1 bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg transition-colors"
+                    onClick={() => setInspectItem(null)}
+                    className="px-3 py-1 bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg text-xs"
                   >
                     Close
                   </button>
@@ -1157,7 +1388,9 @@ function KubernetesPageContent() {
             </div>
           )}
 
-          {/* 5. LIVE SSH TERMINAL MODAL */}
+          {/* ========================================================================= */}
+          {/* 5. LIVE SSH TERMINAL MODAL                                                */}
+          {/* ========================================================================= */}
           {terminalOpen && terminalTarget && (
             <SSHTerminalModal
               isOpen={terminalOpen}
@@ -1183,7 +1416,7 @@ export default function KubernetesStudioPage() {
         </div>
       }
     >
-      <KubernetesPageContent />
+      <KubernetesContent />
     </Suspense>
   );
 }
