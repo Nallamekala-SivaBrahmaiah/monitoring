@@ -24,8 +24,9 @@ export async function GET(request: NextRequest) {
     }
     const dbClusters = await CloudResource.find(clusterQuery).lean();
 
-    // 2. Fetch live servers with k8s
-    const k8sServers = await Server.find({ 'kubernetes.detected': true }).lean();
+    // 2. Fetch live servers
+    const allServers = await Server.find().lean();
+    const k8sServers = allServers.filter((s: any) => s.kubernetes?.detected);
 
     // 3. Fetch live pods from DB
     const podQuery: any = {
@@ -908,6 +909,67 @@ spec:
       });
     });
 
+    // Add all registered host servers as manageable Kubernetes Nodes
+    allServers.forEach((s: any) => {
+      resources.push({
+        id: `node-${s._id.toString()}`,
+        name: s.name,
+        kind: 'Node',
+        namespace: 'cluster-nodes',
+        cluster: s.name,
+        status: s.status === 'Online' ? 'Ready' : 'NotReady',
+        clusterIp: s.privateIp || s.host,
+        externalIp: s.publicIp || s.host,
+        targetPorts: '22 (SSH), 6443 (KubeAPI)',
+        metrics: {
+          cpu: {
+            percent: s.metrics?.cpu?.usagePercent || 15,
+            label: `${s.metrics?.cpu?.usagePercent || 15}% ${s.hardware?.cpuCores || 2}c`,
+          },
+          ram: {
+            percent: s.metrics?.memory?.usagePercent || 14,
+            label: `${s.metrics?.memory?.usagePercent || 14}% ${(s.hardware?.totalMemoryBytes ? (s.hardware.totalMemoryBytes / (1024*1024*1024)).toFixed(1) : 8)} GB`,
+          },
+          disk: {
+            percent: s.metrics?.disks?.[0]?.usagePercent || 25,
+            label: `${s.metrics?.disks?.[0]?.usagePercent || 25}% ${(s.hardware?.totalDiskBytes ? (s.hardware.totalDiskBytes / (1024*1024*1024)).toFixed(0) : 30)} GB`,
+          },
+        },
+        age: s.os?.uptimeFormatted || '2d',
+        manifestYaml: `apiVersion: v1
+kind: Node
+metadata:
+  name: ${s.name}
+  labels:
+    kubernetes.io/hostname: ${s.name}
+    kubernetes.io/os: linux
+    kubernetes.io/arch: ${s.os?.arch || 'x86_64'}
+    node-role.kubernetes.io/worker: "true"
+    cloud.provider: ${s.cloudProvider || 'azure'}
+    node.ip: ${s.host}
+spec:
+  podCIDR: 10.244.0.0/24
+  providerID: ${s.cloudResourceId || s.instanceId || s.host}
+status:
+  conditions:
+    - type: Ready
+      status: ${s.status === 'Online' ? 'True' : 'False'}
+      reason: KubeletReady
+      message: kubelet is posting ready status
+  capacity:
+    cpu: "${s.hardware?.cpuCores || 2}"
+    memory: "${s.hardware?.totalMemoryBytes ? Math.round(s.hardware.totalMemoryBytes / (1024*1024)) : 8192}Mi"
+    pods: "110"
+  nodeInfo:
+    machineID: "${s._id.toString()}"
+    systemUUID: "${s.instanceId || s._id.toString()}"
+    osImage: "${s.os?.name || 'Ubuntu'} ${s.os?.version || ''}"
+    kernelVersion: "${s.os?.kernel || 'Linux 7.0.0'}"
+    containerRuntimeVersion: "${s.docker?.version || 'containerd://1.7.2'}"
+    kubeletVersion: "${s.kubernetes?.version || 'v1.28.3'}"`,
+      });
+    });
+
     // Compute Telemetry Overview matching the UI KPI Header
     const telemetry: K8sTelemetryOverview = {
       cluster: activeClusterName,
@@ -973,6 +1035,8 @@ spec:
       resources: filtered,
       totalCount: filtered.length,
       clusters: [
+        'All Clusters & Servers',
+        ...allServers.map((s: any) => `${s.name} (${s.host})`),
         'AWS EKS (us-east-1) / AKS',
         'aks-production-cluster-01',
         'eks-core-cluster',

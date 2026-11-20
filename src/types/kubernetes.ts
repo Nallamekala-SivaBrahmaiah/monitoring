@@ -10,7 +10,8 @@ export type K8sResourceType =
   | 'HelmRelease'
   | 'Namespace'
   | 'Service'
-  | 'Ingress';
+  | 'Ingress'
+  | 'Node';
 
 export type K8sServiceType = 'LoadBalancer' | 'ClusterIP' | 'NodePort' | 'ExternalName';
 

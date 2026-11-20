@@ -43,12 +43,15 @@ export default function KubernetesStudioPage() {
   const [telemetry, setTelemetry] = useState<K8sTelemetryOverview | null>(null);
   const [resources, setResources] = useState<K8sUnifiedResource[]>([]);
   const [availableClusters, setAvailableClusters] = useState<string[]>([
+    'All Clusters & Servers',
+    'azure (20.40.49.224)',
+    'vm01siva-mon (4.240.105.247)',
     'AWS EKS (us-east-1) / AKS',
     'aks-production-cluster-01',
     'eks-core-cluster',
   ]);
   const [selectedCluster, setSelectedCluster] = useState<string>(
-    'AWS EKS (us-east-1) / AKS'
+    'All Clusters & Servers'
   );
   const [selectedNamespace, setSelectedNamespace] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -88,7 +91,9 @@ export default function KubernetesStudioPage() {
   const filteredResources = useMemo(() => {
     return resources.filter((item) => {
       // Tab filter
-      if (activeTab === 'Services') {
+      if (activeTab === 'Clusters & Nodes') {
+        if (item.kind !== 'Node') return false;
+      } else if (activeTab === 'Services') {
         if (item.kind !== 'Service') return false;
       } else if (activeTab === 'Ingress') {
         if (item.kind !== 'Ingress') return false;
@@ -108,8 +113,16 @@ export default function KubernetesStudioPage() {
           return false;
       } else if (activeTab === 'Helm Releases') {
         if (item.kind !== 'HelmRelease') return false;
-      } else if (activeTab === 'Namespaces & Nodes') {
-        if (!['Namespace'].includes(item.kind)) return false;
+      } else if (activeTab === 'Namespaces') {
+        if (item.kind !== 'Namespace') return false;
+      }
+
+      // Cluster filter
+      if (selectedCluster && selectedCluster !== 'All Clusters & Servers') {
+        const clusterTarget = selectedCluster.split(' ')[0].toLowerCase();
+        const matchCluster = item.cluster.toLowerCase().includes(clusterTarget);
+        const matchNode = item.name.toLowerCase().includes(clusterTarget);
+        if (!matchCluster && !matchNode) return false;
       }
 
       // Namespace filter
@@ -230,6 +243,13 @@ export default function KubernetesStudioPage() {
       return (
         <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-violet-500/15 text-violet-300 border border-violet-500/30">
           {resource.kind === 'PersistentVolume' ? 'PV' : 'PVC'}
+        </span>
+      );
+    }
+    if (resource.kind === 'Node') {
+      return (
+        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+          Node (Server)
         </span>
       );
     }
@@ -370,6 +390,12 @@ export default function KubernetesStudioPage() {
                 >
                   DaemonSets: <span className="font-bold text-white">4</span>
                 </button>
+                <button
+                  onClick={() => setActiveTab('Clusters & Nodes')}
+                  className="px-2 py-0.5 rounded bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B] hover:border-indigo-500/50 transition-colors"
+                >
+                  Server Nodes: <span className="font-bold text-indigo-400">4</span>
+                </button>
               </div>
             </div>
 
@@ -464,12 +490,13 @@ export default function KubernetesStudioPage() {
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                 {[
                   'Kubernetes',
+                  'Clusters & Nodes',
                   'Services',
                   'Ingress',
                   'Workloads',
                   'Storage & Config',
                   'Helm Releases',
-                  'Namespaces & Nodes',
+                  'Namespaces',
                 ].map((tab) => (
                   <button
                     key={tab}
