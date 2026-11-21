@@ -76,23 +76,23 @@ interface INavItem {
 }
 
 const NAVIGATION_SECTIONS: INavItem[] = [
-  { id: 'overview', label: '1. Server Overview', icon: Activity, badgeColor: 'bg-cyan-500/15 text-cyan-400' },
-  { id: 'cluster', label: '2. Kubernetes Cluster', icon: RadioTower, badgeColor: 'bg-blue-500/15 text-blue-400' },
-  { id: 'nodes', label: '3. Clusters & Nodes', countKey: 'nodes', icon: Server, badgeColor: 'bg-purple-500/15 text-purple-400' },
-  { id: 'pods', label: '4. Pods & Containers', countKey: 'pods', icon: Box, badgeColor: 'bg-sky-500/15 text-sky-400' },
-  { id: 'deployments', label: '5. Deployments', countKey: 'deployments', icon: Layers, badgeColor: 'bg-emerald-500/15 text-emerald-400' },
-  { id: 'replicasets', label: '6. ReplicaSets', countKey: 'replicaSets', icon: Boxes, badgeColor: 'bg-teal-500/15 text-teal-400' },
-  { id: 'daemonsets', label: '7. DaemonSets', countKey: 'daemonSets', icon: Radio, badgeColor: 'bg-indigo-500/15 text-indigo-400' },
-  { id: 'statefulsets', label: '8. StatefulSets', countKey: 'statefulSets', icon: Database, badgeColor: 'bg-amber-500/15 text-amber-400' },
-  { id: 'services', label: '9. Services', countKey: 'services', icon: Network, badgeColor: 'bg-orange-500/15 text-orange-400' },
-  { id: 'ingress', label: '10. Ingress', countKey: 'ingress', icon: Sliders, badgeColor: 'bg-violet-500/15 text-violet-400' },
-  { id: 'configmaps', label: '11. ConfigMaps', countKey: 'configMaps', icon: FileText, badgeColor: 'bg-pink-500/15 text-pink-400' },
-  { id: 'secrets', label: '12. Secrets', countKey: 'secrets', icon: Key, badgeColor: 'bg-yellow-500/15 text-yellow-400' },
-  { id: 'storage', label: '13. Storage & Volumes', countKey: 'pvs', icon: HardDrive, badgeColor: 'bg-lime-500/15 text-lime-400' },
-  { id: 'jobs', label: '14. Jobs & CronJobs', countKey: 'jobs', icon: Clock, badgeColor: 'bg-rose-500/15 text-rose-400' },
-  { id: 'namespaces', label: '15. Namespaces', countKey: 'namespaces', icon: FolderTree, badgeColor: 'bg-fuchsia-500/15 text-fuchsia-400' },
-  { id: 'events', label: '16. Events', countKey: 'events', icon: Calendar, badgeColor: 'bg-cyan-500/15 text-cyan-400' },
-  { id: 'other', label: '17. Other Resources', icon: Layers3, badgeColor: 'bg-slate-500/15 text-slate-400' },
+  { id: 'overview', label: 'Server Overview', icon: Activity, badgeColor: 'bg-cyan-500/15 text-cyan-400' },
+  { id: 'cluster', label: 'Kubernetes Cluster', icon: RadioTower, badgeColor: 'bg-blue-500/15 text-blue-400' },
+  { id: 'nodes', label: 'Clusters & Nodes', countKey: 'nodes', icon: Server, badgeColor: 'bg-purple-500/15 text-purple-400' },
+  { id: 'pods', label: 'Pods & Containers', countKey: 'pods', icon: Box, badgeColor: 'bg-sky-500/15 text-sky-400' },
+  { id: 'deployments', label: 'Deployments', countKey: 'deployments', icon: Layers, badgeColor: 'bg-emerald-500/15 text-emerald-400' },
+  { id: 'replicasets', label: 'ReplicaSets', countKey: 'replicaSets', icon: Boxes, badgeColor: 'bg-teal-500/15 text-teal-400' },
+  { id: 'daemonsets', label: 'DaemonSets', countKey: 'daemonSets', icon: Radio, badgeColor: 'bg-indigo-500/15 text-indigo-400' },
+  { id: 'statefulsets', label: 'StatefulSets', countKey: 'statefulSets', icon: Database, badgeColor: 'bg-amber-500/15 text-amber-400' },
+  { id: 'services', label: 'Services', countKey: 'services', icon: Network, badgeColor: 'bg-orange-500/15 text-orange-400' },
+  { id: 'ingress', label: 'Ingress', countKey: 'ingress', icon: Sliders, badgeColor: 'bg-violet-500/15 text-violet-400' },
+  { id: 'configmaps', label: 'ConfigMaps', countKey: 'configMaps', icon: FileText, badgeColor: 'bg-pink-500/15 text-pink-400' },
+  { id: 'secrets', label: 'Secrets', countKey: 'secrets', icon: Key, badgeColor: 'bg-yellow-500/15 text-yellow-400' },
+  { id: 'storage', label: 'Storage & Volumes', countKey: 'pvs', icon: HardDrive, badgeColor: 'bg-lime-500/15 text-lime-400' },
+  { id: 'jobs', label: 'Jobs & CronJobs', countKey: 'jobs', icon: Clock, badgeColor: 'bg-rose-500/15 text-rose-400' },
+  { id: 'namespaces', label: 'Namespaces', countKey: 'namespaces', icon: FolderTree, badgeColor: 'bg-fuchsia-500/15 text-fuchsia-400' },
+  { id: 'events', label: 'Events', countKey: 'events', icon: Calendar, badgeColor: 'bg-cyan-500/15 text-cyan-400' },
+  { id: 'other', label: 'Other Resources', icon: Layers3, badgeColor: 'bg-slate-500/15 text-slate-400' },
 ];
 
 function KubernetesContent() {
@@ -723,10 +723,10 @@ function KubernetesContent() {
                           <button
                             key={sec.id}
                             onClick={() => handleSelectSection(sec.id)}
-                            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between group cursor-pointer ${
+                            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-between group cursor-pointer ${
                               isActive
-                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/35 font-bold'
-                                : 'text-slate-300 hover:text-white hover:bg-[#111A2E]/80'
+                                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-bold'
+                                : 'text-slate-300 hover:text-white hover:bg-[#18233C]'
                             }`}
                           >
                             <div className="flex items-center gap-3 truncate">
