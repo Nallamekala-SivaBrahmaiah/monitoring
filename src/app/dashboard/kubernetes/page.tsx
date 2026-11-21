@@ -72,26 +72,27 @@ interface INavItem {
   label: string;
   countKey?: string;
   icon: React.ComponentType<{ className?: string }>;
+  badgeColor?: string;
 }
 
 const NAVIGATION_SECTIONS: INavItem[] = [
-  { id: 'overview', label: '1. Server Overview', icon: Activity },
-  { id: 'cluster', label: '2. Kubernetes Cluster', icon: RadioTower },
-  { id: 'nodes', label: '3. Clusters & Nodes', countKey: 'nodes', icon: Server },
-  { id: 'pods', label: '4. Pods & Containers', countKey: 'pods', icon: Box },
-  { id: 'deployments', label: '5. Deployments', countKey: 'deployments', icon: Layers },
-  { id: 'replicasets', label: '6. ReplicaSets', countKey: 'replicaSets', icon: Boxes },
-  { id: 'daemonsets', label: '7. DaemonSets', countKey: 'daemonSets', icon: Radio },
-  { id: 'statefulsets', label: '8. StatefulSets', countKey: 'statefulSets', icon: Database },
-  { id: 'services', label: '9. Services', countKey: 'services', icon: Network },
-  { id: 'ingress', label: '10. Ingress', countKey: 'ingress', icon: Sliders },
-  { id: 'configmaps', label: '11. ConfigMaps', countKey: 'configMaps', icon: FileText },
-  { id: 'secrets', label: '12. Secrets', countKey: 'secrets', icon: Key },
-  { id: 'storage', label: '13. Storage & Volumes', countKey: 'pvs', icon: HardDrive },
-  { id: 'jobs', label: '14. Jobs & CronJobs', countKey: 'jobs', icon: Clock },
-  { id: 'namespaces', label: '15. Namespaces', countKey: 'namespaces', icon: FolderTree },
-  { id: 'events', label: '16. Events', countKey: 'events', icon: Calendar },
-  { id: 'other', label: '17. Other Resources', icon: Layers3 },
+  { id: 'overview', label: '1. Server Overview', icon: Activity, badgeColor: 'bg-cyan-500/15 text-cyan-400' },
+  { id: 'cluster', label: '2. Kubernetes Cluster', icon: RadioTower, badgeColor: 'bg-blue-500/15 text-blue-400' },
+  { id: 'nodes', label: '3. Clusters & Nodes', countKey: 'nodes', icon: Server, badgeColor: 'bg-purple-500/15 text-purple-400' },
+  { id: 'pods', label: '4. Pods & Containers', countKey: 'pods', icon: Box, badgeColor: 'bg-sky-500/15 text-sky-400' },
+  { id: 'deployments', label: '5. Deployments', countKey: 'deployments', icon: Layers, badgeColor: 'bg-emerald-500/15 text-emerald-400' },
+  { id: 'replicasets', label: '6. ReplicaSets', countKey: 'replicaSets', icon: Boxes, badgeColor: 'bg-teal-500/15 text-teal-400' },
+  { id: 'daemonsets', label: '7. DaemonSets', countKey: 'daemonSets', icon: Radio, badgeColor: 'bg-indigo-500/15 text-indigo-400' },
+  { id: 'statefulsets', label: '8. StatefulSets', countKey: 'statefulSets', icon: Database, badgeColor: 'bg-amber-500/15 text-amber-400' },
+  { id: 'services', label: '9. Services', countKey: 'services', icon: Network, badgeColor: 'bg-orange-500/15 text-orange-400' },
+  { id: 'ingress', label: '10. Ingress', countKey: 'ingress', icon: Sliders, badgeColor: 'bg-violet-500/15 text-violet-400' },
+  { id: 'configmaps', label: '11. ConfigMaps', countKey: 'configMaps', icon: FileText, badgeColor: 'bg-pink-500/15 text-pink-400' },
+  { id: 'secrets', label: '12. Secrets', countKey: 'secrets', icon: Key, badgeColor: 'bg-yellow-500/15 text-yellow-400' },
+  { id: 'storage', label: '13. Storage & Volumes', countKey: 'pvs', icon: HardDrive, badgeColor: 'bg-lime-500/15 text-lime-400' },
+  { id: 'jobs', label: '14. Jobs & CronJobs', countKey: 'jobs', icon: Clock, badgeColor: 'bg-rose-500/15 text-rose-400' },
+  { id: 'namespaces', label: '15. Namespaces', countKey: 'namespaces', icon: FolderTree, badgeColor: 'bg-fuchsia-500/15 text-fuchsia-400' },
+  { id: 'events', label: '16. Events', countKey: 'events', icon: Calendar, badgeColor: 'bg-cyan-500/15 text-cyan-400' },
+  { id: 'other', label: '17. Other Resources', icon: Layers3, badgeColor: 'bg-slate-500/15 text-slate-400' },
 ];
 
 function KubernetesContent() {
@@ -113,6 +114,7 @@ function KubernetesContent() {
   const [loadingCluster, setLoadingCluster] = useState(false);
   const [activeSection, setActiveSection] = useState<K8sNavigationSection>(urlSection);
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
+  const [isTotalPage, setIsTotalPage] = useState<boolean>(false);
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -684,82 +686,124 @@ function KubernetesContent() {
                 </div>
               </div>
 
-              {/* TWO-COLUMN LAYOUT: VERTICAL HIERARCHICAL MENU (LEFT) + SECTION CONTENT (RIGHT) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              {/* TWO-COLUMN OR TOTAL-PAGE ELABORATE LAYOUT */}
+              <div className={isTotalPage ? "space-y-4" : "grid grid-cols-1 lg:grid-cols-12 gap-4 items-start"}>
                 {/* ========================================================================= */}
-                {/* 3A. LEFT COLUMN: VERTICAL NAVIGATION MENU (17 REQUIRED SECTIONS)          */}
+                {/* 3A. LEFT COLUMN: INDIVIDUAL SIDEBAR BUTTON CARDS (SHOWN IN SPLIT VIEW)     */}
                 {/* ========================================================================= */}
-                <div className="lg:col-span-3 bg-[#0B1120] border border-[#162238] rounded-xl p-3 space-y-1 shadow-sm sticky top-4">
-                  <div className="px-2 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-[#162238] mb-1 flex items-center justify-between">
-                    <span>Cluster Hierarchy</span>
-                    <span className="text-sky-400 font-mono text-[10px]">{selectedServer.name}</span>
+                {!isTotalPage && (
+                  <div className="lg:col-span-3 space-y-2 sticky top-4">
+                    <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between mb-1">
+                      <span>Navigation</span>
+                      <span className="text-sky-400 font-mono text-[10px]">{selectedServer.name}</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {NAVIGATION_SECTIONS.map((sec) => {
+                        const Icon = sec.icon;
+                        const isActive = activeSection === sec.id;
+                        const count = sec.countKey ? resourceCounts[sec.countKey as keyof typeof resourceCounts] : undefined;
+
+                        return (
+                          <button
+                            key={sec.id}
+                            onClick={() => handleSelectSection(sec.id)}
+                            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between group cursor-pointer ${
+                              isActive
+                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/35 font-bold'
+                                : 'text-slate-300 hover:text-white hover:bg-[#111A2E]/80'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 truncate">
+                              <div
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                                  isActive
+                                    ? 'bg-white/20 text-white'
+                                    : sec.badgeColor || 'bg-[#111A2E] text-slate-400'
+                                }`}
+                              >
+                                <Icon className="w-4 h-4" />
+                              </div>
+                              <span className="truncate">{sec.label}</span>
+                            </div>
+
+                            {count !== undefined && (
+                              <span
+                                className={`text-[11px] px-2 py-0.5 rounded-full font-mono font-bold shrink-0 ${
+                                  isActive
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-[#111A2E] text-slate-400 group-hover:text-slate-200'
+                                }`}
+                              >
+                                {count}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
+                )}
 
-                  <div className="space-y-0.5">
-                    {NAVIGATION_SECTIONS.map((sec) => {
-                      const Icon = sec.icon;
-                      const isActive = activeSection === sec.id;
-                      const count = sec.countKey ? resourceCounts[sec.countKey as keyof typeof resourceCounts] : undefined;
-
-                      return (
+                {/* ========================================================================= */}
+                {/* 3B. ELABORATE TOTAL PAGE WORKSPACE                                         */}
+                {/* ========================================================================= */}
+                <div className={isTotalPage ? "w-full space-y-4" : "lg:col-span-9 space-y-4"}>
+                  {/* Native Page Header for Section (Seamless Canvas) */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#162238]">
+                    <div className="flex items-center gap-3">
+                      {isTotalPage && (
                         <button
-                          key={sec.id}
-                          onClick={() => handleSelectSection(sec.id)}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-between group ${
-                            isActive
-                              ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-[0_0_12px_rgba(56,189,248,0.15)] font-bold'
-                              : 'text-slate-400 hover:text-white hover:bg-[#111A2E]'
-                          }`}
+                          onClick={() => setIsTotalPage(false)}
+                          className="px-2.5 py-1.5 rounded-lg bg-[#0B1120] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#162238] text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          title="Back to Navigation Menu"
                         >
-                          <div className="flex items-center gap-2.5 truncate">
-                            <Icon
-                              className={`w-4 h-4 shrink-0 transition-colors ${
-                                isActive ? 'text-sky-400' : 'text-slate-500 group-hover:text-slate-300'
-                              }`}
-                            />
-                            <span className="truncate">{sec.label}</span>
-                          </div>
+                          <ArrowLeft className="w-3.5 h-3.5 text-sky-400" />
+                          <span>Menu</span>
+                        </button>
+                      )}
 
-                          {count !== undefined && (
-                            <span
-                              className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0 ${
-                                isActive
-                                  ? 'bg-sky-400/20 text-sky-300'
-                                  : 'bg-[#111A2E] text-slate-400 group-hover:text-slate-200'
-                              }`}
-                            >
-                              {count}
+                      <div>
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <h2 className="text-lg font-bold text-white tracking-tight">
+                            {NAVIGATION_SECTIONS.find((s) => s.id === activeSection)?.label.replace(/^\d+\.\s*/, '')}
+                          </h2>
+                          {NAVIGATION_SECTIONS.find((s) => s.id === activeSection)?.countKey && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30">
+                              {resourceCounts[NAVIGATION_SECTIONS.find((s) => s.id === activeSection)!.countKey as keyof typeof resourceCounts] ?? 0} {activeSection === 'pods' ? 'Running' : activeSection === 'nodes' ? 'Nodes' : 'Items'}
                             </span>
                           )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* ========================================================================= */}
-                {/* 3B. RIGHT COLUMN: DETAILED SECTION CONTENT VIEW                            */}
-                {/* ========================================================================= */}
-                <div className="lg:col-span-9 bg-[#0B1120] border border-[#162238] rounded-xl p-4 shadow-sm min-h-[550px]">
-                  {/* Top Bar for Section: Search & Namespace filter */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#162238] pb-3 mb-4">
-                    <div>
-                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                        <span>
-                          {NAVIGATION_SECTIONS.find((s) => s.id === activeSection)?.label.replace(/^\d+\.\s*/, '')}
-                        </span>
-                        {selectedNode && (
-                          <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
-                            Node: {selectedNode.metadata?.name}
-                          </span>
-                        )}
-                      </h3>
-                      <p className="text-[11px] text-slate-400">
-                        Live cluster resources queried directly from {selectedServer.name} ({selectedServer.hostname})
-                      </p>
+                          {selectedNode && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                              Node: {selectedNode.metadata?.name}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Live cluster resources queried directly from <strong className="text-slate-200">{selectedServer.name}</strong> ({selectedServer.publicIp || selectedServer.hostname})
+                        </p>
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                      {/* Section Quick Switcher in Total Page Mode */}
+                      {isTotalPage && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-slate-400">Section:</span>
+                          <select
+                            value={activeSection}
+                            onChange={(e) => handleSelectSection(e.target.value as K8sNavigationSection)}
+                            className="px-2.5 py-1 text-xs bg-[#0B1120] border border-[#162238] rounded-lg text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer"
+                          >
+                            {NAVIGATION_SECTIONS.map((sec) => (
+                              <option key={sec.id} value={sec.id}>
+                                {sec.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
                       {/* Namespace Filter */}
                       {['pods', 'deployments', 'services', 'ingress', 'configmaps', 'secrets', 'events'].includes(
                         activeSection
@@ -769,7 +813,7 @@ function KubernetesContent() {
                           <select
                             value={selectedNamespace}
                             onChange={(e) => setSelectedNamespace(e.target.value)}
-                            className="px-2 py-1 text-xs bg-[#111A2E] border border-[#1E293B] rounded-lg text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer"
+                            className="px-2.5 py-1 text-xs bg-[#0B1120] border border-[#162238] rounded-lg text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer"
                           >
                             {availableNamespaces.map((ns) => (
                               <option key={ns} value={ns}>
@@ -781,97 +825,105 @@ function KubernetesContent() {
                       )}
 
                       {/* Search */}
-                      <div className="relative min-w-[180px]">
+                      <div className="relative min-w-[190px]">
                         <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
                           placeholder="Search resources..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full pl-8 pr-2.5 py-1 text-xs bg-[#111A2E] border border-[#1E293B] rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                          className="w-full pl-8 pr-2.5 py-1 text-xs bg-[#0B1120] border border-[#162238] rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
                         />
                       </div>
+
+                      {/* View Mode Toggle: Total Page vs Split View */}
+                      <button
+                        onClick={() => setIsTotalPage(!isTotalPage)}
+                        className="px-2.5 py-1 text-xs font-semibold bg-[#0B1120] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#162238] rounded-lg transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                        title={isTotalPage ? "Show Individual Sidebar (Split View)" : "Elaborate to Total Page"}
+                      >
+                        <Layers className="w-3.5 h-3.5 text-sky-400" />
+                        <span>{isTotalPage ? "Sidebar" : "Total Page"}</span>
+                      </button>
                     </div>
                   </div>
 
                   {/* --------------------------------------------------------------------- */}
-                  {/* SECTION 1: SERVER OVERVIEW                                            */}
+                  {/* SECTION 1: SERVER OVERVIEW (CLEAN METRICS, NO BULKY BOXES)             */}
                   {/* --------------------------------------------------------------------- */}
                   {activeSection === 'overview' && (
                     <div className="space-y-4">
-                      {/* Telemetry Cards */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5">
+                      {/* 4 Clean Telemetry Cards */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-3.5 shadow-sm">
+                          <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+                            <span>Cluster Health</span>
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          </div>
+                          <div className="text-lg font-bold text-emerald-400 font-mono">100% Optimal</div>
+                          <div className="text-[10px] text-slate-500 mt-1">Control Plane Ready</div>
+                        </div>
+
+                        <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-3.5 shadow-sm">
                           <div className="text-xs text-slate-400 mb-1">Host CPU Utilization</div>
                           <div className="text-lg font-bold text-sky-400 font-mono">
                             {selectedServer.metrics?.cpuPercent || 19.1}%
                           </div>
                           <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
                             <div
-                              className="bg-sky-400 h-full rounded-full"
+                              className="bg-sky-400 h-full rounded-full transition-all duration-500"
                               style={{ width: `${selectedServer.metrics?.cpuPercent || 19}%` }}
                             />
                           </div>
                         </div>
 
-                        <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5">
+                        <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-3.5 shadow-sm">
                           <div className="text-xs text-slate-400 mb-1">Host Memory Utilization</div>
                           <div className="text-lg font-bold text-purple-400 font-mono">
-                            {selectedServer.metrics?.memoryPercent || 19}%
+                            {selectedServer.metrics?.memoryPercent || 12}%
                           </div>
                           <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
                             <div
-                              className="bg-purple-400 h-full rounded-full"
-                              style={{ width: `${selectedServer.metrics?.memoryPercent || 19}%` }}
+                              className="bg-purple-400 h-full rounded-full transition-all duration-500"
+                              style={{ width: `${selectedServer.metrics?.memoryPercent || 12}%` }}
                             />
                           </div>
                         </div>
 
-                        <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5">
+                        <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-3.5 shadow-sm">
                           <div className="text-xs text-slate-400 mb-1">Host Storage / Root Disk</div>
                           <div className="text-lg font-bold text-emerald-400 font-mono">
                             {selectedServer.metrics?.diskPercent || 17}%
                           </div>
                           <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
                             <div
-                              className="bg-emerald-400 h-full rounded-full"
+                              className="bg-emerald-400 h-full rounded-full transition-all duration-500"
                               style={{ width: `${selectedServer.metrics?.diskPercent || 17}%` }}
                             />
                           </div>
                         </div>
                       </div>
 
-                      {/* Cluster Metadata Details */}
-                      <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 space-y-3">
-                        <div className="text-xs font-bold text-white flex items-center justify-between">
-                          <span>Cluster Control Plane Details</span>
-                          <span className="text-emerald-400 text-[11px] font-semibold">Active &amp; Ready</span>
+                      {/* Cluster Status Quick Telemetry Strip - Clean & Modern, NO Bulky Box */}
+                      <div className="p-3 rounded-xl bg-[#0B1120] border border-[#162238] text-xs flex flex-wrap items-center justify-between gap-3 text-slate-300 shadow-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500 font-mono">Endpoint:</span>
+                          <span className="font-mono text-sky-400 font-semibold truncate max-w-xs">
+                            {clusterData?.cluster?.controlPlaneEndpoint || 'https://kubernetes.internal:6443'}
+                          </span>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                          <div>
-                            <span className="text-slate-400">Control Plane Endpoint:</span>
-                            <div className="font-mono text-sky-400 mt-0.5 truncate">
-                              {clusterData?.cluster?.controlPlaneEndpoint || 'https://kubernetes.internal:6443'}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-slate-400">Kubernetes Version:</span>
-                            <div className="font-mono text-white mt-0.5">
-                              {clusterData?.cluster?.k8sVersion || selectedServer.k8sVersion}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-slate-400">Total Worker Nodes:</span>
-                            <div className="font-bold text-white mt-0.5">
-                              {resourceCounts.nodes || 2} Connected Nodes
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-slate-400">Total Cluster Pods:</span>
-                            <div className="font-bold text-emerald-400 mt-0.5">
-                              {resourceCounts.pods || 6} Pods Running
-                            </div>
-                          </div>
+                        <div className="flex items-center gap-4">
+                          <span>
+                            <strong className="text-white">{resourceCounts.nodes || selectedServer.nodeCount}</strong> Connected Nodes
+                          </span>
+                          <span>•</span>
+                          <span>
+                            <strong className="text-emerald-400">{resourceCounts.pods || 6}</strong> Pods Running
+                          </span>
+                          <span>•</span>
+                          <span className="font-mono text-slate-400">
+                            Version: {clusterData?.cluster?.k8sVersion || selectedServer.k8sVersion}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -882,9 +934,9 @@ function KubernetesContent() {
                   {/* --------------------------------------------------------------------- */}
                   {activeSection === 'cluster' && (
                     <div className="space-y-3">
-                      <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 space-y-2">
+                      <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-4 space-y-2 shadow-sm">
                         <div className="text-xs font-bold text-white">Cluster Diagnostic Info</div>
-                        <pre className="p-3 bg-[#070B14] rounded-lg font-mono text-xs text-sky-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                        <pre className="p-3 bg-[#070B14] rounded-lg font-mono text-xs text-sky-300 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-[#162238]">
                           {clusterData?.cluster?.rawClusterInfo || 'Connecting to cluster API...'}
                         </pre>
                       </div>
@@ -899,12 +951,12 @@ function KubernetesContent() {
                       {selectedNode ? (
                         /* NODE DRILL-DOWN: SHOWING NODE DETAILS & EVERY POD RUNNING ON THIS NODE */
                         <div className="space-y-4">
-                          <div className="flex items-center justify-between bg-[#111A2E] border border-[#1E293B] rounded-xl p-3.5">
+                          <div className="flex items-center justify-between bg-[#0B1120] border border-[#162238] rounded-xl p-3.5 shadow-sm">
                             <div>
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={handleBackToNodesList}
-                                  className="p-1 rounded bg-[#0B1120] hover:bg-[#162238] text-slate-300 hover:text-white transition"
+                                  className="p-1 rounded bg-[#0D1526] hover:bg-[#162238] text-slate-300 hover:text-white transition"
                                   title="Back to all nodes"
                                 >
                                   <ArrowLeft className="w-3.5 h-3.5" />
@@ -923,7 +975,7 @@ function KubernetesContent() {
 
                             <button
                               onClick={() => handleInspectObject(selectedNode.metadata?.name, selectedNode)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-[#0B1120] hover:bg-[#162238] text-sky-400 border border-[#1E293B] rounded-lg transition inline-flex items-center gap-1.5"
+                              className="px-2.5 py-1 text-xs font-semibold bg-[#0D1526] hover:bg-[#162238] text-sky-400 border border-[#162238] rounded-lg transition inline-flex items-center gap-1.5"
                             >
                               <FileCode className="w-3.5 h-3.5" />
                               <span>Inspect Node YAML</span>
@@ -931,8 +983,8 @@ function KubernetesContent() {
                           </div>
 
                           {/* Pods Running on this specific Node */}
-                          <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
-                            <div className="p-3 border-b border-[#1E293B] text-xs font-bold text-white flex items-center justify-between">
+                          <div className="bg-[#0B1120] border border-[#162238] rounded-xl overflow-hidden shadow-sm">
+                            <div className="p-3 border-b border-[#162238] text-xs font-bold text-white flex items-center justify-between bg-[#0E1628]">
                               <span>Pods Running on this Specific Node</span>
                               <span className="text-slate-400 text-[11px]">
                                 {
@@ -945,7 +997,7 @@ function KubernetesContent() {
                             <div className="overflow-x-auto">
                               <table className="w-full text-left text-xs text-slate-300">
                                 <thead>
-                                  <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                                  <tr className="border-b border-[#162238] bg-[#0E1628] text-slate-400 font-semibold">
                                     <th className="py-2.5 px-3">Pod Name</th>
                                     <th className="py-2.5 px-3">Namespace</th>
                                     <th className="py-2.5 px-3">Status</th>
@@ -954,11 +1006,11 @@ function KubernetesContent() {
                                     <th className="py-2.5 px-3 text-right">Inspect</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                                <tbody className="divide-y divide-[#162238]/60 font-medium">
                                   {(clusterData?.resources?.pods || [])
                                     .filter((p: any) => p.spec?.nodeName === selectedNode.metadata?.name)
                                     .map((pod: any) => (
-                                      <tr key={pod.metadata?.uid || pod.metadata?.name} className="hover:bg-[#0B1120]/50">
+                                      <tr key={pod.metadata?.uid || pod.metadata?.name} className="hover:bg-[#111A2E]/50">
                                         <td className="py-2.5 px-3 font-mono font-bold text-white">{pod.metadata?.name}</td>
                                         <td className="py-2.5 px-3 text-sky-400">{pod.metadata?.namespace}</td>
                                         <td className="py-2.5 px-3">
@@ -973,7 +1025,7 @@ function KubernetesContent() {
                                         <td className="py-2.5 px-3 text-right">
                                           <button
                                             onClick={() => handleInspectObject(pod.metadata?.name, pod)}
-                                            className="px-2 py-0.5 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 rounded border border-[#1E293B]"
+                                            className="px-2 py-0.5 text-[11px] font-semibold bg-[#0D1526] text-sky-400 hover:text-sky-300 rounded border border-[#162238]"
                                           >
                                             Inspect
                                           </button>
@@ -987,11 +1039,11 @@ function KubernetesContent() {
                         </div>
                       ) : (
                         /* NODES LIST TABLE */
-                        <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                        <div className="bg-[#0B1120] border border-[#162238] rounded-xl overflow-hidden shadow-sm">
                           <div className="overflow-x-auto">
                             <table className="w-full text-left text-xs text-slate-300">
                               <thead>
-                                <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                                <tr className="border-b border-[#162238] bg-[#0E1628] text-slate-400 font-semibold">
                                   <th className="py-3 px-4">Node Name</th>
                                   <th className="py-3 px-3">Status</th>
                                   <th className="py-3 px-3">Role</th>
@@ -1002,7 +1054,7 @@ function KubernetesContent() {
                                   <th className="py-3 px-4 text-right">Actions</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                              <tbody className="divide-y divide-[#162238]/60 font-medium">
                                 {(clusterData?.resources?.nodes || []).map((node: any) => {
                                   const addresses = node.status?.addresses || [];
                                   const internalIp = addresses.find((a: any) => a.type === 'InternalIP')?.address || '-';
@@ -1014,7 +1066,7 @@ function KubernetesContent() {
                                     <tr
                                       key={node.metadata?.uid || node.metadata?.name}
                                       onClick={() => handleSelectNode(node)}
-                                      className="hover:bg-[#0B1120]/70 transition-colors cursor-pointer"
+                                      className="hover:bg-[#111A2E]/70 transition-colors cursor-pointer"
                                     >
                                       <td className="py-3 px-4 font-mono font-bold text-white hover:text-sky-400">
                                         {node.metadata?.name}
@@ -1034,7 +1086,7 @@ function KubernetesContent() {
                                       <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                                         <button
                                           onClick={() => handleSelectNode(node)}
-                                          className="px-2.5 py-1 text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition inline-flex items-center gap-1"
+                                          className="px-2.5 py-1 text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition inline-flex items-center gap-1 shadow-sm"
                                         >
                                           <span>Explore Node</span>
                                           <ChevronRight className="w-3 h-3" />
@@ -1055,11 +1107,11 @@ function KubernetesContent() {
                   {/* SECTION 4: PODS & CONTAINERS                                          */}
                   {/* --------------------------------------------------------------------- */}
                   {activeSection === 'pods' && (
-                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                    <div className="bg-[#0B1120] border border-[#162238] rounded-xl overflow-hidden shadow-sm">
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs text-slate-300">
                           <thead>
-                            <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                            <tr className="border-b border-[#162238] bg-[#0E1628] text-slate-400 font-semibold">
                               <th className="py-3 px-4">Pod Name</th>
                               <th className="py-3 px-3">Namespace</th>
                               <th className="py-3 px-3">Status</th>
@@ -1069,7 +1121,7 @@ function KubernetesContent() {
                               <th className="py-3 px-4 text-right">Inspect</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                          <tbody className="divide-y divide-[#162238]/60 font-medium">
                             {(clusterData?.resources?.pods || [])
                               .filter((p: any) => {
                                 if (selectedNamespace !== 'all' && p.metadata?.namespace !== selectedNamespace)
@@ -1084,12 +1136,13 @@ function KubernetesContent() {
                                 return true;
                               })
                               .map((pod: any) => (
-                                <tr key={pod.metadata?.uid || pod.metadata?.name} className="hover:bg-[#0B1120]/60">
+                                <tr key={pod.metadata?.uid || pod.metadata?.name} className="hover:bg-[#111A2E]/60 transition-colors">
                                   <td className="py-3 px-4 font-mono font-bold text-white">{pod.metadata?.name}</td>
-                                  <td className="py-3 px-3 text-sky-400">{pod.metadata?.namespace}</td>
+                                  <td className="py-3 px-3 text-sky-400 font-mono text-[11px]">{pod.metadata?.namespace}</td>
                                   <td className="py-3 px-3">
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                      {pod.status?.phase || 'Running'}
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                      <span>{pod.status?.phase || 'Running'}</span>
                                     </span>
                                   </td>
                                   <td className="py-3 px-3 font-mono">
@@ -1102,7 +1155,7 @@ function KubernetesContent() {
                                   <td className="py-3 px-4 text-right">
                                     <button
                                       onClick={() => handleInspectObject(pod.metadata?.name, pod)}
-                                      className="px-2.5 py-1 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 rounded border border-[#1E293B]"
+                                      className="px-2.5 py-1 text-[11px] font-semibold bg-[#0D1526] text-sky-400 hover:text-sky-300 rounded border border-[#162238] hover:border-sky-500/40 transition"
                                     >
                                       Inspect
                                     </button>
@@ -1119,11 +1172,11 @@ function KubernetesContent() {
                   {/* SECTION 5: DEPLOYMENTS                                                */}
                   {/* --------------------------------------------------------------------- */}
                   {activeSection === 'deployments' && (
-                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                    <div className="bg-[#0B1120] border border-[#162238] rounded-xl overflow-hidden shadow-sm">
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs text-slate-300">
                           <thead>
-                            <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                            <tr className="border-b border-[#162238] bg-[#0E1628] text-slate-400 font-semibold">
                               <th className="py-3 px-4">Deployment</th>
                               <th className="py-3 px-3">Namespace</th>
                               <th className="py-3 px-3">Desired</th>
@@ -1133,16 +1186,16 @@ function KubernetesContent() {
                               <th className="py-3 px-4 text-right">Inspect</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                          <tbody className="divide-y divide-[#162238]/60 font-medium">
                             {(clusterData?.resources?.deployments || []).map((dep: any) => {
                               const specReplicas = dep.spec?.replicas || 1;
                               const avail = dep.status?.availableReplicas || 0;
                               const image = dep.spec?.template?.spec?.containers?.[0]?.image || 'app:latest';
 
                               return (
-                                <tr key={dep.metadata?.uid || dep.metadata?.name} className="hover:bg-[#0B1120]/60">
+                                <tr key={dep.metadata?.uid || dep.metadata?.name} className="hover:bg-[#111A2E]/60 transition-colors">
                                   <td className="py-3 px-4 font-mono font-bold text-white">{dep.metadata?.name}</td>
-                                  <td className="py-3 px-3 text-sky-400">{dep.metadata?.namespace}</td>
+                                  <td className="py-3 px-3 text-sky-400 font-mono text-[11px]">{dep.metadata?.namespace}</td>
                                   <td className="py-3 px-3 font-mono font-bold text-white">{specReplicas}</td>
                                   <td className="py-3 px-3 font-mono text-emerald-400">{dep.status?.updatedReplicas || specReplicas}</td>
                                   <td className="py-3 px-3 font-mono text-emerald-400">{avail}</td>
@@ -1152,7 +1205,7 @@ function KubernetesContent() {
                                   <td className="py-3 px-4 text-right">
                                     <button
                                       onClick={() => handleInspectObject(dep.metadata?.name, dep)}
-                                      className="px-2.5 py-1 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 rounded border border-[#1E293B]"
+                                      className="px-2.5 py-1 text-[11px] font-semibold bg-[#0D1526] text-sky-400 hover:text-sky-300 rounded border border-[#162238] hover:border-sky-500/40 transition"
                                     >
                                       Inspect
                                     </button>
@@ -1170,11 +1223,11 @@ function KubernetesContent() {
                   {/* SECTION 9: SERVICES                                                   */}
                   {/* --------------------------------------------------------------------- */}
                   {activeSection === 'services' && (
-                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                    <div className="bg-[#0B1120] border border-[#162238] rounded-xl overflow-hidden shadow-sm">
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs text-slate-300">
                           <thead>
-                            <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                            <tr className="border-b border-[#162238] bg-[#0E1628] text-slate-400 font-semibold">
                               <th className="py-3 px-4">Service Name</th>
                               <th className="py-3 px-3">Namespace</th>
                               <th className="py-3 px-3">Type</th>
@@ -1184,16 +1237,16 @@ function KubernetesContent() {
                               <th className="py-3 px-4 text-right">Inspect</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                          <tbody className="divide-y divide-[#162238]/60 font-medium">
                             {(clusterData?.resources?.services || []).map((svc: any) => {
                               const ports = (svc.spec?.ports || [])
                                 .map((p: any) => `${p.port}${p.protocol ? '/' + p.protocol : ''}`)
                                 .join(', ');
 
                               return (
-                                <tr key={svc.metadata?.uid || svc.metadata?.name} className="hover:bg-[#0B1120]/60">
+                                <tr key={svc.metadata?.uid || svc.metadata?.name} className="hover:bg-[#111A2E]/60 transition-colors">
                                   <td className="py-3 px-4 font-mono font-bold text-white">{svc.metadata?.name}</td>
-                                  <td className="py-3 px-3 text-sky-400">{svc.metadata?.namespace}</td>
+                                  <td className="py-3 px-3 text-sky-400 font-mono text-[11px]">{svc.metadata?.namespace}</td>
                                   <td className="py-3 px-3">
                                     <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
                                       {svc.spec?.type || 'ClusterIP'}
@@ -1207,7 +1260,7 @@ function KubernetesContent() {
                                   <td className="py-3 px-4 text-right">
                                     <button
                                       onClick={() => handleInspectObject(svc.metadata?.name, svc)}
-                                      className="px-2.5 py-1 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 rounded border border-[#1E293B]"
+                                      className="px-2.5 py-1 text-[11px] font-semibold bg-[#0D1526] text-sky-400 hover:text-sky-300 rounded border border-[#162238] hover:border-sky-500/40 transition"
                                     >
                                       Inspect
                                     </button>
@@ -1225,20 +1278,20 @@ function KubernetesContent() {
                   {/* SECTION 15: NAMESPACES                                                */}
                   {/* --------------------------------------------------------------------- */}
                   {activeSection === 'namespaces' && (
-                    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden">
+                    <div className="bg-[#0B1120] border border-[#162238] rounded-xl overflow-hidden shadow-sm">
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs text-slate-300">
                           <thead>
-                            <tr className="border-b border-[#1E293B] bg-[#0E1628] text-slate-400 font-semibold">
+                            <tr className="border-b border-[#162238] bg-[#0E1628] text-slate-400 font-semibold">
                               <th className="py-3 px-4">Namespace Name</th>
                               <th className="py-3 px-3">Status</th>
                               <th className="py-3 px-3">Created</th>
                               <th className="py-3 px-4 text-right">Inspect</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-[#1E293B]/60 font-medium">
+                          <tbody className="divide-y divide-[#162238]/60 font-medium">
                             {(clusterData?.resources?.namespaces || []).map((ns: any) => (
-                              <tr key={ns.metadata?.name} className="hover:bg-[#0B1120]/60">
+                              <tr key={ns.metadata?.name} className="hover:bg-[#111A2E]/60 transition-colors">
                                 <td className="py-3 px-4 font-mono font-bold text-white">{ns.metadata?.name}</td>
                                 <td className="py-3 px-3">
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
@@ -1253,7 +1306,7 @@ function KubernetesContent() {
                                 <td className="py-3 px-4 text-right">
                                   <button
                                     onClick={() => handleInspectObject(ns.metadata?.name, ns)}
-                                    className="px-2.5 py-1 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 rounded border border-[#1E293B]"
+                                    className="px-2.5 py-1 text-[11px] font-semibold bg-[#0D1526] text-sky-400 hover:text-sky-300 rounded border border-[#162238] hover:border-sky-500/40 transition"
                                   >
                                     Inspect
                                   </button>
@@ -1279,8 +1332,8 @@ function KubernetesContent() {
                     'namespaces',
                   ].includes(activeSection) && (
                     <div className="space-y-3">
-                      <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-3">
+                      <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-4 shadow-sm">
+                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#162238]">
                           <span className="text-xs font-bold text-white uppercase tracking-wider">
                             Active {activeSection} Manifests
                           </span>
@@ -1298,7 +1351,7 @@ function KubernetesContent() {
                             {(clusterData?.resources?.[activeSection] || []).map((item: any, idx: number) => (
                               <div
                                 key={item.metadata?.uid || item.metadata?.name || idx}
-                                className="py-2.5 flex items-center justify-between text-xs hover:bg-[#0B1120]/40 px-2 rounded transition"
+                                className="py-2.5 flex items-center justify-between text-xs hover:bg-[#111A2E]/50 px-2 rounded transition"
                               >
                                 <div>
                                   <div className="font-mono font-bold text-white">
@@ -1313,7 +1366,7 @@ function KubernetesContent() {
                                   onClick={() =>
                                     handleInspectObject(item.metadata?.name || `${activeSection}-${idx}`, item)
                                   }
-                                  className="px-2 py-1 text-[11px] font-semibold bg-[#0B1120] text-sky-400 hover:text-sky-300 border border-[#1E293B] rounded"
+                                  className="px-2 py-1 text-[11px] font-semibold bg-[#0D1526] text-sky-400 hover:text-sky-300 border border-[#162238] hover:border-sky-500/40 rounded transition"
                                 >
                                   Inspect Manifest
                                 </button>

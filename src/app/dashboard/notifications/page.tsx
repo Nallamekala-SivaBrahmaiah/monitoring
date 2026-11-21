@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   Send,
   CheckCircle2,
@@ -79,17 +80,15 @@ function GmailLogo({ className = 'w-6 h-6' }: { className?: string }) {
   );
 }
 
-export default function NotificationsPage({
-  defaultTab = 'feed',
-}: {
-  defaultTab?: 'feed' | 'channels';
-}) {
-  const [activeTab, setActiveTab] = useState<'feed' | 'channels'>(defaultTab);
+export default function NotificationsPage() {
+  const pathname = usePathname();
+  const isChannelsRoute = pathname?.includes('notification-channels');
+  const [activeTab, setActiveTab] = useState<'feed' | 'channels'>(isChannelsRoute ? 'channels' : 'feed');
 
-  // Synchronize defaultTab if prop changes
+  // Synchronize active tab based on route
   useEffect(() => {
-    setActiveTab(defaultTab);
-  }, [defaultTab]);
+    setActiveTab(isChannelsRoute ? 'channels' : 'feed');
+  }, [isChannelsRoute]);
 
   // Feed states
   const [feedNotifications, setFeedNotifications] = useState<InAppNotification[]>([]);

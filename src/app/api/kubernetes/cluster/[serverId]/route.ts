@@ -3,7 +3,7 @@ import { getLiveServerClusterResources } from '@/lib/kubernetes/k8sServerService
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ serverId: string }> | { serverId: string } }
+  context: { params: Promise<{ serverId: string }> }
 ) {
   try {
     const resolvedParams = await context.params;
