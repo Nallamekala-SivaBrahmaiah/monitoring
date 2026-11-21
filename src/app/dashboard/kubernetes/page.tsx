@@ -230,6 +230,11 @@ function KubernetesContent() {
     params.set('section', sec);
     params.delete('node');
     router.replace(`/dashboard/kubernetes?${params.toString()}`);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
   };
 
   // Select node drill-down
@@ -241,6 +246,11 @@ function KubernetesContent() {
     params.set('section', 'nodes');
     params.set('node', node.metadata?.name);
     router.replace(`/dashboard/kubernetes?${params.toString()}`);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
   };
 
   // Back from node drill-down to nodes list
@@ -251,6 +261,11 @@ function KubernetesContent() {
     params.set('section', 'nodes');
     params.delete('node');
     router.replace(`/dashboard/kubernetes?${params.toString()}`);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
   };
 
   // Open SSH Terminal directly

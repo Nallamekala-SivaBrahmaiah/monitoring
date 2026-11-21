@@ -58,6 +58,15 @@ export default function AnsiblePage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
+  const switchTab = (tab: TabType) => {
+    setActiveTab(tab);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
+  };
+
   // Controllers state
   const [controllers, setControllers] = useState<IAnsibleControllerData[]>([]);
   const [activeController, setActiveController] = useState<IAnsibleControllerData | null>(null);
@@ -480,7 +489,7 @@ export default function AnsiblePage() {
             workerCount={hosts.length}
             onSelectController={handleSwitchController}
             onAddControllerClick={() => setSelectControllerModalOpen(true)}
-            onManageControllersClick={() => setActiveTab('controllers')}
+            onManageControllersClick={() => switchTab('controllers')}
           />
 
           {/* Statistics Cards */}
@@ -495,7 +504,7 @@ export default function AnsiblePage() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => switchTab(tab.id)}
                   className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-semibold transition shrink-0 ${
                     isActive
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
@@ -521,7 +530,7 @@ export default function AnsiblePage() {
                 setAddHostModalOpen(true);
               }}
               onDeleteHostClick={handleDeleteHost}
-              onManagePlaybooksClick={() => setActiveTab('playbooks')}
+              onManagePlaybooksClick={() => switchTab('playbooks')}
               onRunPlaybookClick={(p) => {
                 if (hosts.length > 0) {
                   handleQuickRun(hosts[0]._id || '', p._id || '', '');
@@ -530,7 +539,7 @@ export default function AnsiblePage() {
                 }
               }}
               onQuickRun={handleQuickRun}
-              onViewAllLogsClick={() => setActiveTab('logs')}
+              onViewAllLogsClick={() => switchTab('logs')}
               runningJob={runningJob}
             />
           )}

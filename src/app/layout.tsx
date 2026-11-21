@@ -1,6 +1,8 @@
+import React, { Suspense } from 'react';
 import type { Metadata } from 'next';
 import './globals.css';
 import { MonitoringProvider } from '@/context/MonitoringContext';
+import { NavigationScrollManager } from '@/components/navigation/NavigationScrollManager';
 
 export const metadata: Metadata = {
   title: 'Multi-Cloud Monitoring Platform | AWS & Azure Infrastructure',
@@ -24,6 +26,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="bg-[#0b1120] text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
+        <Suspense fallback={null}>
+          <NavigationScrollManager />
+        </Suspense>
         <MonitoringProvider>{children}</MonitoringProvider>
       </body>
     </html>

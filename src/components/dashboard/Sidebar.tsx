@@ -118,11 +118,67 @@ export function Sidebar({
     window.location.href = '/login';
   };
 
+  const handleNavClick = (href: string, e: React.MouseEvent<HTMLAnchorElement>) => {
+    onCloseMobile?.();
+
+    if (typeof window !== 'undefined') {
+      // 1. Instantly reset window and body scroll
+      try {
+        window.scrollTo({
+          top: 0,
+          left: 0,
+          behavior: 'instant' as ScrollBehavior,
+        });
+      } catch {
+        window.scrollTo(0, 0);
+      }
+
+      if (document.documentElement) {
+        document.documentElement.scrollTop = 0;
+        document.documentElement.scrollLeft = 0;
+      }
+      if (document.body) {
+        document.body.scrollTop = 0;
+        document.body.scrollLeft = 0;
+      }
+
+      // 2. Reset any inner dashboard main or scrollable content containers
+      try {
+        const scrollContainers = document.querySelectorAll<HTMLElement>(
+          'main, [data-scroll-container], [role="main"], .overflow-y-auto, .overflow-auto'
+        );
+        scrollContainers.forEach((el) => {
+          if (!el.closest('aside')) {
+            el.scrollTop = 0;
+          }
+        });
+      } catch {}
+
+      // 3. Dispatch global reset event
+      window.dispatchEvent(new CustomEvent('app:reset-scroll'));
+    }
+
+    // If already on the same page, prevent redundant routing and ensure scroll is reset to top
+    if (pathname === href) {
+      e.preventDefault();
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: 'instant' as ScrollBehavior,
+      });
+    }
+  };
+
   const sidebarContent = (
     <div className="flex flex-col h-full bg-[#111A2E] border-r border-[#1E293B] text-slate-300 w-64 select-none">
       {/* Brand Header */}
       <div className="p-5 flex items-center justify-between border-b border-[#1E293B]/70">
-        <Link href="/" className="flex items-center gap-3 group">
+        <Link
+          href="/"
+          scroll={false}
+          onClick={(e) => handleNavClick('/', e)}
+          className="flex items-center gap-3 group"
+        >
           <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#081226] border border-cyan-500/40 shadow-lg shadow-cyan-500/20 group-hover:scale-105 group-hover:border-cyan-400 transition-all">
             <MultiCloudBrandLogo className="w-7 h-7" />
           </div>
@@ -159,7 +215,8 @@ export function Sidebar({
             <Link
               key={item.label}
               href={item.href}
-              onClick={onCloseMobile}
+              scroll={false}
+              onClick={(e) => handleNavClick(item.href, e)}
               className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                 isActive
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-semibold'

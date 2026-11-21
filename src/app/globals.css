@@ -9,12 +9,22 @@
   --azure-blue: #0089d6;
 }
 
+html {
+  scroll-behavior: auto !important;
+  overflow-x: hidden;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   overflow-x: hidden;
   min-height: 100vh;
+  overflow-anchor: none; /* Prevents browser scroll anchoring from shifting view when cards/tables mount */
+}
+
+main {
+  overflow-anchor: none;
 }
 
 /* Custom dark scrollbar */

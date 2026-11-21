@@ -133,6 +133,14 @@ export default function NginxDashboardPage() {
   const [showSSHModal, setShowSSHModal] = useState(false);
 
   // Feedback Toast
+  const handleSwitchWorkspaceTab = (tab: NginxServerWorkspaceTab) => {
+    setActiveWorkspaceTab(tab);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
+  };
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -450,6 +458,9 @@ export default function NginxDashboardPage() {
         const url = new URL(window.location.href);
         url.searchParams.set('serverId', server._id);
         window.history.pushState({ serverId: server._id }, '', url.toString());
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+        if (document.documentElement) document.documentElement.scrollTop = 0;
+        if (document.body) document.body.scrollTop = 0;
       }
       fetchServerDetails(server);
       fetchProxies(server);
@@ -460,6 +471,9 @@ export default function NginxDashboardPage() {
         const url = new URL(window.location.href);
         url.searchParams.delete('serverId');
         window.history.pushState({}, '', url.pathname);
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+        if (document.documentElement) document.documentElement.scrollTop = 0;
+        if (document.body) document.body.scrollTop = 0;
       }
     }
   }, [fetchServerDetails, fetchProxies, fetchApps]);
@@ -1717,7 +1731,7 @@ export default function NginxDashboardPage() {
                       <button
                         key={tab.id}
                         type="button"
-                        onClick={() => setActiveWorkspaceTab(tab.id)}
+                        onClick={() => handleSwitchWorkspaceTab(tab.id)}
                         className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           isActive
                             ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'

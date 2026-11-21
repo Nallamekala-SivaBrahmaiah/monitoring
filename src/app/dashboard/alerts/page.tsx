@@ -35,6 +35,15 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [groupedServers, setGroupedServers] = useState<GroupedServerCardItem[]>([]);
   const [viewMode, setViewMode] = useState<'grouped' | 'timeline'>('grouped');
+
+  const handleSwitchViewMode = (mode: 'grouped' | 'timeline') => {
+    setViewMode(mode);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'resolved'>('all');
   const [severityFilter, setSeverityFilter] = useState<string>('all');
@@ -368,7 +377,7 @@ export default function AlertsPage() {
               {/* View Mode Toggle: Server Overview vs Incident History */}
               <div className="flex items-center bg-[#0D1526] p-1 rounded-lg border border-[#1E293B]">
                 <button
-                  onClick={() => setViewMode('grouped')}
+                  onClick={() => handleSwitchViewMode('grouped')}
                   className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all ${
                     viewMode === 'grouped'
                       ? 'bg-blue-600 text-white shadow-sm'
@@ -380,7 +389,7 @@ export default function AlertsPage() {
                   <span>Server Cards ({groupedServers.length} Servers)</span>
                 </button>
                 <button
-                  onClick={() => setViewMode('timeline')}
+                  onClick={() => handleSwitchViewMode('timeline')}
                   className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all ${
                     viewMode === 'timeline'
                       ? 'bg-blue-600 text-white shadow-sm'

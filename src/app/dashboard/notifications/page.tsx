@@ -85,6 +85,15 @@ export default function NotificationsPage() {
   const isChannelsRoute = pathname?.includes('notification-channels');
   const [activeTab, setActiveTab] = useState<'feed' | 'channels'>(isChannelsRoute ? 'channels' : 'feed');
 
+  const switchTab = (tab: 'feed' | 'channels') => {
+    setActiveTab(tab);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
+  };
+
   // Synchronize active tab based on route
   useEffect(() => {
     setActiveTab(isChannelsRoute ? 'channels' : 'feed');
@@ -464,7 +473,7 @@ export default function NotificationsPage() {
             {/* Tab Pills */}
             <div className="flex items-center bg-[#111A2E] p-1 rounded-xl border border-[#1E293B] shadow-sm self-start sm:self-auto">
               <button
-                onClick={() => setActiveTab('feed')}
+                onClick={() => switchTab('feed')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
                   activeTab === 'feed'
                     ? 'bg-blue-600 text-white shadow-md'
@@ -481,7 +490,7 @@ export default function NotificationsPage() {
               </button>
 
               <button
-                onClick={() => setActiveTab('channels')}
+                onClick={() => switchTab('channels')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
                   activeTab === 'channels'
                     ? 'bg-blue-600 text-white shadow-md'

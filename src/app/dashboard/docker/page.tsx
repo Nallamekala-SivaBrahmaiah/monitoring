@@ -67,12 +67,22 @@ function DockerPageContent() {
     const params = new URLSearchParams(window.location.search);
     params.set('hostId', host.id);
     router.replace(`/dashboard/docker?${params.toString()}`);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
   };
 
   // Handle returning to all hosts inventory
   const handleBackToInventory = () => {
     setSelectedHost(null);
     router.replace('/dashboard/docker');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
   };
 
   // Open Live SSH Terminal directly with saved credentials (NO prompt for credentials)

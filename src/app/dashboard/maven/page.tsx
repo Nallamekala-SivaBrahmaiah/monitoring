@@ -43,6 +43,15 @@ export default function MavenPage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'runner' | 'apps' | 'projects' | 'history'>('runner');
 
+  const switchTab = (tab: 'runner' | 'apps' | 'projects' | 'history') => {
+    setActiveTab(tab);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    }
+  };
+
   const [projects, setProjects] = useState<IMavenProjectData[]>([]);
   const [apps, setApps] = useState<IMavenAppData[]>([]);
   const [summary, setSummary] = useState<MavenSummary>({
@@ -407,7 +416,7 @@ export default function MavenPage() {
           {/* Navigation Tabs */}
           <div className="flex items-center gap-2 border-b border-[#1E293B] pb-1 select-none overflow-x-auto">
             <button
-              onClick={() => setActiveTab('runner')}
+              onClick={() => switchTab('runner')}
               className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 whitespace-nowrap ${
                 activeTab === 'runner'
                   ? 'border-blue-500 text-white bg-[#111A2E]'
@@ -419,7 +428,7 @@ export default function MavenPage() {
             </button>
 
             <button
-              onClick={() => setActiveTab('apps')}
+              onClick={() => switchTab('apps')}
               className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 whitespace-nowrap ${
                 activeTab === 'apps'
                   ? 'border-blue-500 text-white bg-[#111A2E]'
@@ -431,7 +440,7 @@ export default function MavenPage() {
             </button>
 
             <button
-              onClick={() => setActiveTab('projects')}
+              onClick={() => switchTab('projects')}
               className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 whitespace-nowrap ${
                 activeTab === 'projects'
                   ? 'border-blue-500 text-white bg-[#111A2E]'
@@ -443,7 +452,7 @@ export default function MavenPage() {
             </button>
 
             <button
-              onClick={() => setActiveTab('history')}
+              onClick={() => switchTab('history')}
               className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 whitespace-nowrap ${
                 activeTab === 'history'
                   ? 'border-blue-500 text-white bg-[#111A2E]'
