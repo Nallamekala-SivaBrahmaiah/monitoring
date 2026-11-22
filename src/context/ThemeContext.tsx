@@ -14,6 +14,48 @@ export interface ThemePreset {
   isDark: boolean;
 }
 
+export interface ColorCircleOption {
+  id: string;
+  name: string;
+  hex: string;
+  cardBg: string;
+  borderColor: string;
+  isDark?: boolean;
+}
+
+export const COLOR_CIRCLES: ColorCircleOption[] = [
+  // OLED & Pure Blacks
+  { id: 'pure-black', name: 'OLED Black', hex: '#000000', cardBg: '#090D16', borderColor: '#1E293B', isDark: true },
+  { id: 'obsidian', name: 'Obsidian', hex: '#030712', cardBg: '#0D131F', borderColor: '#1E293B', isDark: true },
+  { id: 'zinc-carbon', name: 'Zinc Carbon', hex: '#09090B', cardBg: '#18181B', borderColor: '#27272A', isDark: true },
+  { id: 'slate-titanium', name: 'Slate Gray', hex: '#0F172A', cardBg: '#1E293B', borderColor: '#334155', isDark: true },
+  { id: 'navy-original', name: 'Navy Blue', hex: '#0B1120', cardBg: '#111A2E', borderColor: '#1E293B', isDark: true },
+
+  // Blue & Cyber Clouds
+  { id: 'cyber-sapphire', name: 'Sapphire', hex: '#081026', cardBg: '#0F1E44', borderColor: '#1E3A8A', isDark: true },
+  { id: 'azure-deep', name: 'Azure Sea', hex: '#001428', cardBg: '#0A2540', borderColor: '#004B87', isDark: true },
+  { id: 'cobalt-night', name: 'Cobalt Night', hex: '#050D24', cardBg: '#0B1B47', borderColor: '#1D4ED8', isDark: true },
+  { id: 'electric-blue', name: 'Electric Cyan', hex: '#02182B', cardBg: '#082845', borderColor: '#0284C7', isDark: true },
+
+  // Violet, Indigo & Cyberpunk
+  { id: 'midnight-violet', name: 'Violet', hex: '#0D0B18', cardBg: '#1A1433', borderColor: '#31265B', isDark: true },
+  { id: 'royal-indigo', name: 'Royal Indigo', hex: '#110D26', cardBg: '#1E1742', borderColor: '#4338CA', isDark: true },
+  { id: 'neon-cyberpunk', name: 'Cyberpunk', hex: '#180B1C', cardBg: '#2D1236', borderColor: '#701A75', isDark: true },
+
+  // Emerald, Pine & Matrix
+  { id: 'cyber-emerald', name: 'Emerald', hex: '#04130E', cardBg: '#0A2117', borderColor: '#154D37', isDark: true },
+  { id: 'matrix-forest', name: 'Matrix Pine', hex: '#021B13', cardBg: '#063325', borderColor: '#047857', isDark: true },
+  { id: 'ocean-cyan', name: 'Teal Cyan', hex: '#041820', cardBg: '#082836', borderColor: '#0E7490', isDark: true },
+
+  // Crimson, Burgundy & Sunset Amber
+  { id: 'crimson-wine', name: 'Burgundy', hex: '#1A070A', cardBg: '#2A0B10', borderColor: '#5C141E', isDark: true },
+  { id: 'sunset-amber', name: 'Amber Bronze', hex: '#160B04', cardBg: '#2B1607', borderColor: '#78350F', isDark: true },
+
+  // Light & Clean Modes
+  { id: 'daylight-slate', name: 'Daylight', hex: '#F8FAFC', cardBg: '#FFFFFF', borderColor: '#E2E8F0', isDark: false },
+  { id: 'pure-white', name: 'Pure White', hex: '#FFFFFF', cardBg: '#F1F5F9', borderColor: '#CBD5E1', isDark: false },
+];
+
 export interface WallpaperOption {
   id: string;
   title: string;
@@ -190,6 +232,7 @@ interface ThemeContextType {
   uploadCustomWallpaper: (file: File) => Promise<string>;
   addCustomWallpaperUrl: (url: string, title?: string) => void;
   deleteCustomWallpaper: (id: string) => void;
+  applyColorCircle: (circle: ColorCircleOption) => void;
   resetTheme: () => void;
 }
 
@@ -396,6 +439,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const applyColorCircle = (circle: ColorCircleOption) => {
+    setActivePreset(circle.id);
+    setBackgroundColorState(circle.hex);
+    setCardBackgroundState(circle.cardBg);
+    setBorderColorState(circle.borderColor);
+  };
+
   const resetTheme = () => {
     setThemePreset('obsidian');
     setBackgroundImageState('');
@@ -427,6 +477,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         uploadCustomWallpaper,
         addCustomWallpaperUrl,
         deleteCustomWallpaper,
+        applyColorCircle,
         resetTheme,
       }}
     >

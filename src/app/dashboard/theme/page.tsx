@@ -23,7 +23,13 @@ import {
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
-import { useTheme, THEME_PRESETS, WALLPAPER_OPTIONS } from '@/context/ThemeContext';
+import {
+  useTheme,
+  THEME_PRESETS,
+  WALLPAPER_OPTIONS,
+  COLOR_CIRCLES,
+  ColorCircleOption,
+} from '@/context/ThemeContext';
 
 export default function ThemeCustomizerPage() {
   const {
@@ -45,6 +51,7 @@ export default function ThemeCustomizerPage() {
     uploadCustomWallpaper,
     addCustomWallpaperUrl,
     deleteCustomWallpaper,
+    applyColorCircle,
     resetTheme,
   } = useTheme();
 
@@ -148,13 +155,104 @@ export default function ThemeCustomizerPage() {
             </div>
           </div>
 
-          {/* Section 1: Background Color Models & Themes */}
+          {/* Section 1: Multiple Background Color Circles */}
+          <section className="bg-[var(--card-bg,#0D131F)] border border-[var(--card-border,#1E293B)] rounded-2xl p-5 space-y-4 shadow-xl transition-colors">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Palette className="w-4 h-4 text-sky-400" />
+                  <span>1. Background Color Circles</span>
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Select from vibrant circular color bubbles or pick a custom hue to style your platform canvas.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 bg-[#070B14] border border-[#1E293B] px-3 py-1.5 rounded-xl">
+                <span className="text-[11px] text-slate-400">Selected Color:</span>
+                <span
+                  className="w-4 h-4 rounded-full border border-white/40 shadow-sm shrink-0"
+                  style={{ backgroundColor }}
+                />
+                <span className="text-xs font-mono font-bold text-sky-400">{backgroundColor}</span>
+              </div>
+            </div>
+
+            {/* Circular Color Palette Grid */}
+            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-9 lg:grid-cols-10 gap-3 pt-1">
+              {COLOR_CIRCLES.map((c) => {
+                const isSelected = backgroundColor.toLowerCase() === c.hex.toLowerCase();
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      applyColorCircle(c);
+                      handleApplyToast();
+                    }}
+                    title={`${c.name} (${c.hex})`}
+                    className={`flex flex-col items-center gap-2 p-2.5 rounded-xl transition cursor-pointer group ${
+                      isSelected
+                        ? 'bg-blue-600/15 border border-blue-500/50 shadow-md ring-1 ring-blue-500/40'
+                        : 'border border-transparent hover:border-[#1E293B] hover:bg-[#070B14]'
+                    }`}
+                  >
+                    <div
+                      className={`w-11 h-11 rounded-full transition-all flex items-center justify-center shadow-lg relative group-hover:scale-110 ${
+                        isSelected
+                          ? 'ring-4 ring-blue-500 ring-offset-2 ring-offset-[#0D131F] scale-105'
+                          : 'border-2 border-white/20 group-hover:border-white/50'
+                      }`}
+                      style={{ backgroundColor: c.hex }}
+                    >
+                      {isSelected && (
+                        <Check
+                          className={`w-5 h-5 ${c.isDark ? 'text-white' : 'text-slate-900'} drop-shadow-md`}
+                        />
+                      )}
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-200 text-center truncate w-full group-hover:text-white transition">
+                      {c.name}
+                    </span>
+                    <span className="text-[9px] font-mono text-slate-500">{c.hex}</span>
+                  </button>
+                );
+              })}
+
+              {/* Custom Color Wheel Circle */}
+              <label
+                title="Choose Any Custom Color"
+                className="flex flex-col items-center gap-2 p-2.5 rounded-xl border border-transparent hover:border-[#1E293B] hover:bg-[#070B14] transition cursor-pointer group"
+              >
+                <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-rose-500 via-amber-400 via-emerald-400 via-blue-500 to-purple-500 p-0.5 shadow-lg group-hover:scale-110 transition flex items-center justify-center">
+                  <div className="w-full h-full rounded-full bg-[#0D131F] flex items-center justify-center font-bold text-white text-lg">
+                    +
+                  </div>
+                </div>
+                <span className="text-[11px] font-bold text-sky-400 text-center truncate w-full group-hover:text-sky-300">
+                  Custom
+                </span>
+                <span className="text-[9px] font-mono text-slate-500">Pick any</span>
+                <input
+                  type="color"
+                  value={backgroundColor}
+                  onChange={(e) => {
+                    setBackgroundColor(e.target.value);
+                    handleApplyToast();
+                  }}
+                  className="sr-only"
+                />
+              </label>
+            </div>
+          </section>
+
+          {/* Section 2: Background Color Models & Themes */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <Palette className="w-4 h-4 text-blue-400" />
-                  <span>1. Background Color Models</span>
+                  <span>2. Full Theme Models</span>
                 </h2>
                 <p className="text-xs text-slate-400">
                   Select a pre-tuned enterprise color palette. Cards, sidebar, and borders adapt automatically.
@@ -242,7 +340,7 @@ export default function ThemeCustomizerPage() {
               <div>
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <UploadCloud className="w-4 h-4 text-sky-400" />
-                  <span>2. Upload Custom Wallpaper Image</span>
+                  <span>3. Upload Custom Wallpaper Image</span>
                 </h2>
                 <p className="text-xs text-slate-400">
                   Upload an image from your device or paste a web URL to use as your dashboard background.
@@ -408,7 +506,7 @@ export default function ThemeCustomizerPage() {
               <div>
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <ImageIcon className="w-4 h-4 text-purple-400" />
-                  <span>3. Built-In Cloud & Datacenter Wallpapers</span>
+                  <span>4. Built-In Cloud & Datacenter Wallpapers</span>
                 </h2>
                 <p className="text-xs text-slate-400">
                   Select a high-tech datacenter or cloud mesh background to render behind your platform.
@@ -473,12 +571,12 @@ export default function ThemeCustomizerPage() {
             </div>
           </section>
 
-          {/* Section 4: Fine-Tuning Controls (Opacity & Blur) */}
+          {/* Section 5: Fine-Tuning Controls (Opacity & Blur) */}
           {backgroundImage && backgroundImage.trim() !== '' && (
             <section className="bg-[var(--card-bg,#0D131F)] border border-[var(--card-border,#1E293B)] rounded-2xl p-5 space-y-4 shadow-xl transition-colors">
               <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-emerald-400" />
-                <span>4. Wallpaper Fine-Tuning</span>
+                <span>5. Wallpaper Fine-Tuning</span>
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -533,11 +631,11 @@ export default function ThemeCustomizerPage() {
             </section>
           )}
 
-          {/* Section 5: Custom Color Pickers */}
+          {/* Section 6: Custom Color Pickers */}
           <section className="bg-[var(--card-bg,#0D131F)] border border-[var(--card-border,#1E293B)] rounded-2xl p-5 space-y-4 shadow-xl transition-colors">
             <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>5. Custom Hex Color Controls</span>
+              <span>6. Custom Hex Color Controls</span>
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -600,11 +698,11 @@ export default function ThemeCustomizerPage() {
             </div>
           </section>
 
-          {/* Section 6: Live Dashboard Component Preview Canvas */}
+          {/* Section 7: Live Dashboard Component Preview Canvas */}
           <section className="space-y-3">
             <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <Eye className="w-4 h-4 text-sky-400" />
-              <span>6. Live Dashboard Component Preview</span>
+              <span>7. Live Dashboard Component Preview</span>
             </h3>
 
             <div

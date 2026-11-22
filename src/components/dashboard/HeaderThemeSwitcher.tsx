@@ -12,7 +12,13 @@ import {
   Loader2,
   Trash2,
 } from 'lucide-react';
-import { useTheme, THEME_PRESETS, WALLPAPER_OPTIONS } from '@/context/ThemeContext';
+import {
+  useTheme,
+  THEME_PRESETS,
+  WALLPAPER_OPTIONS,
+  COLOR_CIRCLES,
+  ColorCircleOption,
+} from '@/context/ThemeContext';
 
 export default function HeaderThemeSwitcher() {
   const {
@@ -22,10 +28,12 @@ export default function HeaderThemeSwitcher() {
     backgroundOpacity,
     customWallpapers,
     setThemePreset,
+    setBackgroundColor,
     setBackgroundImage,
     setBackgroundOpacity,
     uploadCustomWallpaper,
     deleteCustomWallpaper,
+    applyColorCircle,
     resetTheme,
   } = useTheme();
 
@@ -125,39 +133,55 @@ export default function HeaderThemeSwitcher() {
             </div>
           </div>
 
-          {/* Section 1: Background Color Models */}
+          {/* Section 1: Background Color Circles */}
           <div className="space-y-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-              1. Background Color Models
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                1. Background Colors (Circles)
+              </span>
+              <span className="text-[9px] font-mono text-sky-400 font-bold">{backgroundColor}</span>
+            </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              {THEME_PRESETS.map((preset) => {
-                const isSelected = activePreset === preset.id;
+            <div className="flex items-center gap-2 flex-wrap">
+              {COLOR_CIRCLES.map((c) => {
+                const isSelected = backgroundColor.toLowerCase() === c.hex.toLowerCase();
                 return (
                   <button
-                    key={preset.id}
+                    key={c.id}
                     type="button"
-                    onClick={() => setThemePreset(preset.id)}
-                    className={`p-2 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
+                    onClick={() => applyColorCircle(c)}
+                    title={`${c.name} (${c.hex})`}
+                    className={`w-7 h-7 rounded-full transition-all cursor-pointer flex items-center justify-center shadow-md relative group hover:scale-110 ${
                       isSelected
-                        ? 'border-blue-500 bg-blue-600/15 text-white shadow-sm ring-1 ring-blue-500/50'
-                        : 'border-[#1E293B] bg-[#070B14] hover:bg-[#111A2E] text-slate-300'
+                        ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-[#0B1120] scale-110 shadow-lg'
+                        : 'border border-white/20 hover:border-white/60'
                     }`}
+                    style={{ backgroundColor: c.hex }}
                   >
-                    <div
-                      className="w-5 h-5 rounded-lg border border-white/20 shrink-0 shadow-sm flex items-center justify-center"
-                      style={{ backgroundColor: preset.canvasBg }}
-                    >
-                      {isSelected && <Check className="w-3 h-3 text-white" />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-bold truncate leading-tight">{preset.name}</div>
-                      <div className="text-[9px] text-slate-500 font-mono truncate">{preset.canvasBg}</div>
-                    </div>
+                    {isSelected && (
+                      <Check
+                        className={`w-3.5 h-3.5 ${c.isDark ? 'text-white' : 'text-slate-900'} drop-shadow`}
+                      />
+                    )}
                   </button>
                 );
               })}
+
+              {/* Custom Color Circle Picker Button */}
+              <label
+                title="Pick Custom Color Circle"
+                className="w-7 h-7 rounded-full bg-gradient-to-tr from-rose-500 via-amber-400 via-emerald-400 via-blue-500 to-purple-500 p-0.5 cursor-pointer hover:scale-110 transition flex items-center justify-center shadow-md relative"
+              >
+                <div className="w-full h-full rounded-full bg-[#0B1120] flex items-center justify-center text-[11px] font-bold text-white">
+                  +
+                </div>
+                <input
+                  type="color"
+                  value={backgroundColor}
+                  onChange={(e) => setBackgroundColor(e.target.value)}
+                  className="sr-only"
+                />
+              </label>
             </div>
           </div>
 
