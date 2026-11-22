@@ -76,9 +76,9 @@ export function HomeStyleStudioTopBar() {
   };
 
   return (
-    <div className="bg-[#0B1120] border-2 border-cyan-500/40 rounded-2xl shadow-2xl relative overflow-hidden transition-all duration-300">
+    <div className="bg-[#0B1120] border-2 border-cyan-500/40 rounded-2xl shadow-2xl relative z-30 transition-all duration-300">
       {/* Background Holographic Shimmer Line */}
-      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-pulse pointer-events-none"></div>
+      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-pulse pointer-events-none rounded-t-2xl overflow-hidden"></div>
 
       {/* Main Bar (Always Visible at the Very Top of Dashboard) */}
       <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">

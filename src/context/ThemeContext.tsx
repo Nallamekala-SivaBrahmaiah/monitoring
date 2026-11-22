@@ -516,8 +516,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (c.glowingBorders !== undefined) setGlowingBordersState(c.glowingBorders);
         if (c.smoothTransitions !== undefined) setSmoothTransitionsState(c.smoothTransitions);
 
+        const sanitizeStyles = (raw: Record<string, ModuleStyleConfig>) => {
+          const res = { ...raw };
+          delete res['aws-resources'];
+          return res;
+        };
+
         if (c.layers) setLayers(c.layers);
-        if (c.moduleStyles) setModuleStyles(c.moduleStyles);
+        if (c.moduleStyles) setModuleStyles(sanitizeStyles(c.moduleStyles));
         if (Array.isArray(c.customWallpapers)) setCustomWallpapers(c.customWallpapers);
       }
     } catch {}
@@ -532,7 +538,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           if (dbC.backgroundColor) setBackgroundColorState(dbC.backgroundColor);
           if (dbC.cardBackground) setCardBackgroundState(dbC.cardBackground);
           if (dbC.borderColor) setBorderColorState(dbC.borderColor);
-          if (dbC.moduleStyles) setModuleStyles(dbC.moduleStyles);
+          if (dbC.moduleStyles) {
+            const clean = { ...dbC.moduleStyles };
+            delete clean['aws-resources'];
+            setModuleStyles(clean);
+          }
         }
       })
       .catch(() => {})
@@ -648,6 +658,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       Object.entries(moduleStyles).forEach(([modId, mod]) => {
         if (!mod) return;
         const selector = `[data-module-id="${modId}"]`;
+        const isMetricCard = ['aws-resources', 'azure-resources', 'total-servers', 'docker-containers', 'k8s-clusters', 'active-alerts'].includes(modId);
         let modRules = '';
         if (mod.backgroundColor) modRules += `background-color: ${mod.backgroundColor} !important;`;
         if (mod.cardColor) modRules += `background: ${mod.cardColor} !important;`;
@@ -657,9 +668,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (mod.borderRadius) modRules += `border-radius: ${mod.borderRadius} !important;`;
         if (mod.shadow) modRules += `box-shadow: ${mod.shadow} !important;`;
         if (mod.fontFamily) modRules += `font-family: ${mod.fontFamily} !important;`;
-        if (mod.padding) modRules += `padding: ${mod.padding} !important;`;
-        if (mod.width) modRules += `width: ${mod.width} !important; max-width: ${mod.width} !important;`;
-        if (mod.height) modRules += `min-height: ${mod.height} !important;`;
+        if (isMetricCard) {
+          modRules += `width: 100% !important; max-width: 100% !important; height: 100% !important; min-height: 112px !important; box-sizing: border-box !important;`;
+        } else {
+          if (mod.padding) modRules += `padding: ${mod.padding} !important;`;
+          if (mod.width) modRules += `width: ${mod.width} !important; max-width: ${mod.width} !important;`;
+          if (mod.height) modRules += `min-height: ${mod.height} !important;`;
+        }
         if (mod.visible === false) modRules += `display: none !important;`;
 
         if (mod.glassmorphism) {
@@ -690,8 +705,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           moduleCssRules += `${selector} { ${modRules} }\n`;
         }
 
-        // Sub-elements: Header, Icon, Headings, Hover
-        if (mod.headerColor || mod.layers?.header) {
+        // Sub-elements: Header, Icon, Headings, Hover (protect metric cards from inner box distortions)
+        if ((mod.headerColor || mod.layers?.header) && !isMetricCard) {
           let headerRules = '';
           if (mod.headerColor) headerRules += `background: ${mod.headerColor} !important;`;
           if (mod.layers?.header?.visible === false) headerRules += `display: none !important;`;
