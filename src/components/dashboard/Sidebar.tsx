@@ -46,6 +46,7 @@ export function Sidebar({
   onCloseMobile,
 }: SidebarProps) {
   const pathname = usePathname();
+  const navContainerRef = React.useRef<HTMLDivElement | null>(null);
   const {
     cloudProvider,
     setCloudProvider,
@@ -55,6 +56,23 @@ export function Sidebar({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggedOutToast, setLoggedOutToast] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
+
+  // Auto-scroll the active navigation item into view so it is always visible
+  React.useEffect(() => {
+    if (!navContainerRef.current) return;
+    const timer = setTimeout(() => {
+      if (!navContainerRef.current) return;
+      const activeEl = navContainerRef.current.querySelector<HTMLElement>('[data-active="true"]');
+      if (activeEl) {
+        activeEl.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest',
+          behavior: 'smooth',
+        });
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [pathname]);
 
   React.useEffect(() => {
     async function loadUnreadCount() {
@@ -174,18 +192,18 @@ export function Sidebar({
   const sidebarContent = (
     <div className="flex flex-col h-full bg-[#111A2E] border-r border-[#1E293B] text-slate-300 w-64 select-none">
       {/* Brand Header */}
-      <div className="p-5 flex items-center justify-between border-b border-[#1E293B]/70">
+      <div className="px-4 py-3.5 flex items-center justify-between border-b border-[#1E293B]/70 shrink-0">
         <Link
           href="/"
           scroll={false}
           onClick={(e) => handleNavClick('/', e)}
           className="flex items-center gap-3 group"
         >
-          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#081226] border border-cyan-500/40 shadow-lg shadow-cyan-500/20 group-hover:scale-105 group-hover:border-cyan-400 transition-all">
-            <MultiCloudBrandLogo className="w-7 h-7" />
+          <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-[#081226] border border-cyan-500/40 shadow-lg shadow-cyan-500/20 group-hover:scale-105 group-hover:border-cyan-400 transition-all shrink-0">
+            <MultiCloudBrandLogo className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="font-bold text-white text-base tracking-tight leading-snug">
+            <h1 className="font-bold text-white text-sm tracking-tight leading-snug">
               Multi-Cloud
               <br />
               Monitoring
@@ -206,7 +224,10 @@ export function Sidebar({
       </div>
 
       {/* Navigation List */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+      <div
+        ref={navContainerRef}
+        className="flex-1 overflow-y-auto px-2.5 py-2 space-y-0.5 scrollbar-thin scrollbar-thumb-slate-700/60 hover:scrollbar-thumb-slate-600 scrollbar-track-transparent"
+      >
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive =
@@ -218,28 +239,29 @@ export function Sidebar({
               key={item.label}
               href={item.href}
               scroll={false}
+              data-active={isActive ? 'true' : 'false'}
               onClick={(e) => handleNavClick(item.href, e)}
-              className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+              className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
                 isActive
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-semibold'
                   : 'text-slate-300 hover:text-white hover:bg-[#18233C]'
               }`}
             >
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div
-                  className={`w-5 h-5 flex items-center justify-center shrink-0 transition-transform ${
+                  className={`w-4 h-4 flex items-center justify-center shrink-0 transition-transform ${
                     isActive
                       ? 'scale-105 drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]'
                       : 'group-hover:scale-105 opacity-90 group-hover:opacity-100'
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
+                  <Icon className="w-4 h-4" />
                 </div>
                 <span className="truncate">{item.label}</span>
               </div>
               {item.badge !== undefined && (
                 <span
-                  className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold rounded-full shadow-sm ${
+                  className={`flex items-center justify-center min-w-[18px] h-4 px-1 text-[9px] font-bold rounded-full shadow-sm shrink-0 ${
                     typeof item.badge === 'string'
                       ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white'
                       : typeof item.badge === 'number' && item.badge > 0
@@ -256,58 +278,58 @@ export function Sidebar({
       </div>
 
       {/* Multi-Cloud Support Quick Switcher Box */}
-      <div className="px-4 py-3 mx-3 mb-2 rounded-xl bg-[#0D1526]/80 border border-[#1E293B]">
-        <div className="text-[11px] font-medium text-slate-400 text-center mb-2">
+      <div className="px-3 py-2 mx-2.5 mb-1.5 rounded-xl bg-[#0D1526]/80 border border-[#1E293B] shrink-0">
+        <div className="text-[10px] font-medium text-slate-400 text-center mb-1.5">
           Multi-Cloud Support
         </div>
         <div className="flex items-center justify-around gap-2">
           <button
             onClick={() => setCloudProvider(cloudProvider === 'aws' ? 'all' : 'aws')}
             title="Filter by AWS"
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold transition-all ${
               cloudProvider === 'aws'
                 ? 'bg-[#FF9900]/20 border border-[#FF9900]/50 text-white shadow'
                 : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
             }`}
           >
-            <AwsLogo className="w-4 h-4" />
+            <AwsLogo className="w-3.5 h-3.5" />
             <span>AWS</span>
           </button>
-          <div className="h-4 w-px bg-slate-700/60" />
+          <div className="h-3.5 w-px bg-slate-700/60" />
           <button
             onClick={() => setCloudProvider(cloudProvider === 'azure' ? 'all' : 'azure')}
             title="Filter by Azure"
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold transition-all ${
               cloudProvider === 'azure'
                 ? 'bg-[#0089D6]/20 border border-[#0089D6]/50 text-white shadow'
                 : 'text-[#5EA0EF] hover:text-white hover:bg-[#18233C]'
             }`}
           >
-            <AzureLogo className="w-4 h-4" />
+            <AzureLogo className="w-3.5 h-3.5" />
             <span>Azure</span>
           </button>
         </div>
       </div>
 
       {/* User Profile Footer */}
-      <div className="p-3 border-t border-[#1E293B] bg-[#0E1628]/60 relative">
-        <div className="flex items-center justify-between px-2 py-1">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow">
+      <div className="p-2.5 border-t border-[#1E293B] bg-[#0E1628]/60 relative shrink-0">
+        <div className="flex items-center justify-between px-1.5 py-0.5">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow shrink-0">
               S
             </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-semibold text-slate-200 leading-tight">
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs font-semibold text-slate-200 leading-tight truncate">
                 Siva Brahmaiah
               </span>
-              <span className="text-[11px] text-slate-400">Admin</span>
+              <span className="text-[10px] text-slate-400">Admin</span>
             </div>
           </div>
         </div>
 
         <button
           onClick={() => setShowLogoutConfirm(true)}
-          className="w-full mt-2 flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-md transition-colors"
+          className="w-full mt-1.5 flex items-center gap-2 px-2 py-1 text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-md transition-colors"
         >
           <LogOut className="w-3.5 h-3.5" />
           <span>Logout</span>
