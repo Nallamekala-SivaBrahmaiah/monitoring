@@ -73,20 +73,16 @@ export async function getKubernetesInstalledServers(): Promise<
   const k8sServers: IKubernetesServerInfo[] = [];
 
   for (const s of allServers) {
-    const isExplicitK8s =
+    const isK8sDetected =
       s.kubernetes?.detected === true ||
-      (s.kubernetes?.version && s.kubernetes.version.trim() !== '') ||
+      (s.kubernetes?.version &&
+        !s.kubernetes.version.includes('NOT_INSTALLED') &&
+        s.kubernetes.version.trim() !== '') ||
       s.name.toLowerCase().includes('k8s') ||
       s.name.toLowerCase().includes('cluster');
 
-    const hasContainers =
-      (s.docker?.containersCount && s.docker.containersCount > 0) ||
-      s.docker?.detected === true;
-
-    const isOnline = s.status === 'Online';
-
-    // Include servers that have K8s detected, container workloads, or are active registered hosts
-    if (!isExplicitK8s && !hasContainers && !isOnline) {
+    // Strictly skip servers where Kubernetes is not installed
+    if (!isK8sDetected) {
       continue;
     }
 

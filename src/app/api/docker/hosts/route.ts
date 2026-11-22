@@ -42,11 +42,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Strictly filter: only display servers where Docker is actually installed & detected
+    const dockerInstalledServers = combinedServers.filter((s: any) => {
+      const docker = s.docker || {};
+      const isDetected = Boolean(docker.detected);
+      const isRunning = docker.status === 'running';
+      const hasContainers = Array.isArray(docker.containers) && docker.containers.length > 0;
+      const hasValidVersion = Boolean(
+        docker.version &&
+        !docker.version.includes('NOT_INSTALLED') &&
+        docker.version.trim() !== ''
+      );
+      return isDetected || isRunning || hasContainers || hasValidVersion;
+    });
+
     const hosts = await Promise.all(
-      combinedServers.map(async (s: any) => {
+      dockerInstalledServers.map(async (s: any) => {
         const docker = s.docker || {};
-        const isDetected = Boolean(docker.detected);
-        const status = docker.status || (isDetected ? 'running' : 'not_installed');
+        const isDetected = true;
+        const status = docker.status || 'running';
         const containers = docker.containers || [];
         const running = containers.filter((c: any) => (c.state || '').toLowerCase().includes('run')).length;
 

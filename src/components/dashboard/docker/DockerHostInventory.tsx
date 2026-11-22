@@ -250,9 +250,9 @@ export function DockerHostInventory({
                 <tr>
                   <td colSpan={10} className="py-16 text-center text-slate-500 space-y-2">
                     <ServerIcon className="w-8 h-8 mx-auto text-slate-600" />
-                    <p className="text-sm font-semibold text-slate-400">No Docker hosts found</p>
+                    <p className="text-sm font-semibold text-slate-400">No Docker-installed servers detected</p>
                     <p className="text-xs text-slate-500">
-                      No registered servers matched the selected search or provider filter.
+                      Only servers where Docker is installed and configured are displayed here. Whenever you install Docker on a server, it will be automatically detected and shown.
                     </p>
                   </td>
                 </tr>

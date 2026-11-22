@@ -41,11 +41,18 @@ export async function GET(request: NextRequest) {
       memoryPercent: c.metrics?.memoryUtilization !== undefined ? c.metrics?.memoryUtilization : null,
     }));
 
-    // Include all registered servers as manageable Kubernetes nodes / clusters
+    // Include only servers where Kubernetes is actively detected and installed
     const allServers = await Server.find().lean();
     for (const s of allServers) {
       if (provider && provider !== 'all' && s.cloudProvider !== provider) continue;
-      const isK8sActive = !!(s.kubernetes?.detected);
+      const isK8sActive = Boolean(
+        s.kubernetes?.detected === true ||
+        (s.kubernetes?.version && !s.kubernetes.version.includes('NOT_INSTALLED') && s.kubernetes.version.trim() !== '') ||
+        s.name.toLowerCase().includes('k8s') ||
+        s.name.toLowerCase().includes('cluster')
+      );
+      if (!isK8sActive) continue;
+
       list.push({
         id: s._id.toString(),
         clusterName: s.name,
@@ -53,14 +60,14 @@ export async function GET(request: NextRequest) {
         cloud: s.cloudProvider || 'azure',
         cloudProvider: s.cloudProvider || 'azure',
         status: s.status === 'Online' ? 'Active' : s.status,
-        version: s.kubernetes?.version || (isK8sActive ? 'v1.28.3' : 'Node Agent (K8s Ready)'),
+        version: s.kubernetes?.version || 'v1.28.3',
         nodeCount: 1,
         nodesCount: 1,
         namespaceCount: 3,
-        podCount: s.kubernetes?.podsCount || s.docker?.containersCount || 0,
-        podsCount: s.kubernetes?.podsCount || s.docker?.containersCount || 0,
+        podCount: s.kubernetes?.podsCount || 0,
+        podsCount: s.kubernetes?.podsCount || 0,
         region: s.region || 'centralindia',
-        type: isK8sActive ? 'K8s Cluster Node' : 'Managed Server Node',
+        type: 'K8s Cluster Node',
         endpoint: s.host,
         cpuPercent: s.metrics?.cpu?.usagePercent ?? 15,
         memoryPercent: s.metrics?.memory?.usagePercent ?? 14,
