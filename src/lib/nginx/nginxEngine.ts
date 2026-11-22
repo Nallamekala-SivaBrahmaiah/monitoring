@@ -564,7 +564,7 @@ uptime -p 2>/dev/null || uptime 2>/dev/null || echo "Unknown"
  */
 export async function executeNginxServiceAction(
   server: INginxServerData,
-  action: 'install' | 'start' | 'stop' | 'restart' | 'reload' | 'test'
+  action: 'install' | 'uninstall' | 'start' | 'stop' | 'restart' | 'reload' | 'test'
 ): Promise<{ success: boolean; output: string }> {
   let cmd = '';
 
@@ -582,6 +582,32 @@ else
   exit 1
 fi
 sudo systemctl status nginx --no-pager
+`;
+      break;
+
+    case 'uninstall':
+      cmd = `
+if command -v apt-get >/dev/null 2>&1; then
+  sudo systemctl stop nginx 2>/dev/null || true
+  sudo systemctl disable nginx 2>/dev/null || true
+  sudo apt-get purge -y nginx nginx-common nginx-core 2>&1
+  sudo apt-get autoremove -y --purge 2>&1
+  sudo rm -rf /etc/nginx /var/log/nginx 2>/dev/null || true
+elif command -v dnf >/dev/null 2>&1; then
+  sudo systemctl stop nginx 2>/dev/null || true
+  sudo systemctl disable nginx 2>/dev/null || true
+  sudo dnf remove -y nginx 2>&1
+  sudo rm -rf /etc/nginx /var/log/nginx 2>/dev/null || true
+elif command -v yum >/dev/null 2>&1; then
+  sudo systemctl stop nginx 2>/dev/null || true
+  sudo systemctl disable nginx 2>/dev/null || true
+  sudo yum remove -y nginx 2>&1
+  sudo rm -rf /etc/nginx /var/log/nginx 2>/dev/null || true
+else
+  echo "Unsupported package manager" >&2
+  exit 1
+fi
+echo "Nginx web server uninstalled and purged successfully."
 `;
       break;
 

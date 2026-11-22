@@ -46,7 +46,7 @@ interface NginxServerCardProps {
   onOpenTerminal: (server: INginxServerData) => void;
   onTestSSH: (server: INginxServerData) => void;
   onRefreshMetrics: (server: INginxServerData) => void;
-  onExecuteNginxAction: (server: INginxServerData, action: 'install' | 'start' | 'stop' | 'restart' | 'reload' | 'test') => void;
+  onExecuteNginxAction: (server: INginxServerData, action: 'install' | 'uninstall' | 'start' | 'stop' | 'restart' | 'reload' | 'test') => void;
   onCreateNewProxy: (server: INginxServerData) => void;
   onDeleteProxySite: (server: INginxServerData, fileName: string) => void;
   serverDetails?: any;

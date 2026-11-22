@@ -13,7 +13,7 @@ export async function POST(
     const body = await req.json();
     const { action } = body;
 
-    const validActions = ['install', 'start', 'stop', 'restart', 'reload', 'test'];
+    const validActions = ['install', 'uninstall', 'start', 'stop', 'restart', 'reload', 'test'];
     if (!validActions.includes(action)) {
       return NextResponse.json(
         { success: false, error: `Invalid action. Must be one of: ${validActions.join(', ')}` },
@@ -28,12 +28,29 @@ export async function POST(
 
     const res = await executeNginxServiceAction(server.toObject(), action);
 
+    if (action === 'uninstall' && res.success) {
+      server.nginxInstalled = false;
+      server.nginxStatus = 'NOT_INSTALLED';
+      server.nginxVersion = '';
+      await server.save();
+    } else if (action === 'install' && res.success) {
+      server.nginxInstalled = true;
+      server.nginxStatus = 'RUNNING';
+      await server.save();
+    }
+
     // Refresh server status in background
     queryServerDetails(server.toObject()).then(async (details) => {
       if (details.success) {
-        server.nginxStatus = details.nginxStatus;
-        server.nginxInstalled = details.nginxInstalled;
-        server.nginxVersion = details.nginxVersion || '';
+        if (action === 'uninstall') {
+          server.nginxStatus = 'NOT_INSTALLED';
+          server.nginxInstalled = false;
+          server.nginxVersion = '';
+        } else {
+          server.nginxStatus = details.nginxStatus;
+          server.nginxInstalled = details.nginxInstalled;
+          server.nginxVersion = details.nginxVersion || '';
+        }
         await server.save();
       }
     }).catch(() => {});

@@ -635,6 +635,74 @@ export async function executeContainerAction(
 }
 
 /**
+ * Executes a host-level Docker lifecycle action (install, uninstall, start, stop, restart)
+ */
+export async function executeDockerHostAction(
+  server: any,
+  action: 'install' | 'uninstall' | 'start' | 'stop' | 'restart'
+): Promise<{ success: boolean; output: string }> {
+  let cmd = '';
+
+  switch (action) {
+    case 'install':
+      cmd = `
+export DEBIAN_FRONTEND=noninteractive
+if command -v apt-get >/dev/null 2>&1; then
+  sudo apt-get update -y && sudo apt-get install -y docker.io docker-compose-plugin && sudo systemctl enable docker && sudo systemctl start docker && sudo usermod -aG docker $USER 2>/dev/null || true
+  sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+elif command -v dnf >/dev/null 2>&1; then
+  sudo dnf install -y docker docker-compose-plugin && sudo systemctl enable docker && sudo systemctl start docker && sudo usermod -aG docker $USER 2>/dev/null || true
+  sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+elif command -v yum >/dev/null 2>&1; then
+  sudo yum install -y docker docker-compose-plugin && sudo systemctl enable docker && sudo systemctl start docker && sudo usermod -aG docker $USER 2>/dev/null || true
+  sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+else
+  echo "Unsupported package manager" >&2
+  exit 1
+fi
+docker --version
+sudo systemctl is-active docker
+`;
+      break;
+
+    case 'uninstall':
+      cmd = `
+sudo systemctl stop docker docker.socket containerd 2>/dev/null || true
+sudo systemctl disable docker docker.socket containerd 2>/dev/null || true
+if command -v apt-get >/dev/null 2>&1; then
+  sudo apt-get purge -y docker.io docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-buildx-plugin 2>&1
+  sudo apt-get autoremove -y --purge 2>&1
+elif command -v dnf >/dev/null 2>&1; then
+  sudo dnf remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine containerd.io 2>&1
+elif command -v yum >/dev/null 2>&1; then
+  sudo yum remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine containerd.io 2>&1
+fi
+sudo rm -rf /var/lib/docker /etc/docker /var/run/docker.sock /var/lib/containerd 2>/dev/null || true
+echo "Docker uninstalled and purged successfully."
+`;
+      break;
+
+    case 'start':
+      cmd = 'sudo systemctl start docker && sudo systemctl status docker --no-pager';
+      break;
+
+    case 'stop':
+      cmd = 'sudo systemctl stop docker && sudo systemctl status docker --no-pager || true';
+      break;
+
+    case 'restart':
+      cmd = 'sudo systemctl restart docker && sudo systemctl status docker --no-pager';
+      break;
+  }
+
+  const res = await executeSSH(server, cmd, 120000);
+  return {
+    success: res.code === 0,
+    output: res.stdout || res.stderr,
+  };
+}
+
+/**
  * Retrieves container logs for role or specific container name
  */
 export async function getContainerLogs(

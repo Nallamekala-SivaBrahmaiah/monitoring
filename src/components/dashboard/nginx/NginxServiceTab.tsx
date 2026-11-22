@@ -25,7 +25,7 @@ interface NginxServiceTabProps {
   activeServer: INginxServerData | null;
   serverDetails: any;
   sites: ReverseProxySite[];
-  onExecuteNginxAction: (action: 'install' | 'start' | 'stop' | 'restart' | 'reload' | 'test') => void;
+  onExecuteNginxAction: (action: 'install' | 'uninstall' | 'start' | 'stop' | 'restart' | 'reload' | 'test') => void;
   onRefresh: () => void;
   onRefreshSites: () => void;
   onCreateNewProxy: () => void;
@@ -47,6 +47,7 @@ export function NginxServiceTab({
   lastActionResult,
 }: NginxServiceTabProps) {
   const [selectedConfig, setSelectedConfig] = useState<ReverseProxySite | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'install' | 'uninstall' | null>(null);
 
   if (!activeServer) {
     return (
@@ -104,14 +105,23 @@ export function NginxServiceTab({
               <span>Refresh Status</span>
             </button>
 
-            {!isInstalled && (
+            {!isInstalled ? (
               <button
-                onClick={() => onExecuteNginxAction('install')}
+                onClick={() => setConfirmAction('install')}
                 disabled={isActionLoading}
                 className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 transition disabled:opacity-50"
               >
                 <Zap className="w-3.5 h-3.5" />
                 <span>Install Nginx</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setConfirmAction('uninstall')}
+                disabled={isActionLoading}
+                className="px-4 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Uninstall Nginx</span>
               </button>
             )}
           </div>
@@ -408,6 +418,84 @@ export function NginxServiceTab({
                 className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition"
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Confirmation Modal */}
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#0B1120] border border-[#1E293B] rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  confirmAction === 'install'
+                    ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                    : 'bg-rose-500/15 border border-rose-500/30 text-rose-400'
+                }`}
+              >
+                {confirmAction === 'install' ? <Zap className="w-5 h-5" /> : <Trash2 className="w-5 h-5" />}
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  {confirmAction === 'install' ? 'Confirm Nginx Installation' : 'Confirm Nginx Uninstallation'}
+                </h3>
+                <p className="text-xs text-slate-400 font-mono">
+                  {activeServer.name} ({activeServer.host})
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {confirmAction === 'install' ? (
+                <>
+                  Are you sure you want to install Nginx Web Server on{' '}
+                  <strong className="text-white">{activeServer.name}</strong>? This will execute an automated setup script via SSH (apt/dnf/yum), configure systemd autostart, and enable HTTP/HTTPS traffic.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to uninstall Nginx Web Server from{' '}
+                  <strong className="text-white">{activeServer.name}</strong>? This will stop the Nginx daemon, remove package binaries, and purge web configuration files.
+                </>
+              )}
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                disabled={isActionLoading}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const act = confirmAction;
+                  setConfirmAction(null);
+                  onExecuteNginxAction(act);
+                }}
+                disabled={isActionLoading}
+                className={`px-4 py-2 rounded-xl text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md disabled:opacity-50 ${
+                  confirmAction === 'install'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
+                    : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/30'
+                }`}
+              >
+                {confirmAction === 'install' ? (
+                  <>
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Confirm &amp; Install Nginx</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirm &amp; Uninstall Nginx</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

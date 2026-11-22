@@ -36,6 +36,9 @@ import {
   Settings,
   History as HistoryIcon,
   KeyRound,
+  Zap,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
 import { NginxLogo, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { NginxServerCard } from '@/components/dashboard/nginx/NginxServerCard';
@@ -122,6 +125,10 @@ export default function NginxDashboardPage() {
   const [testingSSHServerId, setTestingSSHServerId] = useState<string | null>(null);
   const [actionLoadingServerId, setActionLoadingServerId] = useState<string | null>(null);
   const [lastActionResult, setLastActionResult] = useState<{ success: boolean; output: string } | null>(null);
+  const [pendingNginxAction, setPendingNginxAction] = useState<{
+    server: INginxServerData;
+    action: 'install' | 'uninstall';
+  } | null>(null);
 
   // Modals
   const [addServerModalOpen, setAddServerModalOpen] = useState(false);
@@ -591,7 +598,7 @@ export default function NginxDashboardPage() {
   // Execute Nginx Lifecycle Action
   const handleNginxAction = async (
     targetServer: INginxServerData,
-    action: 'install' | 'start' | 'stop' | 'restart' | 'reload' | 'test'
+    action: 'install' | 'uninstall' | 'start' | 'stop' | 'restart' | 'reload' | 'test'
   ) => {
     if (!targetServer?._id) return;
     setActionLoadingServerId(targetServer._id);
@@ -615,6 +622,7 @@ export default function NginxDashboardPage() {
       showToast('error', err.message);
     } finally {
       setActionLoadingServerId(null);
+      setPendingNginxAction(null);
     }
   };
 
@@ -1150,6 +1158,10 @@ export default function NginxDashboardPage() {
                                   showToast('error', `Cannot manage "${server.name}" because it is currently offline or SSH unreachable.`);
                                   return;
                                 }
+                                if (!server.nginxInstalled) {
+                                  setPendingNginxAction({ server, action: 'install' });
+                                  return;
+                                }
                                 handleSelectServer(server);
                               }}
                               className={`transition-colors group ${
@@ -1365,17 +1377,48 @@ export default function NginxDashboardPage() {
                                   </button>
 
                                   {isOnline ? (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleSelectServer(server);
-                                      }}
-                                      className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer"
-                                    >
-                                      <span>Select &amp; Manage Server</span>
-                                      <ChevronRight className="w-3.5 h-3.5 text-blue-200" />
-                                    </button>
+                                    <div className="flex items-center gap-1.5">
+                                      {!server.nginxInstalled ? (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setPendingNginxAction({ server, action: 'install' });
+                                          }}
+                                          disabled={actionLoadingServerId === server._id}
+                                          className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm shadow-emerald-600/30 transition-all flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer disabled:opacity-50"
+                                        >
+                                          <Zap className="w-3.5 h-3.5" />
+                                          <span>Install</span>
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setPendingNginxAction({ server, action: 'uninstall' });
+                                          }}
+                                          disabled={actionLoadingServerId === server._id}
+                                          className="px-2.5 py-1.5 rounded-lg bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer disabled:opacity-50"
+                                          title="Uninstall Nginx from this server"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                          <span>Uninstall</span>
+                                        </button>
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleSelectServer(server);
+                                        }}
+                                        className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer"
+                                      >
+                                        <span>Manage</span>
+                                        <ChevronRight className="w-3.5 h-3.5 text-blue-200" />
+                                      </button>
+                                    </div>
                                   ) : (
                                     <button
                                       type="button"
@@ -1418,6 +1461,10 @@ export default function NginxDashboardPage() {
                         onClick={() => {
                           if (!isOnline) {
                             showToast('error', `Cannot manage "${server.name}" because it is currently offline or SSH unreachable.`);
+                            return;
+                          }
+                          if (!server.nginxInstalled) {
+                            setPendingNginxAction({ server, action: 'install' });
                             return;
                           }
                           handleSelectServer(server);
@@ -1535,17 +1582,48 @@ export default function NginxDashboardPage() {
                             </button>
 
                             {isOnline ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSelectServer(server);
-                                }}
-                                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition flex items-center gap-2 cursor-pointer shrink-0"
-                              >
-                                <span>Select &amp; Manage Server</span>
-                                <ChevronRight className="w-4 h-4" />
-                              </button>
+                              <div className="flex items-center gap-2">
+                                {!server.nginxInstalled ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPendingNginxAction({ server, action: 'install' });
+                                    }}
+                                    disabled={actionLoadingServerId === server._id}
+                                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                  >
+                                    <Zap className="w-3.5 h-3.5" />
+                                    <span>Install Nginx</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPendingNginxAction({ server, action: 'uninstall' });
+                                    }}
+                                    disabled={actionLoadingServerId === server._id}
+                                    className="px-3 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                    title="Uninstall Nginx from this server"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Uninstall</span>
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSelectServer(server);
+                                  }}
+                                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition flex items-center gap-2 cursor-pointer shrink-0"
+                                >
+                                  <span>Manage</span>
+                                  <ChevronRight className="w-4 h-4" />
+                                </button>
+                              </div>
                             ) : (
                               <button
                                 type="button"
@@ -1955,6 +2033,113 @@ export default function NginxDashboardPage() {
             }
           }}
         />
+      )}
+
+      {/* Nginx Install / Uninstall Confirmation Modal */}
+      {pendingNginxAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#0B1120] border border-[#1E293B] rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  pendingNginxAction.action === 'install'
+                    ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                    : 'bg-rose-500/15 border border-rose-500/30 text-rose-400'
+                }`}
+              >
+                {pendingNginxAction.action === 'install' ? (
+                  <Zap className="w-5 h-5" />
+                ) : (
+                  <Trash2 className="w-5 h-5" />
+                )}
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  {pendingNginxAction.action === 'install'
+                    ? 'Confirm Nginx Installation'
+                    : 'Confirm Nginx Uninstallation'}
+                </h3>
+                <p className="text-xs text-slate-400 font-mono">
+                  {pendingNginxAction.server.name} ({pendingNginxAction.server.host})
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {pendingNginxAction.action === 'install' ? (
+                <>
+                  Nginx Web Server daemon is currently not installed on <strong className="text-white">{pendingNginxAction.server.name}</strong>.
+                  Would you like to run the automated setup to install Nginx, start the service, and enable web reverse proxying?
+                </>
+              ) : (
+                <>
+                  Are you sure you want to uninstall Nginx Web Server from <strong className="text-white">{pendingNginxAction.server.name}</strong>?
+                  This will stop Nginx daemon, remove package binaries via SSH, and purge configuration files.
+                </>
+              )}
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 flex-wrap">
+              {pendingNginxAction.action === 'install' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const s = pendingNginxAction.server;
+                    setPendingNginxAction(null);
+                    handleSelectServer(s);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                >
+                  Manage Without Installing
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setPendingNginxAction(null)}
+                disabled={Boolean(actionLoadingServerId)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNginxAction(pendingNginxAction.server, pendingNginxAction.action)}
+                disabled={Boolean(actionLoadingServerId)}
+                className={`px-4 py-2 rounded-xl text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md disabled:opacity-50 ${
+                  pendingNginxAction.action === 'install'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
+                    : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/30'
+                }`}
+              >
+                {actionLoadingServerId === pendingNginxAction.server._id ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>
+                      {pendingNginxAction.action === 'install'
+                        ? 'Installing Nginx...'
+                        : 'Uninstalling Nginx...'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {pendingNginxAction.action === 'install' ? (
+                      <Zap className="w-3.5 h-3.5" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {pendingNginxAction.action === 'install'
+                        ? 'Confirm & Install Nginx'
+                        : 'Confirm & Uninstall Nginx'}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
