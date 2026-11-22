@@ -13,7 +13,7 @@ import {
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { MetricCard } from '@/components/dashboard/MetricCard';
-import { ResourceOverviewChart } from '@/components/dashboard/ResourceOverviewChart';
+import { FleetCommandCenterCard } from '@/components/dashboard/FleetCommandCenterCard';
 import { CloudDistributionChart } from '@/components/dashboard/CloudDistributionChart';
 import { ServerStatusChart } from '@/components/dashboard/ServerStatusChart';
 import { EC2InstancesTable } from '@/components/dashboard/EC2InstancesTable';
@@ -22,6 +22,7 @@ import { RegionChart } from '@/components/dashboard/RegionChart';
 import { RunningServices } from '@/components/dashboard/RunningServices';
 import { RecentAlerts } from '@/components/dashboard/RecentAlerts';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
+import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
 import { useMonitoring } from '@/context/MonitoringContext';
 
 export default function DashboardPage() {
@@ -36,6 +37,8 @@ export default function DashboardPage() {
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeAllViewTab, setActiveAllViewTab] = useState<'all' | 'azure' | 'ec2'>('all');
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
 
   const hasConnectedAws = awsAccounts.some((a) => a.status === 'Connected');
   const hasConnectedAzure = azureSubscriptions.some((s) => s.status === 'Connected');
@@ -155,7 +158,12 @@ export default function DashboardPage() {
           <section aria-label="Performance and Status Overview">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5 items-stretch">
               <div className="col-span-1 md:col-span-2 lg:col-span-6 flex flex-col h-full">
-                <ResourceOverviewChart initialMetric="CPU" />
+                <FleetCommandCenterCard
+                  onOpenTerminal={(target) => {
+                    setTerminalTarget(target);
+                    setTerminalOpen(true);
+                  }}
+                />
               </div>
               <div className="col-span-1 md:col-span-1 lg:col-span-3 flex flex-col h-full">
                 <CloudDistributionChart />
@@ -332,6 +340,18 @@ export default function DashboardPage() {
             </div>
           </section>
         </main>
+
+        {/* Live PuTTY SSH Terminal Modal from Quick Launchpad */}
+        {terminalOpen && terminalTarget && (
+          <SSHTerminalModal
+            isOpen={terminalOpen}
+            target={terminalTarget}
+            onClose={() => {
+              setTerminalOpen(false);
+              setTerminalTarget(null);
+            }}
+          />
+        )}
       </div>
     </div>
   );
