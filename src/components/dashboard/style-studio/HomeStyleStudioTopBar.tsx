@@ -83,27 +83,27 @@ export function HomeStyleStudioTopBar() {
       {/* Main Bar (Always Visible at the Very Top of Dashboard) */}
       <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         {/* Left: Branding & Studio Identity */}
-        <div className="flex items-center gap-3.5">
+        <div className="flex items-center gap-3.5 shrink-0">
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-500/15 to-purple-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shadow-inner shrink-0">
             <Sparkles className="w-6 h-6 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight whitespace-nowrap">
                 Home Style Studio
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/30">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/30 whitespace-nowrap">
                 LIVE UI CUSTOMIZER
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Transform entire dashboard colors, 3D animations, component layers, or customize individual modules
+            <p className="text-xs text-slate-400 mt-0.5 whitespace-nowrap">
+              Customize theme colors, 3D styles & module layers
             </p>
           </div>
         </div>
 
         {/* Center: Theme Selector Dropdown Option (Matches User Design) */}
-        <div className="flex-1 min-w-0 flex items-center justify-start lg:justify-center gap-3">
+        <div className="flex items-center justify-start gap-2.5 shrink-0">
           <div className="relative shrink-0" ref={themeDropdownRef}>
             {/* Dropdown Button exactly matching user screenshot */}
             <button
