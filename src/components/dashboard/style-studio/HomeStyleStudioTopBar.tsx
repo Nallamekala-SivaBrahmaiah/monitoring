@@ -84,8 +84,8 @@ export function HomeStyleStudioTopBar() {
           </div>
         </div>
 
-        {/* Center: 8 Theme Preset Quick Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
+        {/* Center: Theme Preset Quick Pills */}
+        <div className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto py-1 px-1 scrollbar-none">
           {THEME_PRESETS.map((preset) => {
             const isActive = activePreset === preset.id;
             return (
@@ -112,7 +112,7 @@ export function HomeStyleStudioTopBar() {
         </div>
 
         {/* Right: Quick Actions & Expand Toggle */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 pl-2">
           {/* Customize Individual Modules */}
           <button
             type="button"

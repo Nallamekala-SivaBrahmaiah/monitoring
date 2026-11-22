@@ -279,24 +279,24 @@ export default function HomeStyleStudioPage() {
           {/* TAB 1: GLOBAL APPEARANCE */}
           {activeTab === 'global' && (
             <div className="space-y-6">
-              {/* White to Dark Switcher Bar */}
+              {/* Quick Theme Switcher Bar */}
               <div className="bg-[#0B1120] border border-cyan-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-sm font-bold text-white">White Dashboard to Dark/Colorful Transformation</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Toggle between crisp executive daylight white and high-tech dark modes with one click</p>
+                  <h3 className="text-sm font-bold text-white">Quick Theme Switcher</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Toggle between high-contrast dark cyberpunk and royal midnight violet modes with one click</p>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
                   <button
-                    onClick={() => setThemePreset('modern-white')}
+                    onClick={() => setThemePreset('midnight-purple')}
                     className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                      activePreset === 'modern-white'
-                        ? 'bg-white text-slate-900 border-2 border-blue-600 shadow'
-                        : 'bg-white/10 hover:bg-white/20 text-slate-200 border border-white/20'
+                      activePreset === 'midnight-purple'
+                        ? 'bg-purple-600 text-white border-2 border-purple-400 shadow'
+                        : 'bg-purple-950/60 hover:bg-purple-900/60 text-purple-200 border border-purple-800'
                     }`}
                   >
-                    <Sun className="w-4 h-4 text-amber-500" />
-                    <span>Modern White</span>
+                    <Sparkles className="w-4 h-4 text-purple-300" />
+                    <span>Midnight Purple</span>
                   </button>
                   <button
                     onClick={() => setThemePreset('dark-neon')}
