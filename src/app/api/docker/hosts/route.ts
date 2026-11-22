@@ -42,10 +42,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Strictly filter: only display servers where Docker is actually installed & detected
+    // Strictly filter: ONLY display servers where Docker is actually installed inside the server
     const dockerInstalledServers = combinedServers.filter((s: any) => {
-      const docker = s.docker || {};
-      const isDetected = Boolean(docker.detected);
+      const docker = s.docker;
+      if (!docker) return false;
+
+      // If docker is explicitly not installed or not detected, strictly exclude
+      if (docker.detected === false || docker.status === 'not_installed') {
+        return false;
+      }
+
+      const isDetected = docker.detected === true;
       const isRunning = docker.status === 'running';
       const hasContainers = Array.isArray(docker.containers) && docker.containers.length > 0;
       const hasValidVersion = Boolean(
@@ -53,6 +60,7 @@ export async function GET(request: NextRequest) {
         !docker.version.includes('NOT_INSTALLED') &&
         docker.version.trim() !== ''
       );
+
       return isDetected || isRunning || hasContainers || hasValidVersion;
     });
 
