@@ -13,7 +13,7 @@ import {
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { MetricCard } from '@/components/dashboard/MetricCard';
-import { FleetCommandCenterCard } from '@/components/dashboard/FleetCommandCenterCard';
+import { MultiCloudModulesDeck } from '@/components/dashboard/MultiCloudModulesDeck';
 import { CloudDistributionChart } from '@/components/dashboard/CloudDistributionChart';
 import { ServerStatusChart } from '@/components/dashboard/ServerStatusChart';
 import { EC2InstancesTable } from '@/components/dashboard/EC2InstancesTable';
@@ -158,7 +158,7 @@ export default function DashboardPage() {
           <section aria-label="Performance and Status Overview">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5 items-stretch">
               <div className="col-span-1 md:col-span-2 lg:col-span-6 flex flex-col h-full">
-                <FleetCommandCenterCard
+                <MultiCloudModulesDeck
                   onOpenTerminal={(target) => {
                     setTerminalTarget(target);
                     setTerminalOpen(true);
