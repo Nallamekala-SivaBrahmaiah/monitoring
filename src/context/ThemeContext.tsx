@@ -231,13 +231,39 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
     } catch {}
 
-    // Apply CSS variables
+    // Apply CSS variables & dynamic style overrides
     if (typeof document !== 'undefined') {
       const root = document.documentElement;
       root.style.setProperty('--background', backgroundColor);
       root.style.setProperty('--card-bg', cardBackground);
       root.style.setProperty('--card-border', borderColor);
       document.body.style.backgroundColor = backgroundColor;
+
+      let styleEl = document.getElementById('dynamic-theme-overrides') as HTMLStyleElement | null;
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'dynamic-theme-overrides';
+        document.head.appendChild(styleEl);
+      }
+
+      styleEl.textContent = `
+        body, #app-theme-wrapper {
+          background-color: ${backgroundColor} !important;
+        }
+        .min-h-screen {
+          background-color: transparent !important;
+        }
+        .bg-\\[\\#111A2E\\], .bg-\\[\\#111a2e\\], .bg-\\[\\#0D1526\\], .bg-\\[\\#0d1526\\], .bg-\\[\\#0D131F\\] {
+          background-color: ${cardBackground} !important;
+        }
+        .border-\\[\\#1E293B\\], .border-\\[\\#1e293b\\] {
+          border-color: ${borderColor} !important;
+        }
+        header.bg-\\[\\#0B1120\\], header {
+          background-color: ${cardBackground} !important;
+          border-color: ${borderColor} !important;
+        }
+      `;
     }
   }, [
     activePreset,
@@ -316,19 +342,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         resetTheme,
       }}
     >
-      {/* Global Ambient Background Wallpaper Layer */}
-      {backgroundImage && backgroundImage.trim() !== '' && (
-        <div
-          aria-hidden="true"
-          className="fixed inset-0 pointer-events-none z-0 transition-all duration-700 bg-cover bg-center bg-no-repeat bg-fixed"
-          style={{
-            backgroundImage: `url(${backgroundImage})`,
-            opacity: backgroundOpacity,
-            filter: backgroundBlur > 0 ? `blur(${backgroundBlur}px)` : 'none',
-          }}
-        />
-      )}
-      <div className="relative z-10 min-h-screen flex flex-col">{children}</div>
+      <div
+        id="app-theme-wrapper"
+        className="relative min-h-screen flex flex-col transition-colors duration-300"
+        style={{
+          backgroundColor: backgroundColor,
+        }}
+      >
+        {/* Global Ambient Background Wallpaper Layer */}
+        {backgroundImage && backgroundImage.trim() !== '' && (
+          <div
+            id="app-theme-wallpaper"
+            aria-hidden="true"
+            className="fixed inset-0 pointer-events-none z-0 transition-opacity duration-500 bg-cover bg-center bg-no-repeat bg-fixed"
+            style={{
+              backgroundImage: `url("${backgroundImage}")`,
+              opacity: backgroundOpacity,
+              filter: backgroundBlur > 0 ? `blur(${backgroundBlur}px)` : 'none',
+            }}
+          />
+        )}
+        <div className="relative z-10 flex flex-col flex-1 bg-transparent">
+          {children}
+        </div>
+      </div>
     </ThemeContext.Provider>
   );
 }

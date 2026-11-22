@@ -26,7 +26,28 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-[#0b1120] text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var saved = localStorage.getItem('mcm_theme_config_v2');
+                  if (saved) {
+                    var c = JSON.parse(saved);
+                    if (c.backgroundColor) {
+                      document.documentElement.style.setProperty('--background', c.backgroundColor);
+                      document.documentElement.style.setProperty('--card-bg', c.cardBackground || '#0D131F');
+                      document.documentElement.style.setProperty('--card-border', c.borderColor || '#1E293B');
+                    }
+                  }
+                } catch(e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body className="text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
         <Suspense fallback={null}>
           <NavigationScrollManager />
         </Suspense>

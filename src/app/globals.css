@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0b1120;
+  --background: #030712;
   --foreground: #f1f5f9;
-  --card-bg: #111a2e;
+  --card-bg: #0d131f;
   --card-border: #1e293b;
   --aws-orange: #ff9900;
   --azure-blue: #0089d6;
@@ -15,12 +15,42 @@ html {
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: var(--background, #030712) !important;
+  color: var(--foreground, #f1f5f9);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   overflow-x: hidden;
   min-height: 100vh;
   overflow-anchor: none; /* Prevents browser scroll anchoring from shifting view when cards/tables mount */
+}
+
+/* Ensure full page containers are transparent so active theme background & wallpaper show through */
+.min-h-screen {
+  background-color: transparent !important;
+}
+
+/* Dynamic Card & Panel styling */
+.bg-\[\#111A2E\],
+.bg-\[\#111a2e\],
+.bg-\[\#0D1526\],
+.bg-\[\#0d1526\],
+.bg-\[\#0B1120\],
+.bg-\[\#0b1120\],
+.bg-\[\#070B14\] {
+  background-color: var(--card-bg, #0d131f) !important;
+}
+
+.border-\[\#1E293B\],
+.border-\[\#1e293b\],
+.border-\[\#1E3A8A\],
+.border-\[\#334155\] {
+  border-color: var(--card-border, #1e293b) !important;
+}
+
+/* Header adapts to active card theme */
+header.bg-\[\#0B1120\],
+header {
+  background-color: var(--card-bg, #0d131f) !important;
+  border-color: var(--card-border, #1e293b) !important;
 }
 
 main {

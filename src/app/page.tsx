@@ -41,7 +41,7 @@ export default function DashboardPage() {
   const hasConnectedAzure = azureSubscriptions.some((s) => s.status === 'Connected');
 
   return (
-    <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-transparent text-slate-100 flex flex-col">
       <Sidebar
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
