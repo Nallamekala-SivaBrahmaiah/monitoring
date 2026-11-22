@@ -68,6 +68,16 @@ export function SSHTerminalModal({
   const [isUnconfigured, setIsUnconfigured] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(true);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
+  const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
+  const copyTimeoutRef = useRef<any>(null);
+
+  const showCopyBadge = useCallback(() => {
+    setCopiedNotification(true);
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    copyTimeoutRef.current = setTimeout(() => {
+      setCopiedNotification(false);
+    }, 1500);
+  }, []);
 
   const activeSessionIdRef = useRef<string | null>(null);
   const streamAbortControllerRef = useRef<AbortController | null>(null);
@@ -260,8 +270,9 @@ export function SSHTerminalModal({
         foreground: '#BBBBBB',
         cursor: '#FFFFFF',
         cursorAccent: '#000000',
-        selectionBackground: 'rgba(255, 255, 255, 0.35)',
+        selectionBackground: 'rgba(59, 130, 246, 0.45)',
         selectionForeground: '#FFFFFF',
+        selectionInactiveBackground: 'rgba(59, 130, 246, 0.25)',
         black: '#000000',
         red: '#BB0000',
         green: '#00BB00',
@@ -292,18 +303,61 @@ export function SSHTerminalModal({
     xtermInstanceRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Listen for keystrokes
+    // Listen for keystrokes - immediately clear any selection when user types
     term.onData((data) => {
+      if (term.hasSelection()) {
+        term.clearSelection();
+      }
       sendInput(data);
     });
 
-    // PuTTY select-to-copy behavior: text selection automatically copies to clipboard
-    term.onSelectionChange(() => {
-      const selection = term.getSelection();
-      if (selection && selection.length > 0) {
-        navigator.clipboard.writeText(selection).catch(() => {});
+    // PuTTY drag-to-copy & click-to-clear selection handlers
+    let isDragging = false;
+    let mouseDownPos = { x: 0, y: 0 };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button === 0) {
+        isDragging = false;
+        mouseDownPos = { x: e.clientX, y: e.clientY };
       }
-    });
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (e.buttons === 1) {
+        const dx = Math.abs(e.clientX - mouseDownPos.x);
+        const dy = Math.abs(e.clientY - mouseDownPos.y);
+        if (dx > 4 || dy > 4) {
+          isDragging = true;
+        }
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (e.button === 0) {
+        if (!isDragging) {
+          // Single click anywhere: clear selection immediately
+          if (term.hasSelection()) {
+            term.clearSelection();
+          }
+        } else {
+          // Finished drag-selecting text: copy to clipboard
+          const sel = term.getSelection();
+          if (sel && sel.trim().length > 0) {
+            navigator.clipboard.writeText(sel).then(() => {
+              showCopyBadge();
+            }).catch(() => {});
+          }
+        }
+        isDragging = false;
+      }
+    };
+
+    const termEl = terminalRef.current;
+    if (termEl) {
+      termEl.addEventListener('mousedown', handleMouseDown);
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
 
     // PuTTY keyboard shortcuts (Shift+Insert paste, Ctrl+Shift+C/V)
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
@@ -411,6 +465,9 @@ export function SSHTerminalModal({
   // PuTTY Right-click paste
   const handleContextMenu = async (e: React.MouseEvent) => {
     e.preventDefault();
+    if (xtermInstanceRef.current && xtermInstanceRef.current.hasSelection()) {
+      xtermInstanceRef.current.clearSelection();
+    }
     try {
       if (navigator.clipboard && navigator.clipboard.readText) {
         const text = await navigator.clipboard.readText();
@@ -478,6 +535,11 @@ export function SSHTerminalModal({
               <span className="text-[#D4D4D4] font-medium tracking-wide truncate">
                 {titleText}
               </span>
+              {copiedNotification && (
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1 animate-in fade-in">
+                  <span>✓ Copied to clipboard</span>
+                </span>
+              )}
             </div>
 
             {/* Right: Windows-style Minimize, Maximize/Restore, Close controls */}
@@ -550,7 +612,7 @@ export function SSHTerminalModal({
           <div className="flex-1 bg-[#000000] p-1 w-full h-full overflow-hidden relative cursor-text putty-terminal">
             <div
               ref={terminalRef}
-              className="w-full h-full select-text"
+              className="w-full h-full select-none"
               style={{ minHeight: '100%', height: '100%' }}
             />
 
@@ -661,6 +723,15 @@ export function SSHTerminalModal({
         .putty-terminal .xterm {
           height: 100% !important;
           padding: 2px 4px !important;
+          user-select: none !important;
+          -webkit-user-select: none !important;
+        }
+        .putty-terminal .xterm-selection div {
+          background-color: rgba(59, 130, 246, 0.45) !important;
+        }
+        .putty-terminal ::selection {
+          background: rgba(59, 130, 246, 0.45) !important;
+          color: #ffffff !important;
         }
         .putty-terminal .xterm-viewport {
           background-color: #000000 !important;

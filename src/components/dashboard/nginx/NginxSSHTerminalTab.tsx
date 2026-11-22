@@ -162,8 +162,45 @@ export function NginxSSHTerminalTab({ activeServer }: NginxSSHTerminalTabProps) 
         fit.fit();
 
         term.onData((inputData) => {
+          if (term.hasSelection()) {
+            term.clearSelection();
+          }
           sendInput(inputData);
         });
+
+        // PuTTY select-to-copy & click-to-clear selection
+        let isDragging = false;
+        let startPos = { x: 0, y: 0 };
+
+        const el = terminalRef.current;
+        if (el) {
+          el.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+              isDragging = false;
+              startPos = { x: e.clientX, y: e.clientY };
+            }
+          });
+          window.addEventListener('mousemove', (e) => {
+            if (e.buttons === 1) {
+              const dx = Math.abs(e.clientX - startPos.x);
+              const dy = Math.abs(e.clientY - startPos.y);
+              if (dx > 4 || dy > 4) isDragging = true;
+            }
+          });
+          window.addEventListener('mouseup', (e) => {
+            if (e.button === 0) {
+              if (!isDragging) {
+                if (term.hasSelection()) term.clearSelection();
+              } else {
+                const sel = term.getSelection();
+                if (sel && sel.trim().length > 0) {
+                  navigator.clipboard.writeText(sel).catch(() => {});
+                }
+              }
+              isDragging = false;
+            }
+          });
+        }
 
         xtermRef.current = term;
         fitAddonRef.current = fit;
