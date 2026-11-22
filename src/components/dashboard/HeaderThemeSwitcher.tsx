@@ -2,23 +2,37 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { Palette, Check, Sparkles, Sliders, Image, RotateCcw, ExternalLink, X } from 'lucide-react';
+import {
+  Palette,
+  Check,
+  RotateCcw,
+  ExternalLink,
+  X,
+  UploadCloud,
+  Loader2,
+  Trash2,
+} from 'lucide-react';
 import { useTheme, THEME_PRESETS, WALLPAPER_OPTIONS } from '@/context/ThemeContext';
 
-export function HeaderThemeSwitcher() {
+export default function HeaderThemeSwitcher() {
   const {
     activePreset,
     backgroundColor,
     backgroundImage,
     backgroundOpacity,
+    customWallpapers,
     setThemePreset,
     setBackgroundImage,
     setBackgroundOpacity,
+    uploadCustomWallpaper,
+    deleteCustomWallpaper,
     resetTheme,
   } = useTheme();
 
   const [isOpen, setIsOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const quickFileRef = useRef<HTMLInputElement>(null);
 
   // Close on outside click or Escape
   useEffect(() => {
@@ -42,7 +56,19 @@ export function HeaderThemeSwitcher() {
     };
   }, [isOpen]);
 
-  const activePresetObj = THEME_PRESETS.find((p) => p.id === activePreset) || THEME_PRESETS[0];
+  const handleQuickUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      await uploadCustomWallpaper(file);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -85,14 +111,14 @@ export function HeaderThemeSwitcher() {
                 type="button"
                 onClick={resetTheme}
                 title="Reset to default theme"
-                className="p-1 text-slate-400 hover:text-white hover:bg-[#18233C] rounded-lg transition"
+                className="p-1 text-slate-400 hover:text-white hover:bg-[#18233C] rounded-lg transition cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="p-1 text-slate-400 hover:text-white hover:bg-[#18233C] rounded-lg transition"
+                className="p-1 text-slate-400 hover:text-white hover:bg-[#18233C] rounded-lg transition cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -135,13 +161,76 @@ export function HeaderThemeSwitcher() {
             </div>
           </div>
 
-          {/* Section 2: Background Wallpapers & Images */}
+          {/* Section 2: Background Wallpapers & Upload Option */}
           <div className="space-y-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-              2. Background Wallpapers & Images
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                2. Wallpaper Images
+              </span>
 
-            <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+              {/* Quick Upload Button */}
+              <button
+                type="button"
+                onClick={() => quickFileRef.current?.click()}
+                disabled={isUploading}
+                className="text-[10px] font-bold text-sky-400 hover:text-sky-300 flex items-center gap-1 transition cursor-pointer"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-3 h-3" />
+                    <span>Upload Image</span>
+                  </>
+                )}
+              </button>
+              <input
+                ref={quickFileRef}
+                type="file"
+                accept="image/*"
+                onChange={handleQuickUpload}
+                className="hidden"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 max-h-52 overflow-y-auto pr-1 scrollbar-thin">
+              {/* Custom Uploaded Wallpapers (if any) */}
+              {customWallpapers.map((wp) => {
+                const isSelected = backgroundImage === wp.url;
+                return (
+                  <button
+                    key={wp.id}
+                    type="button"
+                    onClick={() => setBackgroundImage(wp.url)}
+                    className={`relative rounded-xl border p-1 text-left transition overflow-hidden group cursor-pointer ${
+                      isSelected
+                        ? 'border-sky-500 ring-2 ring-sky-500/50'
+                        : 'border-[#1E293B] hover:border-slate-500'
+                    }`}
+                  >
+                    <div
+                      className="w-full h-12 rounded-lg bg-cover bg-center flex items-center justify-center relative overflow-hidden bg-[#070B14]"
+                      style={{ backgroundImage: `url("${wp.url}")` }}
+                    >
+                      <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors" />
+
+                      {isSelected && (
+                        <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-sky-500 text-white flex items-center justify-center shadow">
+                          <Check className="w-2.5 h-2.5" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-[9px] font-bold text-sky-300 truncate mt-1 px-1">
+                      {wp.title}
+                    </div>
+                  </button>
+                );
+              })}
+
+              {/* Built-in Wallpapers */}
               {WALLPAPER_OPTIONS.map((wp) => {
                 const isSelected = backgroundImage === wp.url;
                 const isNone = wp.id === 'none';
@@ -160,7 +249,7 @@ export function HeaderThemeSwitcher() {
                     <div
                       className="w-full h-12 rounded-lg bg-cover bg-center flex items-center justify-center relative overflow-hidden bg-[#070B14]"
                       style={{
-                        backgroundImage: isNone ? 'none' : `url(${wp.url})`,
+                        backgroundImage: isNone ? 'none' : `url("${wp.url}")`,
                       }}
                     >
                       {isNone ? (
@@ -224,3 +313,5 @@ export function HeaderThemeSwitcher() {
     </div>
   );
 }
+
+export { HeaderThemeSwitcher };

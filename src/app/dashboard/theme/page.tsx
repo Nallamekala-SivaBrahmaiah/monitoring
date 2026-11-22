@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Link from 'next/link';
 import {
   Palette,
@@ -9,16 +9,17 @@ import {
   RotateCcw,
   Sliders,
   Sparkles,
-  Layers,
   Eye,
-  Layout,
-  Sun,
-  Moon,
+  UploadCloud,
+  Trash2,
+  Link as LinkIcon,
+  Loader2,
+  FolderOpen,
+  ArrowRight,
   Shield,
   Activity,
-  Cpu,
   Server,
-  Box,
+  Cloud,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -33,6 +34,7 @@ export default function ThemeCustomizerPage() {
     backgroundImage,
     backgroundOpacity,
     backgroundBlur,
+    customWallpapers,
     setThemePreset,
     setBackgroundColor,
     setCardBackground,
@@ -40,18 +42,70 @@ export default function ThemeCustomizerPage() {
     setBackgroundImage,
     setBackgroundOpacity,
     setBackgroundBlur,
+    uploadCustomWallpaper,
+    addCustomWallpaperUrl,
+    deleteCustomWallpaper,
     resetTheme,
   } = useTheme();
 
   const [savedToast, setSavedToast] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [urlInput, setUrlInput] = useState('');
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleApplyToast = () => {
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 2500);
   };
 
+  const handleFileUpload = async (file: File) => {
+    if (!file) return;
+    setIsUploading(true);
+    setUploadError(null);
+    try {
+      await uploadCustomWallpaper(file);
+      handleApplyToast();
+    } catch (err: any) {
+      setUploadError(err.message || 'Failed to upload image');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileUpload(file);
+      e.target.value = '';
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  };
+
+  const handleAddUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!urlInput.trim()) return;
+    try {
+      new URL(urlInput.trim()); // simple validate
+      addCustomWallpaperUrl(urlInput.trim(), 'Custom Image');
+      setUrlInput('');
+      handleApplyToast();
+    } catch {
+      setUploadError('Please enter a valid image URL starting with http:// or https://');
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[var(--background,#030712)] text-slate-100 flex flex-col transition-colors duration-300">
+    <div className="min-h-screen bg-transparent text-slate-100 flex flex-col transition-colors duration-300">
       <Sidebar />
       <div className="lg:pl-64 flex flex-col flex-1 min-w-0">
         <Header />
@@ -68,7 +122,7 @@ export default function ThemeCustomizerPage() {
                   Appearance & Background Customizer
                 </h1>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Customize platform background colors, high-res wallpapers, card contrast, and aesthetic themes.
+                  Upload custom wallpapers, pick high-res cloud images, select background color models, and tune theme contrast.
                 </p>
               </div>
             </div>
@@ -103,7 +157,7 @@ export default function ThemeCustomizerPage() {
                   <span>1. Background Color Models</span>
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Select a pre-tuned enterprise color palette. Cards and borders adapt automatically.
+                  Select a pre-tuned enterprise color palette. Cards, sidebar, and borders adapt automatically.
                 </p>
               </div>
               <span className="text-xs font-mono text-slate-400">
@@ -182,13 +236,179 @@ export default function ThemeCustomizerPage() {
             </div>
           </section>
 
-          {/* Section 2: High-Resolution Wallpaper Images Gallery */}
+          {/* Section 2: Upload Custom Wallpaper */}
+          <section className="bg-[var(--card-bg,#0D131F)] border border-[var(--card-border,#1E293B)] rounded-2xl p-5 space-y-4 shadow-xl transition-colors">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <UploadCloud className="w-4 h-4 text-sky-400" />
+                  <span>2. Upload Custom Wallpaper Image</span>
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Upload an image from your device or paste a web URL to use as your dashboard background.
+                </p>
+              </div>
+
+              {backgroundImage && (
+                <button
+                  type="button"
+                  onClick={() => setBackgroundImage('')}
+                  className="self-start sm:self-auto text-xs text-slate-400 hover:text-rose-400 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#111A2E] border border-[#1E293B] transition"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Remove Active Wallpaper</span>
+                </button>
+              )}
+            </div>
+
+            {/* Drag & Drop Area */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragOver(true);
+              }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2.5 ${
+                isDragOver
+                  ? 'border-blue-500 bg-blue-500/10'
+                  : 'border-[#1E293B] hover:border-blue-500/60 bg-[#070B14]/60 hover:bg-[#070B14]'
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+
+              {isUploading ? (
+                <div className="flex flex-col items-center gap-2 py-3 text-sky-400">
+                  <Loader2 className="w-8 h-8 animate-spin" />
+                  <span className="text-xs font-semibold">Uploading & applying wallpaper...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="w-12 h-12 rounded-2xl bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center shadow-md">
+                    <FolderOpen className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs sm:text-sm font-bold text-white">
+                      Click to choose an image file, or drag and drop here
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Supports JPG, PNG, WebP, SVG, and GIF up to 15MB
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition">
+                    Browse Computer Files
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {uploadError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between">
+                <span>{uploadError}</span>
+                <button
+                  type="button"
+                  onClick={() => setUploadError(null)}
+                  className="text-rose-400 hover:text-white font-bold ml-2"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Paste URL Option */}
+            <form onSubmit={handleAddUrl} className="flex flex-col sm:flex-row items-stretch gap-2 pt-1">
+              <div className="relative flex-1">
+                <LinkIcon className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="url"
+                  placeholder="Or paste an image web link (e.g. https://images.unsplash.com/...)"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-xs bg-[#070B14] border border-[#1E293B] rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-4 py-2 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-xl transition cursor-pointer shrink-0"
+              >
+                Apply Image Link
+              </button>
+            </form>
+
+            {/* Uploaded Custom Wallpapers Strip */}
+            {customWallpapers.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-[#1E293B]/60">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Your Uploaded Wallpapers ({customWallpapers.length})
+                </span>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {customWallpapers.map((wp) => {
+                    const isSelected = backgroundImage === wp.url;
+
+                    return (
+                      <div
+                        key={wp.id}
+                        onClick={() => setBackgroundImage(wp.url)}
+                        className={`relative rounded-xl border p-1 text-left transition overflow-hidden group cursor-pointer ${
+                          isSelected
+                            ? 'border-sky-500 ring-2 ring-sky-500/50 bg-sky-500/10'
+                            : 'border-[#1E293B] bg-[#070B14] hover:border-slate-500'
+                        }`}
+                      >
+                        <div
+                          className="w-full h-20 rounded-lg bg-cover bg-center relative overflow-hidden bg-[#070B14]"
+                          style={{ backgroundImage: `url("${wp.url}")` }}
+                        >
+                          <div className="absolute inset-0 bg-black/25 group-hover:bg-black/10 transition-colors" />
+
+                          {isSelected && (
+                            <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-sky-500 text-white text-[9px] font-bold flex items-center gap-1 shadow">
+                              <Check className="w-2.5 h-2.5" />
+                              <span>Active</span>
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteCustomWallpaper(wp.id);
+                            }}
+                            title="Delete custom wallpaper"
+                            className="absolute bottom-1.5 right-1.5 w-6 h-6 rounded-md bg-black/70 hover:bg-rose-600 text-slate-300 hover:text-white flex items-center justify-center transition shadow"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        <div className="px-1.5 py-1">
+                          <div className="text-[10px] font-bold text-slate-200 truncate">{wp.title}</div>
+                          <div className="text-[9px] text-slate-500">{wp.date}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Section 3: High-Resolution Wallpaper Images Gallery */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <ImageIcon className="w-4 h-4 text-purple-400" />
-                  <span>2. Background Wallpapers & Images</span>
+                  <span>3. Built-In Cloud & Datacenter Wallpapers</span>
                 </h2>
                 <p className="text-xs text-slate-400">
                   Select a high-tech datacenter or cloud mesh background to render behind your platform.
@@ -215,7 +435,7 @@ export default function ThemeCustomizerPage() {
                     <div
                       className="w-full h-36 bg-cover bg-center relative flex items-center justify-center overflow-hidden bg-[#070B14]"
                       style={{
-                        backgroundImage: isNone ? 'none' : `url(${wp.url})`,
+                        backgroundImage: isNone ? 'none' : `url("${wp.url}")`,
                       }}
                     >
                       {isNone ? (
@@ -253,12 +473,12 @@ export default function ThemeCustomizerPage() {
             </div>
           </section>
 
-          {/* Section 3: Fine-Tuning Controls (Opacity & Blur) */}
+          {/* Section 4: Fine-Tuning Controls (Opacity & Blur) */}
           {backgroundImage && backgroundImage.trim() !== '' && (
             <section className="bg-[var(--card-bg,#0D131F)] border border-[var(--card-border,#1E293B)] rounded-2xl p-5 space-y-4 shadow-xl transition-colors">
               <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-emerald-400" />
-                <span>3. Wallpaper Fine-Tuning</span>
+                <span>4. Wallpaper Fine-Tuning</span>
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -313,11 +533,11 @@ export default function ThemeCustomizerPage() {
             </section>
           )}
 
-          {/* Section 4: Custom Color Pickers */}
+          {/* Section 5: Custom Color Pickers */}
           <section className="bg-[var(--card-bg,#0D131F)] border border-[var(--card-border,#1E293B)] rounded-2xl p-5 space-y-4 shadow-xl transition-colors">
             <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>4. Custom Hex Color Controls</span>
+              <span>5. Custom Hex Color Controls</span>
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -380,11 +600,11 @@ export default function ThemeCustomizerPage() {
             </div>
           </section>
 
-          {/* Section 5: Live Component Preview Canvas */}
+          {/* Section 6: Live Dashboard Component Preview Canvas */}
           <section className="space-y-3">
             <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <Eye className="w-4 h-4 text-sky-400" />
-              <span>5. Live Dashboard Component Preview</span>
+              <span>6. Live Dashboard Component Preview</span>
             </h3>
 
             <div

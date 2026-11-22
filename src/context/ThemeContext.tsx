@@ -164,6 +164,13 @@ export const WALLPAPER_OPTIONS: WallpaperOption[] = [
   },
 ];
 
+export interface CustomWallpaper {
+  id: string;
+  title: string;
+  url: string;
+  date: string;
+}
+
 interface ThemeContextType {
   activePreset: string;
   backgroundColor: string;
@@ -172,6 +179,7 @@ interface ThemeContextType {
   backgroundImage: string;
   backgroundOpacity: number;
   backgroundBlur: number;
+  customWallpapers: CustomWallpaper[];
   setThemePreset: (presetId: string) => void;
   setBackgroundColor: (color: string) => void;
   setCardBackground: (color: string) => void;
@@ -179,6 +187,9 @@ interface ThemeContextType {
   setBackgroundImage: (url: string) => void;
   setBackgroundOpacity: (opacity: number) => void;
   setBackgroundBlur: (blur: number) => void;
+  uploadCustomWallpaper: (file: File) => Promise<string>;
+  addCustomWallpaperUrl: (url: string, title?: string) => void;
+  deleteCustomWallpaper: (id: string) => void;
   resetTheme: () => void;
 }
 
@@ -194,6 +205,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [backgroundImage, setBackgroundImageState] = useState<string>('');
   const [backgroundOpacity, setBackgroundOpacityState] = useState<number>(0.18);
   const [backgroundBlur, setBackgroundBlurState] = useState<number>(0);
+  const [customWallpapers, setCustomWallpapers] = useState<CustomWallpaper[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load saved theme on mount
@@ -209,6 +221,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (config.backgroundImage !== undefined) setBackgroundImageState(config.backgroundImage);
         if (config.backgroundOpacity !== undefined) setBackgroundOpacityState(config.backgroundOpacity);
         if (config.backgroundBlur !== undefined) setBackgroundBlurState(config.backgroundBlur);
+        if (Array.isArray(config.customWallpapers)) setCustomWallpapers(config.customWallpapers);
       }
     } catch {}
     setIsLoaded(true);
@@ -227,6 +240,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         backgroundImage,
         backgroundOpacity,
         backgroundBlur,
+        customWallpapers,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
     } catch {}
@@ -312,6 +326,76 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setBackgroundBlurState(Math.max(0, Math.min(blur, 20)));
   };
 
+  const uploadCustomWallpaper = async (file: File): Promise<string> => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/theme/upload-wallpaper', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Server upload failed');
+      }
+
+      const data = await res.json();
+      const newWp: CustomWallpaper = {
+        id: `wp_${Date.now()}`,
+        title: data.title || file.name,
+        url: data.url,
+        date: new Date().toLocaleDateString(),
+      };
+
+      setCustomWallpapers((prev) => [newWp, ...prev.filter((w) => w.url !== data.url)]);
+      setBackgroundImage(data.url);
+      return data.url;
+    } catch {
+      // Local FileReader fallback for offline or zero-upload restrictions
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64Url = reader.result as string;
+          const newWp: CustomWallpaper = {
+            id: `wp_${Date.now()}`,
+            title: file.name,
+            url: base64Url,
+            date: new Date().toLocaleDateString(),
+          };
+          setCustomWallpapers((prev) => [newWp, ...prev]);
+          setBackgroundImage(base64Url);
+          resolve(base64Url);
+        };
+        reader.onerror = () => reject(new Error('Failed to read local file'));
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+
+  const addCustomWallpaperUrl = (url: string, title?: string) => {
+    if (!url || !url.trim()) return;
+    const cleanUrl = url.trim();
+    const newWp: CustomWallpaper = {
+      id: `wp_${Date.now()}`,
+      title: title || 'Custom Web Image',
+      url: cleanUrl,
+      date: new Date().toLocaleDateString(),
+    };
+    setCustomWallpapers((prev) => [newWp, ...prev.filter((w) => w.url !== cleanUrl)]);
+    setBackgroundImage(cleanUrl);
+  };
+
+  const deleteCustomWallpaper = (id: string) => {
+    setCustomWallpapers((prev) => {
+      const target = prev.find((w) => w.id === id);
+      if (target && backgroundImage === target.url) {
+        setBackgroundImage('');
+      }
+      return prev.filter((w) => w.id !== id);
+    });
+  };
+
   const resetTheme = () => {
     setThemePreset('obsidian');
     setBackgroundImageState('');
@@ -332,6 +416,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         backgroundImage,
         backgroundOpacity,
         backgroundBlur,
+        customWallpapers,
         setThemePreset,
         setBackgroundColor,
         setCardBackground,
@@ -339,6 +424,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setBackgroundImage,
         setBackgroundOpacity,
         setBackgroundBlur,
+        uploadCustomWallpaper,
+        addCustomWallpaperUrl,
+        deleteCustomWallpaper,
         resetTheme,
       }}
     >
