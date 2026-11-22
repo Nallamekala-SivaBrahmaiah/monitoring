@@ -21,6 +21,8 @@ import {
   X,
   Check,
   Activity,
+  LayoutGrid,
+  Gauge,
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { MetricType, ResourceMetricPoint } from '@/types/monitoring';
@@ -207,8 +209,9 @@ export function ResourceOverviewChart({
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>(initialMetric);
   const [rawList, setRawList] = useState<any[]>([]);
-  // Requirement: Do not automatically select a server when the dashboard loads.
-  const [selectedServer, setSelectedServer] = useState<string | null>(null);
+  // Default to 'all' so users immediately see live fleet metrics without an empty blank box
+  const [selectedServer, setSelectedServer] = useState<string | null>('all');
+  const [fleetViewModel, setFleetViewModel] = useState<'gauges' | 'matrix'>('gauges');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dropdownSearch, setDropdownSearch] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1037,72 +1040,173 @@ export function ResourceOverviewChart({
         </div>
 
         {/* Compact Segmented Tabs: CPU, Memory, Disk */}
-        <div className="inline-flex items-center p-0.5 bg-[#0D1526] border border-[#1E293B] rounded-lg shrink-0 self-start sm:self-auto">
-          {metricTabs.map((metric) => {
-            const isActive = selectedMetric === metric;
-            return (
+        <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto flex-wrap">
+          {selectedServer === 'all' && (
+            <div className="inline-flex items-center p-0.5 bg-[#0D1526] border border-[#1E293B] rounded-lg">
               <button
-                key={metric}
                 type="button"
-                onClick={() => setSelectedMetric(metric)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer whitespace-nowrap ${
-                  isActive
+                onClick={() => setFleetViewModel('gauges')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                  fleetViewModel === 'gauges'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
                 }`}
+                title="Radial Gauges Model"
               >
-                {metric}
+                <Gauge className="w-3.5 h-3.5" />
+                <span>Radial HUD</span>
               </button>
-            );
-          })}
+              <button
+                type="button"
+                onClick={() => setFleetViewModel('matrix')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                  fleetViewModel === 'matrix'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
+                }`}
+                title="Fleet Matrix Model"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Fleet Matrix</span>
+              </button>
+            </div>
+          )}
+
+          <div className="inline-flex items-center p-0.5 bg-[#0D1526] border border-[#1E293B] rounded-lg">
+            {metricTabs.map((metric) => {
+              const isActive = selectedMetric === metric;
+              return (
+                <button
+                  key={metric}
+                  type="button"
+                  onClick={() => setSelectedMetric(metric)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
+                  }`}
+                >
+                  {metric}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* ================= 3. MAIN CONTENT: EMPTY STATE vs GAUGES vs SERVER TELEMETRY ================= */}
-      {!selectedServer ? (
-        /* Empty State: No Server Selected */
-        <div className="flex flex-col items-center justify-center py-12 px-4 text-center rounded-xl bg-[#0D1526]/50 border border-dashed border-[#1E293B] my-1">
-          <div className="w-14 h-14 rounded-2xl bg-[#0D1526] border border-[#1E293B] flex items-center justify-center text-blue-400 mb-3.5 shadow-inner">
-            <ServerIcon className="w-7 h-7" />
+      {/* ================= 3. MAIN CONTENT: GAUGES vs FLEET MATRIX vs SERVER TELEMETRY ================= */}
+      {selectedServer === 'all' || !selectedServer ? (
+        fleetViewModel === 'matrix' ? (
+          /* Fleet Matrix Model: Grid of Server Telemetry Tiles */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 py-3">
+            {allServers.map((s) => {
+              const isAws = s.provider.toLowerCase() === 'aws';
+              const isOnline =
+                (s.status || '').toLowerCase().includes('run') ||
+                (s.status || '').toLowerCase().includes('online');
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => setSelectedServer(s.id)}
+                  className="bg-[#0B1120] hover:bg-[#111A2E] border border-[#1E293B] hover:border-blue-500/50 rounded-xl p-3.5 transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-6 h-6 rounded-lg bg-[#111A2E] flex items-center justify-center border border-[#1E293B] shrink-0">
+                        {isAws ? (
+                          <AwsLogo className="w-3.5 h-3.5 text-[#FF9900]" />
+                        ) : (
+                          <AzureLogo className="w-3.5 h-3.5 text-[#0089D6]" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-white group-hover:text-blue-400 transition-colors truncate block">
+                          {s.name}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400 truncate block">
+                          {s.publicIp || s.host || s.privateIp}
+                        </span>
+                      </div>
+                    </div>
+                    <span
+                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${
+                        isOnline
+                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}
+                    >
+                      {isOnline ? 'Online' : 'Stopped'}
+                    </span>
+                  </div>
+
+                  {/* Mini Telemetry Bars */}
+                  <div className="space-y-1.5 pt-1 text-[10px]">
+                    <div>
+                      <div className="flex justify-between text-slate-400 mb-0.5">
+                        <span>CPU</span>
+                        <span className="font-mono text-cyan-400 font-semibold">{s.cpuPercent !== null ? `${s.cpuPercent}%` : '—'}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-[#18233C] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-cyan-400 transition-all rounded-full"
+                          style={{ width: `${Math.min(100, Math.max(0, s.cpuPercent ?? 0))}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-slate-400 mb-0.5">
+                        <span>RAM</span>
+                        <span className="font-mono text-indigo-400 font-semibold">{s.memoryPercent !== null ? `${s.memoryPercent}%` : '—'}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-[#18233C] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-500 transition-all rounded-full"
+                          style={{ width: `${Math.min(100, Math.max(0, s.memoryPercent ?? 0))}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-slate-400 mb-0.5">
+                        <span>DISK</span>
+                        <span className="font-mono text-amber-400 font-semibold">{s.diskPercent !== null ? `${s.diskPercent}%` : '—'}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-[#18233C] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-amber-400 transition-all rounded-full"
+                          style={{ width: `${Math.min(100, Math.max(0, s.diskPercent ?? 0))}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <h4 className="text-sm sm:text-base font-semibold text-white mb-1.5">
-            Select a server to view real-time resource metrics
-          </h4>
-          <p className="text-xs text-slate-400 max-w-md mb-5 leading-relaxed">
-            Choose an AWS EC2 instance or Azure Virtual Machine from the dropdown above to view real-time CPU, RAM, disk usage, and historical telemetry charts.
-          </p>
-          <button
-            type="button"
-            onClick={() => setIsDropdownOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
-          >
-            <ServerIcon className="w-4 h-4" />
-            <span>Select a Server</span>
-            <ChevronDown className="w-3.5 h-3.5 opacity-70" />
-          </button>
-        </div>
-      ) : selectedServer === 'all' ? (
-        /* All Servers Overview: 3 Circular Progress Gauges (CPU, MEMORY, DISK) */
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 py-6 items-center justify-items-center">
-          <CircularGauge
-            percent={aggregateMetrics.cpu}
-            label="CPU"
-            subtitle={`avg of ${allServers.length} servers`}
-            color="#00C5FF"
-          />
-          <CircularGauge
-            percent={aggregateMetrics.memory}
-            label="MEMORY"
-            subtitle={`avg of ${allServers.length} servers`}
-            color="#8B5CF6"
-          />
-          <CircularGauge
-            percent={aggregateMetrics.disk}
-            label="DISK"
-            subtitle={`avg of ${allServers.length} servers`}
-            color="#FF9900"
-          />
-        </div>
+        ) : (
+          /* Radial HUD Gauges */
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 py-6 items-center justify-items-center">
+            <CircularGauge
+              percent={aggregateMetrics.cpu}
+              label="CPU"
+              subtitle={`avg of ${allServers.length} servers`}
+              color="#00C5FF"
+            />
+            <CircularGauge
+              percent={aggregateMetrics.memory}
+              label="MEMORY"
+              subtitle={`avg of ${allServers.length} servers`}
+              color="#8B5CF6"
+            />
+            <CircularGauge
+              percent={aggregateMetrics.disk}
+              label="DISK"
+              subtitle={`avg of ${allServers.length} servers`}
+              color="#FF9900"
+            />
+          </div>
+        )
       ) : (
         /* Specific Server Selected: 3 Metric Cards + Recharts Historical Telemetry AreaChart */
         <>

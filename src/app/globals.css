@@ -305,3 +305,24 @@ main {
   user-select: text;
   white-space: pre;
 }
+
+/* PuTTY Terminal Selection & Viewport Fixes */
+.putty-terminal .xterm-selection div {
+  background-color: rgba(59, 130, 246, 0.45) !important;
+}
+.putty-terminal .xterm-viewport {
+  background-color: #000000 !important;
+}
+.putty-terminal .xterm-helper-textarea {
+  position: absolute !important;
+  opacity: 0 !important;
+  left: -9999px !important;
+  top: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
+}
+.putty-terminal *::selection {
+  background-color: rgba(59, 130, 246, 0.45) !important;
+  color: #ffffff !important;
+}

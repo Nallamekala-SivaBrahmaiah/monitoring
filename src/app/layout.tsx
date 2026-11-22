@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import type { Metadata } from 'next';
 import './globals.css';
+import '@xterm/xterm/css/xterm.css';
 import { MonitoringProvider } from '@/context/MonitoringContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { NavigationScrollManager } from '@/components/navigation/NavigationScrollManager';

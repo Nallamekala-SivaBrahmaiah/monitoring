@@ -40,11 +40,15 @@ import {
   FileText,
   Calendar,
   Layers3,
+  Zap,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { KubernetesIcon, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
+import { InstallK8sModal } from '@/components/dashboard/kubernetes/InstallK8sModal';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { IKubernetesServerInfo } from '@/lib/kubernetes/k8sServerService';
 
@@ -127,6 +131,44 @@ function KubernetesContent() {
   // Live SSH Terminal Modal
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
+
+  // Automated Install/Uninstall K8s & Cloud Tools Modal State
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [uninstallTargetServer, setUninstallTargetServer] = useState<IKubernetesServerInfo | null>(null);
+  const [isUninstalling, setIsUninstalling] = useState(false);
+  const [uninstallOutput, setUninstallOutput] = useState<string | null>(null);
+  const [uninstallError, setUninstallError] = useState<string | null>(null);
+
+  const handleExecuteDirectUninstall = async () => {
+    if (!uninstallTargetServer) return;
+    setIsUninstalling(true);
+    setUninstallError(null);
+    setUninstallOutput(null);
+
+    try {
+      const res = await fetch(`/api/kubernetes/servers/${uninstallTargetServer.id}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'uninstall' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const wasSelected = selectedServer?.id === uninstallTargetServer.id;
+        setUninstallTargetServer(null);
+        if (wasSelected) {
+          handleBackToServers();
+        }
+        await fetchServers();
+      } else {
+        setUninstallError(data.error || data.message || 'Uninstall failed');
+        setUninstallOutput(data.output || '');
+      }
+    } catch (err: any) {
+      setUninstallError(err.message || 'Network error');
+    } finally {
+      setIsUninstalling(false);
+    }
+  };
 
   // 1. Fetch Kubernetes-Installed Servers
   const fetchServers = useCallback(async () => {
@@ -441,7 +483,7 @@ function KubernetesContent() {
                   </div>
                 </div>
 
-                {/* Summary badges */}
+                {/* Summary badges & Actions */}
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <div className="px-3 py-1.5 rounded-lg bg-[#111A2E] border border-[#1E293B] text-slate-300">
                     Cluster Hosts: <span className="text-white font-bold">{servers.length}</span>
@@ -453,6 +495,14 @@ function KubernetesContent() {
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                     <span>100% Operational</span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsInstallModalOpen(true)}
+                    className="px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg shadow-sky-600/30 shrink-0"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>+ Install Kubernetes Tools on Server</span>
+                  </button>
                 </div>
               </div>
 
@@ -602,6 +652,16 @@ function KubernetesContent() {
 
                                 <button
                                   type="button"
+                                  onClick={() => setUninstallTargetServer(s)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
+                                  title="Uninstall Kubernetes & Cloud Tools from this server"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Uninstall</span>
+                                </button>
+
+                                <button
+                                  type="button"
                                   onClick={() => handleSelectServer(s)}
                                   className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm shadow-sky-600/30"
                                 >
@@ -617,8 +677,22 @@ function KubernetesContent() {
                   </table>
 
                   {servers.length === 0 && !loadingServers && (
-                    <div className="p-8 text-center text-slate-400 text-xs">
-                      No Kubernetes-installed servers detected. Please ensure your registered cluster host has kubectl or kubelet active.
+                    <div className="py-12 px-4 text-center">
+                      <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center mx-auto mb-3">
+                        <KubernetesIcon className="w-6 h-6" />
+                      </div>
+                      <p className="text-white font-bold text-sm mb-1">No Kubernetes-installed servers detected</p>
+                      <p className="text-slate-400 text-xs max-w-md mx-auto mb-4 leading-relaxed">
+                        Deploy Kubernetes and native cloud CLI tools (Azure: <span className="text-sky-300 font-mono">az + kubectl + kubelogin</span>, AWS: <span className="text-amber-300 font-mono">aws + kubectl + eksctl</span>) directly onto any of your registered fleet servers with one click.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setIsInstallModalOpen(true)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-lg shadow-sky-600/25 cursor-pointer"
+                      >
+                        <Zap className="w-4 h-4" />
+                        <span>Install Kubernetes Tools on Server</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -697,6 +771,16 @@ function KubernetesContent() {
                   >
                     <RotateCw className={`w-3.5 h-3.5 ${loadingCluster ? 'animate-spin' : ''}`} />
                     <span>Sync Cluster</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUninstallTargetServer(selectedServer)}
+                    className="px-2.5 py-1.5 text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 rounded-lg transition inline-flex items-center gap-1.5 cursor-pointer"
+                    title="Uninstall Kubernetes Tools from this server"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Uninstall</span>
                   </button>
                 </div>
               </div>
@@ -1468,6 +1552,111 @@ function KubernetesContent() {
                 setTerminalTarget(null);
               }}
             />
+          )}
+
+          {/* ========================================================================= */}
+          {/* 6. AUTOMATED INSTALL KUBERNETES & CLOUD TOOLS MODAL                       */}
+          {/* ========================================================================= */}
+          <InstallK8sModal
+            isOpen={isInstallModalOpen}
+            onClose={() => setIsInstallModalOpen(false)}
+            onSuccess={() => {
+              fetchServers();
+            }}
+          />
+
+          {/* ========================================================================= */}
+          {/* 7. UNINSTALL KUBERNETES TOOLS CONFIRMATION DIALOG                          */}
+          {/* ========================================================================= */}
+          {uninstallTargetServer && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-[#0B1120] border border-[#1E293B] rounded-2xl p-6 max-w-lg w-full shadow-2xl">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      Uninstall Kubernetes &amp; Cloud Tools?
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Target Host: <span className="text-white font-mono font-semibold">{uninstallTargetServer.name}</span> ({uninstallTargetServer.hostname})
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-[#0E1628] rounded-xl p-3 border border-[#1E293B] text-xs text-slate-300 leading-relaxed mb-4">
+                  <p className="mb-2">
+                    This automated SSH action will purge all Kubernetes binaries, cloud CLIs, and cluster manifests from the host:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1 font-mono text-[11px] text-slate-300">
+                    {uninstallTargetServer.cloudProvider.toLowerCase() === 'aws' ? (
+                      <>
+                        <li>AWS CLI v2 (<code className="text-amber-300">/usr/local/bin/aws</code>)</li>
+                        <li>Kubernetes CLI (<code className="text-sky-300">/usr/local/bin/kubectl</code>)</li>
+                        <li>Amazon EKS CLI (<code className="text-amber-300">/usr/local/bin/eksctl</code>)</li>
+                        <li>Config directories (<code className="text-slate-400">~/.aws, ~/.kube</code>)</li>
+                      </>
+                    ) : (
+                      <>
+                        <li>Azure CLI (<code className="text-sky-300">az / azure-cli</code>)</li>
+                        <li>Kubernetes CLI (<code className="text-sky-300">kubectl</code>)</li>
+                        <li>Azure Entra Auth (<code className="text-sky-300">kubelogin</code>)</li>
+                        <li>Config directories (<code className="text-slate-400">~/.azure, ~/.kube</code>)</li>
+                      </>
+                    )}
+                  </ul>
+                  <p className="mt-2 text-[11px] text-rose-400 font-semibold">
+                    Once uninstalled, this server will be removed from your active Kubernetes Cluster Host Registry.
+                  </p>
+                </div>
+
+                {uninstallError && (
+                  <div className="mb-4 p-3 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs">
+                    {uninstallError}
+                  </div>
+                )}
+
+                {uninstallOutput && (
+                  <div className="mb-4 bg-black/60 rounded-lg p-2.5 font-mono text-[11px] text-slate-300 max-h-32 overflow-y-auto whitespace-pre-wrap border border-[#1E293B]">
+                    {uninstallOutput}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    disabled={isUninstalling}
+                    onClick={() => {
+                      setUninstallTargetServer(null);
+                      setUninstallError(null);
+                      setUninstallOutput(null);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-[#111A2E] hover:bg-[#162238] border border-[#1E293B] text-slate-300 text-xs font-semibold transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isUninstalling}
+                    onClick={handleExecuteDirectUninstall}
+                    className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg shadow-rose-600/30"
+                  >
+                    {isUninstalling ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Purging via SSH...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        <span>Confirm &amp; Uninstall</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </main>
       </div>
