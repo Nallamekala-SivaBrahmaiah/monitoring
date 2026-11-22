@@ -162,36 +162,10 @@ export function HomeStyleStudioTopBar() {
               </div>
             )}
           </div>
-
-          {/* Quick Selection Pills alongside for 1-click preview */}
-          <div className="hidden xl:flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-            {THEME_PRESETS.map((preset) => {
-              const isActive = activePreset === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => setThemePreset(preset.id)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                    isActive
-                      ? 'bg-cyan-600/25 text-cyan-300 border border-cyan-500/50'
-                      : 'bg-[#0E1628]/60 hover:bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-slate-800'
-                  }`}
-                  title={preset.description}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: preset.accentColor }}
-                  />
-                  <span>{preset.name}</span>
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         {/* Right: Quick Actions & Expand Toggle */}
-        <div className="flex items-center gap-2 shrink-0 pl-2">
+        <div className="flex items-center gap-2 shrink-0">
           {/* Customize Individual Modules */}
           <button
             type="button"
