@@ -10,6 +10,7 @@ import {
   LogOut,
   Server,
   Palette,
+  Sparkles,
 } from 'lucide-react';
 import {
   MultiCloudBrandLogo,
@@ -101,6 +102,7 @@ export function Sidebar({
     badge?: number | string;
   }> = [
     { label: 'Dashboard', href: '/', icon: DashboardIcon },
+    { label: 'Home Style Studio', href: '/dashboard/style-studio', icon: Sparkles },
     { label: 'Cloud Accounts', href: '/dashboard/cloud-accounts', icon: CloudAccountsIcon },
     { label: 'Regions', href: '/dashboard/regions', icon: RegionsIcon },
     { label: 'Servers', href: '/dashboard/servers', icon: ServersFleetIcon },

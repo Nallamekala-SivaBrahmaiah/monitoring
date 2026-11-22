@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
+import { HomeStyleStudioTopBar } from '@/components/dashboard/style-studio/HomeStyleStudioTopBar';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { MultiCloudModulesDeck } from '@/components/dashboard/MultiCloudModulesDeck';
 import { CloudDistributionChart } from '@/components/dashboard/CloudDistributionChart';
@@ -54,8 +55,13 @@ export default function DashboardPage() {
         <Header onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
 
         <main className="p-4 lg:p-7 space-y-6">
+          {/* Home Style Studio: Global & Individual UI Customizer (Top Module) */}
+          <div data-module-id="home-style-studio">
+            <HomeStyleStudioTopBar />
+          </div>
+
           {/* Row 1: Summary Cards */}
-          <section aria-label="Dashboard Overview Metrics">
+          <section aria-label="Dashboard Overview Metrics" data-module-id="summary-cards">
             <div
               className={`grid gap-3.5 ${
                 cloudProvider === 'all'
@@ -65,99 +71,111 @@ export default function DashboardPage() {
             >
               {/* Card 1: AWS Resources (Shown for All or AWS) */}
               {(cloudProvider === 'all' || cloudProvider === 'aws') && (
-                <MetricCard
-                  title="AWS Resources"
-                  count={overviewMetrics.awsResources.total}
-                  changeText={overviewMetrics.awsResources.changeText}
-                  trendData={overviewMetrics.awsResources.trend}
-                  color="#FF9900"
-                  icon={<AwsLogo className="w-5 h-5" />}
-                />
+                <div data-module-id="aws-resources">
+                  <MetricCard
+                    title="AWS Resources"
+                    count={overviewMetrics.awsResources.total}
+                    changeText={overviewMetrics.awsResources.changeText}
+                    trendData={overviewMetrics.awsResources.trend}
+                    color="#FF9900"
+                    icon={<AwsLogo className="w-5 h-5" />}
+                  />
+                </div>
               )}
 
               {/* Card 2: Azure Resources (Shown for All or Azure) */}
               {(cloudProvider === 'all' || cloudProvider === 'azure') && (
-                <MetricCard
-                  title="Azure Resources"
-                  count={overviewMetrics.azureResources.total}
-                  changeText={overviewMetrics.azureResources.changeText}
-                  trendData={overviewMetrics.azureResources.trend}
-                  color="#0089D6"
-                  icon={<AzureLogo className="w-5 h-5" />}
-                />
+                <div data-module-id="azure-resources">
+                  <MetricCard
+                    title="Azure Resources"
+                    count={overviewMetrics.azureResources.total}
+                    changeText={overviewMetrics.azureResources.changeText}
+                    trendData={overviewMetrics.azureResources.trend}
+                    color="#0089D6"
+                    icon={<AzureLogo className="w-5 h-5" />}
+                  />
+                </div>
               )}
 
               {/* Card 3: Total Servers */}
-              <MetricCard
-                title={
-                  cloudProvider === 'aws'
-                    ? 'Total EC2 Instances'
-                    : cloudProvider === 'azure'
-                    ? 'Total Azure VMs'
-                    : 'Total Servers'
-                }
-                count={overviewMetrics.totalServers.total}
-                changeText={overviewMetrics.totalServers.runningText}
-                trendData={overviewMetrics.totalServers.trend}
-                color="#10B981"
-                icon={<Server className="w-4 h-4 text-[#10B981]" />}
-              />
+              <div data-module-id="total-servers">
+                <MetricCard
+                  title={
+                    cloudProvider === 'aws'
+                      ? 'Total EC2 Instances'
+                      : cloudProvider === 'azure'
+                      ? 'Total Azure VMs'
+                      : 'Total Servers'
+                  }
+                  count={overviewMetrics.totalServers.total}
+                  changeText={overviewMetrics.totalServers.runningText}
+                  trendData={overviewMetrics.totalServers.trend}
+                  color="#10B981"
+                  icon={<Server className="w-4 h-4 text-[#10B981]" />}
+                />
+              </div>
 
               {/* Card 4: Docker Containers */}
-              <MetricCard
-                title={
-                  cloudProvider === 'aws'
-                    ? 'AWS Containers'
-                    : cloudProvider === 'azure'
-                    ? 'Azure Containers'
-                    : 'Docker Containers'
-                }
-                count={overviewMetrics.dockerContainers.total}
-                changeText={overviewMetrics.dockerContainers.runningText}
-                trendData={overviewMetrics.dockerContainers.trend}
-                color="#818CF8"
-                icon={<Boxes className="w-4 h-4 text-[#818CF8]" />}
-              />
+              <div data-module-id="docker-containers">
+                <MetricCard
+                  title={
+                    cloudProvider === 'aws'
+                      ? 'AWS Containers'
+                      : cloudProvider === 'azure'
+                      ? 'Azure Containers'
+                      : 'Docker Containers'
+                  }
+                  count={overviewMetrics.dockerContainers.total}
+                  changeText={overviewMetrics.dockerContainers.runningText}
+                  trendData={overviewMetrics.dockerContainers.trend}
+                  color="#818CF8"
+                  icon={<Boxes className="w-4 h-4 text-[#818CF8]" />}
+                />
+              </div>
 
               {/* Card 5: K8s Clusters */}
-              <MetricCard
-                title={
-                  cloudProvider === 'aws'
-                    ? 'EKS Clusters'
-                    : cloudProvider === 'azure'
-                    ? 'AKS Clusters'
-                    : 'K8s Clusters'
-                }
-                count={overviewMetrics.k8sClusters.total}
-                changeText={overviewMetrics.k8sClusters.healthyText}
-                trendData={overviewMetrics.k8sClusters.trend}
-                color="#38BDF8"
-                icon={<Layers className="w-4 h-4 text-[#38BDF8]" />}
-              />
+              <div data-module-id="k8s-clusters">
+                <MetricCard
+                  title={
+                    cloudProvider === 'aws'
+                      ? 'EKS Clusters'
+                      : cloudProvider === 'azure'
+                      ? 'AKS Clusters'
+                      : 'K8s Clusters'
+                  }
+                  count={overviewMetrics.k8sClusters.total}
+                  changeText={overviewMetrics.k8sClusters.healthyText}
+                  trendData={overviewMetrics.k8sClusters.trend}
+                  color="#38BDF8"
+                  icon={<Layers className="w-4 h-4 text-[#38BDF8]" />}
+                />
+              </div>
 
               {/* Card 6: Active Alerts */}
-              <MetricCard
-                title={
-                  cloudProvider === 'aws'
-                    ? 'AWS Alerts'
-                    : cloudProvider === 'azure'
-                    ? 'Azure Alerts'
-                    : 'Active Alerts'
-                }
-                count={overviewMetrics.activeAlerts.total}
-                changeText={overviewMetrics.activeAlerts.newText}
-                trendData={overviewMetrics.activeAlerts.trend}
-                color="#EF4444"
-                isNegative={true}
-                icon={<AlertTriangle className="w-4 h-4 text-[#EF4444]" />}
-              />
+              <div data-module-id="active-alerts">
+                <MetricCard
+                  title={
+                    cloudProvider === 'aws'
+                      ? 'AWS Alerts'
+                      : cloudProvider === 'azure'
+                      ? 'Azure Alerts'
+                      : 'Active Alerts'
+                  }
+                  count={overviewMetrics.activeAlerts.total}
+                  changeText={overviewMetrics.activeAlerts.newText}
+                  trendData={overviewMetrics.activeAlerts.trend}
+                  color="#EF4444"
+                  isNegative={true}
+                  icon={<AlertTriangle className="w-4 h-4 text-[#EF4444]" />}
+                />
+              </div>
             </div>
           </section>
 
           {/* Row 2: Performance Charts & Distributions (3 Cards) */}
           <section aria-label="Performance and Status Overview">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5 items-stretch">
-              <div className="col-span-1 md:col-span-2 lg:col-span-6 flex flex-col h-full">
+              <div className="col-span-1 md:col-span-2 lg:col-span-6 flex flex-col h-full" data-module-id="operations-matrix">
                 <MultiCloudModulesDeck
                   onOpenTerminal={(target) => {
                     setTerminalTarget(target);
@@ -165,10 +183,10 @@ export default function DashboardPage() {
                   }}
                 />
               </div>
-              <div className="col-span-1 md:col-span-1 lg:col-span-3 flex flex-col h-full">
+              <div className="col-span-1 md:col-span-1 lg:col-span-3 flex flex-col h-full" data-module-id="cloud-distribution">
                 <CloudDistributionChart />
               </div>
-              <div className="col-span-1 md:col-span-1 lg:col-span-3 flex flex-col h-full">
+              <div className="col-span-1 md:col-span-1 lg:col-span-3 flex flex-col h-full" data-module-id="server-status-fleet">
                 <ServerStatusChart />
               </div>
             </div>
@@ -328,13 +346,13 @@ export default function DashboardPage() {
           {/* Row 4: Top Regions, Running Services, Recent Alerts (3 Cards) */}
           <section aria-label="Regional Distribution, Services and Alerts">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-              <div className="lg:col-span-3">
+              <div className="lg:col-span-3" data-module-id="top-regions">
                 <RegionChart />
               </div>
-              <div className="lg:col-span-5">
+              <div className="lg:col-span-5" data-module-id="running-services">
                 <RunningServices />
               </div>
-              <div className="lg:col-span-4">
+              <div className="lg:col-span-4" data-module-id="recent-alerts">
                 <RecentAlerts limit={3} />
               </div>
             </div>

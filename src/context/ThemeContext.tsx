@@ -1,17 +1,20 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 
-export interface ThemePreset {
-  id: string;
-  name: string;
-  description: string;
-  canvasBg: string;
-  cardBg: string;
-  borderColor: string;
-  accentColor: string;
-  textColor: string;
-  isDark: boolean;
+export interface ModuleStyleConfig {
+  backgroundColor?: string;
+  cardColor?: string;
+  textColor?: string;
+  borderColor?: string;
+  gradient?: string;
+  shadow?: string;
+  animation?: 'none' | 'pulse' | 'glow' | 'tilt' | 'float';
+  iconStyle?: 'classic' | 'neon' | 'glow' | 'minimal';
+  fontSize?: 'sm' | 'base' | 'lg';
+  borderRadius?: string;
+  padding?: string;
+  visible?: boolean;
 }
 
 export interface ColorCircleOption {
@@ -63,75 +66,6 @@ export interface WallpaperOption {
   url: string;
   category: string;
 }
-
-export const THEME_PRESETS: ThemePreset[] = [
-  {
-    id: 'obsidian',
-    name: 'Midnight Obsidian',
-    description: 'OLED Pure Black high-contrast developer theme with zero glare',
-    canvasBg: '#030712',
-    cardBg: '#0D131F',
-    borderColor: '#1E293B',
-    accentColor: '#2563EB',
-    textColor: '#F8FAFC',
-    isDark: true,
-  },
-  {
-    id: 'sapphire',
-    name: 'Cyber Sapphire',
-    description: 'Deep oceanic cloud navy blue matching AWS & Azure palettes',
-    canvasBg: '#081026',
-    cardBg: '#0F1E44',
-    borderColor: '#1E3A8A',
-    accentColor: '#38BDF8',
-    textColor: '#F8FAFC',
-    isDark: true,
-  },
-  {
-    id: 'slate',
-    name: 'Slate Titanium',
-    description: 'Professional 24/7 NOC monitoring graphite neutral theme',
-    canvasBg: '#0F172A',
-    cardBg: '#1E293B',
-    borderColor: '#334155',
-    accentColor: '#3B82F6',
-    textColor: '#F8FAFC',
-    isDark: true,
-  },
-  {
-    id: 'violet',
-    name: 'Midnight Violet',
-    description: 'Futuristic cyberpunk console with ambient indigo undertones',
-    canvasBg: '#0D0B18',
-    cardBg: '#1A1433',
-    borderColor: '#31265B',
-    accentColor: '#A855F7',
-    textColor: '#FAF5FF',
-    isDark: true,
-  },
-  {
-    id: 'emerald',
-    name: 'Cyber Emerald',
-    description: 'Deep matrix pine dark mode with glowing green telemetry accents',
-    canvasBg: '#04130E',
-    cardBg: '#0A2117',
-    borderColor: '#154D37',
-    accentColor: '#10B981',
-    textColor: '#F0FDF4',
-    isDark: true,
-  },
-  {
-    id: 'light',
-    name: 'Daylight Enterprise',
-    description: 'Clean daylight white and slate theme for bright conference rooms',
-    canvasBg: '#F8FAFC',
-    cardBg: '#FFFFFF',
-    borderColor: '#E2E8F0',
-    accentColor: '#2563EB',
-    textColor: '#0F172A',
-    isDark: false,
-  },
-];
 
 export const WALLPAPER_OPTIONS: WallpaperOption[] = [
   {
@@ -197,12 +131,163 @@ export const WALLPAPER_OPTIONS: WallpaperOption[] = [
     url: '/images/bg-clean-datacenter.jpg',
     category: 'Enterprise',
   },
+];
+
+export interface ThemePreset {
+  id: string;
+  name: string;
+  description: string;
+  canvasBg: string;
+  cardBg: string;
+  borderColor: string;
+  accentColor: string;
+  primaryColor: string;
+  secondaryColor: string;
+  textColor: string;
+  isDark: boolean;
+  gradientBackground?: string;
+  cardShadow?: string;
+  borderRadius?: string;
+  glassmorphism?: boolean;
+  background3DEffect?: 'none' | 'floating-cubes' | 'particles' | 'aurora-waves' | 'cyber-grid';
+}
+
+export const THEME_PRESETS: ThemePreset[] = [
   {
-    id: 'aurora-ribbons',
-    title: 'Aurora Telemetry Ribbons',
-    description: 'Vibrant neon waves representing live high-velocity streaming data',
-    url: '/images/bg-clean-aurora-ribbons.jpg',
-    category: 'Abstract',
+    id: 'dark-neon',
+    name: 'Dark Neon',
+    description: 'Electric cyan & neon blue cyberpunk glow on pure dark canvas',
+    canvasBg: '#050811',
+    cardBg: '#0B1120',
+    borderColor: '#06B6D4',
+    accentColor: '#06B6D4',
+    primaryColor: '#3B82F6',
+    secondaryColor: '#8B5CF6',
+    textColor: '#F1F5F9',
+    isDark: true,
+    cardShadow: 'neon-glow',
+    borderRadius: '12px',
+    glassmorphism: true,
+    background3DEffect: 'cyber-grid',
+  },
+  {
+    id: 'midnight-purple',
+    name: 'Midnight Purple',
+    description: 'Deep royal indigo & glowing violet for high-tech NOC operations',
+    canvasBg: '#0D0B18',
+    cardBg: '#1A1433',
+    borderColor: '#31265B',
+    accentColor: '#A855F7',
+    primaryColor: '#7C3AED',
+    secondaryColor: '#EC4899',
+    textColor: '#FAF5FF',
+    isDark: true,
+    cardShadow: 'medium',
+    borderRadius: '16px',
+    glassmorphism: true,
+    background3DEffect: 'aurora-waves',
+  },
+  {
+    id: 'ocean-blue',
+    name: 'Ocean Blue',
+    description: 'Deep oceanic marine azure & sapphire matching cloud infrastructure',
+    canvasBg: '#081026',
+    cardBg: '#0F1E44',
+    borderColor: '#1E3A8A',
+    accentColor: '#38BDF8',
+    primaryColor: '#2563EB',
+    secondaryColor: '#06B6D4',
+    textColor: '#F0F9FF',
+    isDark: true,
+    cardShadow: 'subtle',
+    borderRadius: '12px',
+    glassmorphism: true,
+    background3DEffect: 'particles',
+  },
+  {
+    id: 'cyber-green',
+    name: 'Cyber Green',
+    description: 'Deep matrix pine dark mode with glowing emerald telemetry accents',
+    canvasBg: '#04130E',
+    cardBg: '#0A2117',
+    borderColor: '#154D37',
+    accentColor: '#10B981',
+    primaryColor: '#059669',
+    secondaryColor: '#34D399',
+    textColor: '#F0FDF4',
+    isDark: true,
+    cardShadow: 'neon-glow',
+    borderRadius: '12px',
+    glassmorphism: false,
+    background3DEffect: 'cyber-grid',
+  },
+  {
+    id: 'glassmorphism',
+    name: 'Glassmorphism',
+    description: 'Frosted acrylic blur with translucent borders and soft ambient sheen',
+    canvasBg: '#0A0F1D',
+    cardBg: 'rgba(17, 26, 46, 0.75)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    accentColor: '#60A5FA',
+    primaryColor: '#3B82F6',
+    secondaryColor: '#A78BFA',
+    textColor: '#FFFFFF',
+    isDark: true,
+    cardShadow: 'subtle',
+    borderRadius: '16px',
+    glassmorphism: true,
+    background3DEffect: 'floating-cubes',
+  },
+  {
+    id: 'modern-white',
+    name: 'Modern White',
+    description: 'Crisp executive daylight white with slate high-contrast borders',
+    canvasBg: '#F8FAFC',
+    cardBg: '#FFFFFF',
+    borderColor: '#E2E8F0',
+    accentColor: '#2563EB',
+    primaryColor: '#2563EB',
+    secondaryColor: '#475569',
+    textColor: '#0F172A',
+    isDark: false,
+    cardShadow: 'subtle',
+    borderRadius: '12px',
+    glassmorphism: false,
+    background3DEffect: 'none',
+  },
+  {
+    id: 'professional-light',
+    name: 'Professional Light',
+    description: 'Soft graphite slate daylight NOC neutral for bright control rooms',
+    canvasBg: '#F1F5F9',
+    cardBg: '#FFFFFF',
+    borderColor: '#CBD5E1',
+    accentColor: '#0284C7',
+    primaryColor: '#0284C7',
+    secondaryColor: '#64748B',
+    textColor: '#1E293B',
+    isDark: false,
+    cardShadow: 'subtle',
+    borderRadius: '8px',
+    glassmorphism: false,
+    background3DEffect: 'none',
+  },
+  {
+    id: 'aurora-gradient',
+    name: 'Aurora Gradient',
+    description: 'Vibrant flowing northern lights gradient with multi-color neon aura',
+    canvasBg: '#070B19',
+    cardBg: '#0E172E',
+    borderColor: '#3B82F6',
+    accentColor: '#F43F5E',
+    primaryColor: '#8B5CF6',
+    secondaryColor: '#06B6D4',
+    textColor: '#FFFFFF',
+    isDark: true,
+    cardShadow: 'neon-glow',
+    borderRadius: '16px',
+    glassmorphism: true,
+    background3DEffect: 'aurora-waves',
   },
 ];
 
@@ -213,162 +298,456 @@ export interface CustomWallpaper {
   date: string;
 }
 
+export interface LayerConfig {
+  dashboardBackground: { visible: boolean; opacity: number; blur: number };
+  header: { visible: boolean; background?: string; opacity: number; border?: string; shadow?: string };
+  sidebar: { visible: boolean; background?: string; opacity: number; border?: string; shadow?: string };
+  content: { padding?: string; spacing?: string };
+  cards: { background?: string; border?: string; radius?: string; shadow?: string; glassmorphism: boolean };
+  charts: { visible: boolean; opacity: number };
+  widgets: { visible: boolean };
+}
+
 interface ThemeContextType {
+  // Active Preset & State
   activePreset: string;
+  isDark: boolean;
+  
+  // Global Colors & Typography
   backgroundColor: string;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
   cardBackground: string;
+  sidebarBackground: string;
+  headerBackground: string;
+  textColor: string;
   borderColor: string;
+  gradientBackground: string;
   backgroundImage: string;
   backgroundOpacity: number;
   backgroundBlur: number;
+  borderRadius: string;
+  cardShadow: string;
+  fontFamily: string;
+  fontSize: string;
+  componentSpacing: string;
+
+  // 3D Animation Studio
+  animationEnabled: boolean;
+  animationSpeed: 'slow' | 'normal' | 'fast';
+  animationIntensity: 'subtle' | 'medium' | 'vibrant';
+  background3DEffect: 'none' | 'floating-cubes' | 'particles' | 'aurora-waves' | 'cyber-grid';
+  floatingClouds: boolean;
+  particlesMesh: boolean;
+  cardHover3D: boolean;
+  glassmorphism: boolean;
+  glowingBorders: boolean;
+  smoothTransitions: boolean;
+
+  // Layer & Layout Editor
+  layers: LayerConfig;
+  updateLayerConfig: (layerName: keyof LayerConfig, updates: any) => void;
+
+  // Individual Module Overrides
+  moduleStyles: Record<string, ModuleStyleConfig>;
+  updateModuleStyle: (moduleId: string, updates: Partial<ModuleStyleConfig>) => void;
+  resetModuleStyle: (moduleId: string) => void;
+  getModuleStyle: (moduleId: string) => ModuleStyleConfig;
+
+  // Custom Wallpapers
   customWallpapers: CustomWallpaper[];
-  setThemePreset: (presetId: string) => void;
-  setBackgroundColor: (color: string) => void;
-  setCardBackground: (color: string) => void;
-  setBorderColor: (color: string) => void;
-  setBackgroundImage: (url: string) => void;
-  setBackgroundOpacity: (opacity: number) => void;
-  setBackgroundBlur: (blur: number) => void;
   uploadCustomWallpaper: (file: File) => Promise<string>;
   addCustomWallpaperUrl: (url: string, title?: string) => void;
   deleteCustomWallpaper: (id: string) => void;
+
+  // Setters
+  setThemePreset: (presetId: string) => void;
+  setBackgroundColor: (color: string) => void;
+  setPrimaryColor: (color: string) => void;
+  setSecondaryColor: (color: string) => void;
+  setAccentColor: (color: string) => void;
+  setCardBackground: (color: string) => void;
+  setSidebarBackground: (color: string) => void;
+  setHeaderBackground: (color: string) => void;
+  setTextColor: (color: string) => void;
+  setBorderColor: (color: string) => void;
+  setGradientBackground: (gradient: string) => void;
+  setBackgroundImage: (url: string) => void;
+  setBackgroundOpacity: (opacity: number) => void;
+  setBackgroundBlur: (blur: number) => void;
+  setBorderRadius: (radius: string) => void;
+  setCardShadow: (shadow: string) => void;
+  setFontFamily: (font: string) => void;
+  setFontSize: (size: string) => void;
+  setComponentSpacing: (spacing: string) => void;
+
+  // Animation Setters
+  setAnimationEnabled: (enabled: boolean) => void;
+  setAnimationSpeed: (speed: 'slow' | 'normal' | 'fast') => void;
+  setAnimationIntensity: (intensity: 'subtle' | 'medium' | 'vibrant') => void;
+  setBackground3DEffect: (effect: 'none' | 'floating-cubes' | 'particles' | 'aurora-waves' | 'cyber-grid') => void;
+  setFloatingClouds: (clouds: boolean) => void;
+  setParticlesMesh: (particles: boolean) => void;
+  setCardHover3D: (hover: boolean) => void;
+  setGlassmorphism: (glass: boolean) => void;
+  setGlowingBorders: (glow: boolean) => void;
+  setSmoothTransitions: (transitions: boolean) => void;
+
+  // Persistence, Export & Import
   applyColorCircle: (circle: ColorCircleOption) => void;
+  saveThemeToDatabase: (themeName?: string) => Promise<boolean>;
+  exportThemeJSON: () => string;
+  importThemeJSON: (jsonString: string) => boolean;
   resetTheme: () => void;
+  resetEntireTheme: () => Promise<void>;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'mcm_theme_config_v2';
+const STORAGE_KEY = 'mcm_home_style_studio_v3';
+
+const DEFAULT_LAYERS: LayerConfig = {
+  dashboardBackground: { visible: true, opacity: 1, blur: 0 },
+  header: { visible: true, opacity: 1 },
+  sidebar: { visible: true, opacity: 1 },
+  content: { padding: 'normal', spacing: 'normal' },
+  cards: { radius: '12px', shadow: 'subtle', glassmorphism: true },
+  charts: { visible: true, opacity: 1 },
+  widgets: { visible: true },
+};
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [activePreset, setActivePreset] = useState<string>('obsidian');
-  const [backgroundColor, setBackgroundColorState] = useState<string>('#030712');
-  const [cardBackground, setCardBackgroundState] = useState<string>('#0D131F');
-  const [borderColor, setBorderColorState] = useState<string>('#1E293B');
+  // Preset & Mode
+  const [activePreset, setActivePreset] = useState<string>('dark-neon');
+  const [isDark, setIsDark] = useState<boolean>(true);
+
+  // Global Colors
+  const [backgroundColor, setBackgroundColorState] = useState<string>('#050811');
+  const [primaryColor, setPrimaryColorState] = useState<string>('#3B82F6');
+  const [secondaryColor, setSecondaryColorState] = useState<string>('#8B5CF6');
+  const [accentColor, setAccentColorState] = useState<string>('#06B6D4');
+  const [cardBackground, setCardBackgroundState] = useState<string>('#0B1120');
+  const [sidebarBackground, setSidebarBackgroundState] = useState<string>('#0B1120');
+  const [headerBackground, setHeaderBackgroundState] = useState<string>('#0B1120');
+  const [textColor, setTextColorState] = useState<string>('#F1F5F9');
+  const [borderColor, setBorderColorState] = useState<string>('#162238');
+  const [gradientBackground, setGradientBackgroundState] = useState<string>('');
   const [backgroundImage, setBackgroundImageState] = useState<string>('');
-  const [backgroundOpacity, setBackgroundOpacityState] = useState<number>(0.18);
+  const [backgroundOpacity, setBackgroundOpacityState] = useState<number>(0.2);
   const [backgroundBlur, setBackgroundBlurState] = useState<number>(0);
+  const [borderRadius, setBorderRadiusState] = useState<string>('12px');
+  const [cardShadow, setCardShadowState] = useState<string>('neon-glow');
+  const [fontFamily, setFontFamilyState] = useState<string>('Inter, system-ui, sans-serif');
+  const [fontSize, setFontSizeState] = useState<string>('normal');
+  const [componentSpacing, setComponentSpacingState] = useState<string>('normal');
+
+  // 3D Animation Studio
+  const [animationEnabled, setAnimationEnabledState] = useState<boolean>(true);
+  const [animationSpeed, setAnimationSpeedState] = useState<'slow' | 'normal' | 'fast'>('normal');
+  const [animationIntensity, setAnimationIntensityState] = useState<'subtle' | 'medium' | 'vibrant'>('medium');
+  const [background3DEffect, setBackground3DEffectState] = useState<'none' | 'floating-cubes' | 'particles' | 'aurora-waves' | 'cyber-grid'>('cyber-grid');
+  const [floatingClouds, setFloatingCloudsState] = useState<boolean>(true);
+  const [particlesMesh, setParticlesMeshState] = useState<boolean>(true);
+  const [cardHover3D, setCardHover3DState] = useState<boolean>(true);
+  const [glassmorphism, setGlassmorphismState] = useState<boolean>(true);
+  const [glowingBorders, setGlowingBordersState] = useState<boolean>(true);
+  const [smoothTransitions, setSmoothTransitionsState] = useState<boolean>(true);
+
+  // Layer & Layout
+  const [layers, setLayers] = useState<LayerConfig>(DEFAULT_LAYERS);
+
+  // Individual Module Overrides
+  const [moduleStyles, setModuleStyles] = useState<Record<string, ModuleStyleConfig>>({});
+
+  // Wallpapers
   const [customWallpapers, setCustomWallpapers] = useState<CustomWallpaper[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load saved theme on mount
+  // 1. Hydrate from LocalStorage & MongoDB on Mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const config = JSON.parse(saved);
-        if (config.activePreset) setActivePreset(config.activePreset);
-        if (config.backgroundColor) setBackgroundColorState(config.backgroundColor);
-        if (config.cardBackground) setCardBackgroundState(config.cardBackground);
-        if (config.borderColor) setBorderColorState(config.borderColor);
-        if (config.backgroundImage !== undefined) setBackgroundImageState(config.backgroundImage);
-        if (config.backgroundOpacity !== undefined) setBackgroundOpacityState(config.backgroundOpacity);
-        if (config.backgroundBlur !== undefined) setBackgroundBlurState(config.backgroundBlur);
-        if (Array.isArray(config.customWallpapers)) setCustomWallpapers(config.customWallpapers);
+        const c = JSON.parse(saved);
+        if (c.activePreset) setActivePreset(c.activePreset);
+        if (c.isDark !== undefined) setIsDark(c.isDark);
+        if (c.backgroundColor) setBackgroundColorState(c.backgroundColor);
+        if (c.primaryColor) setPrimaryColorState(c.primaryColor);
+        if (c.secondaryColor) setSecondaryColorState(c.secondaryColor);
+        if (c.accentColor) setAccentColorState(c.accentColor);
+        if (c.cardBackground) setCardBackgroundState(c.cardBackground);
+        if (c.sidebarBackground) setSidebarBackgroundState(c.sidebarBackground);
+        if (c.headerBackground) setHeaderBackgroundState(c.headerBackground);
+        if (c.textColor) setTextColorState(c.textColor);
+        if (c.borderColor) setBorderColorState(c.borderColor);
+        if (c.gradientBackground !== undefined) setGradientBackgroundState(c.gradientBackground);
+        if (c.backgroundImage !== undefined) setBackgroundImageState(c.backgroundImage);
+        if (c.backgroundOpacity !== undefined) setBackgroundOpacityState(c.backgroundOpacity);
+        if (c.backgroundBlur !== undefined) setBackgroundBlurState(c.backgroundBlur);
+        if (c.borderRadius) setBorderRadiusState(c.borderRadius);
+        if (c.cardShadow) setCardShadowState(c.cardShadow);
+        if (c.fontFamily) setFontFamilyState(c.fontFamily);
+        if (c.fontSize) setFontSizeState(c.fontSize);
+        if (c.componentSpacing) setComponentSpacingState(c.componentSpacing);
+
+        // 3D Animations
+        if (c.animationEnabled !== undefined) setAnimationEnabledState(c.animationEnabled);
+        if (c.animationSpeed) setAnimationSpeedState(c.animationSpeed);
+        if (c.animationIntensity) setAnimationIntensityState(c.animationIntensity);
+        if (c.background3DEffect) setBackground3DEffectState(c.background3DEffect);
+        if (c.floatingClouds !== undefined) setFloatingCloudsState(c.floatingClouds);
+        if (c.particlesMesh !== undefined) setParticlesMeshState(c.particlesMesh);
+        if (c.cardHover3D !== undefined) setCardHover3DState(c.cardHover3D);
+        if (c.glassmorphism !== undefined) setGlassmorphismState(c.glassmorphism);
+        if (c.glowingBorders !== undefined) setGlowingBordersState(c.glowingBorders);
+        if (c.smoothTransitions !== undefined) setSmoothTransitionsState(c.smoothTransitions);
+
+        if (c.layers) setLayers(c.layers);
+        if (c.moduleStyles) setModuleStyles(c.moduleStyles);
+        if (Array.isArray(c.customWallpapers)) setCustomWallpapers(c.customWallpapers);
       }
     } catch {}
-    setIsLoaded(true);
+
+    // Also fetch from DB if available
+    fetch('/api/theme/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.isCustom && data.config) {
+          const dbC = data.config;
+          if (dbC.activePreset) setActivePreset(dbC.activePreset);
+          if (dbC.backgroundColor) setBackgroundColorState(dbC.backgroundColor);
+          if (dbC.cardBackground) setCardBackgroundState(dbC.cardBackground);
+          if (dbC.borderColor) setBorderColorState(dbC.borderColor);
+          if (dbC.moduleStyles) setModuleStyles(dbC.moduleStyles);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsLoaded(true));
   }, []);
 
-  // Save to localStorage & inject CSS variables
+  // 2. Persist to LocalStorage & Inject Dynamic CSS Variables
   useEffect(() => {
     if (!isLoaded) return;
 
+    const fullConfig = {
+      activePreset,
+      isDark,
+      backgroundColor,
+      primaryColor,
+      secondaryColor,
+      accentColor,
+      cardBackground,
+      sidebarBackground,
+      headerBackground,
+      textColor,
+      borderColor,
+      gradientBackground,
+      backgroundImage,
+      backgroundOpacity,
+      backgroundBlur,
+      borderRadius,
+      cardShadow,
+      fontFamily,
+      fontSize,
+      componentSpacing,
+      animationEnabled,
+      animationSpeed,
+      animationIntensity,
+      background3DEffect,
+      floatingClouds,
+      particlesMesh,
+      cardHover3D,
+      glassmorphism,
+      glowingBorders,
+      smoothTransitions,
+      layers,
+      moduleStyles,
+      customWallpapers,
+    };
+
     try {
-      const config = {
-        activePreset,
-        backgroundColor,
-        cardBackground,
-        borderColor,
-        backgroundImage,
-        backgroundOpacity,
-        backgroundBlur,
-        customWallpapers,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(fullConfig));
     } catch {}
 
-    // Apply CSS variables & dynamic style overrides
+    // Inject CSS variables into :root and dynamic style tag
     if (typeof document !== 'undefined') {
       const root = document.documentElement;
       root.style.setProperty('--background', backgroundColor);
+      root.style.setProperty('--foreground', textColor);
+      root.style.setProperty('--primary', primaryColor);
+      root.style.setProperty('--secondary', secondaryColor);
+      root.style.setProperty('--accent', accentColor);
       root.style.setProperty('--card-bg', cardBackground);
       root.style.setProperty('--card-border', borderColor);
-      document.body.style.backgroundColor = backgroundColor;
+      root.style.setProperty('--card-radius', borderRadius);
+      root.style.setProperty('--sidebar-bg', sidebarBackground || cardBackground);
+      root.style.setProperty('--header-bg', headerBackground || cardBackground);
+      root.style.setProperty('--font-family', fontFamily);
 
-      let styleEl = document.getElementById('dynamic-theme-overrides') as HTMLStyleElement | null;
+      document.body.style.backgroundColor = backgroundColor;
+      document.body.style.color = textColor;
+      document.body.style.fontFamily = fontFamily;
+
+      let styleEl = document.getElementById('home-style-studio-css') as HTMLStyleElement | null;
       if (!styleEl) {
         styleEl = document.createElement('style');
-        styleEl.id = 'dynamic-theme-overrides';
+        styleEl.id = 'home-style-studio-css';
         document.head.appendChild(styleEl);
       }
+
+      // Generate Shadow rule
+      let shadowCss = 'none';
+      if (cardShadow === 'subtle') shadowCss = '0 2px 8px -1px rgba(0,0,0,0.2)';
+      if (cardShadow === 'medium') shadowCss = '0 8px 24px -4px rgba(0,0,0,0.35)';
+      if (cardShadow === 'deep') shadowCss = '0 16px 36px -6px rgba(0,0,0,0.5)';
+      if (cardShadow === 'neon-glow') shadowCss = `0 0 20px -2px ${accentColor}33, 0 8px 20px -4px rgba(0,0,0,0.5)`;
+
+      // Generate Module Scoped CSS
+      let moduleCssRules = '';
+      Object.entries(moduleStyles).forEach(([modId, mod]) => {
+        if (!mod) return;
+        const selector = `[data-module-id="${modId}"]`;
+        let modRules = '';
+        if (mod.backgroundColor) modRules += `background-color: ${mod.backgroundColor} !important;`;
+        if (mod.cardColor) modRules += `background: ${mod.cardColor} !important;`;
+        if (mod.textColor) modRules += `color: ${mod.textColor} !important;`;
+        if (mod.borderColor) modRules += `border-color: ${mod.borderColor} !important;`;
+        if (mod.borderRadius) modRules += `border-radius: ${mod.borderRadius} !important;`;
+        if (mod.shadow) modRules += `box-shadow: ${mod.shadow} !important;`;
+        if (mod.visible === false) modRules += `display: none !important;`;
+        if (modRules) {
+          moduleCssRules += `${selector} { ${modRules} }\n`;
+        }
+      });
+
+      // 3D Glassmorphism rule
+      const glassRule = glassmorphism
+        ? `backdrop-filter: blur(12px) !important; -webkit-backdrop-filter: blur(12px) !important;`
+        : `backdrop-filter: none !important;`;
 
       styleEl.textContent = `
         body, #app-theme-wrapper {
           background-color: ${backgroundColor} !important;
+          color: ${textColor} !important;
         }
-        .min-h-screen {
-          background-color: transparent !important;
-        }
-        .bg-\\[\\#111A2E\\], .bg-\\[\\#111a2e\\], .bg-\\[\\#0D1526\\], .bg-\\[\\#0d1526\\], .bg-\\[\\#0D131F\\] {
+        .bg-\\[\\#111A2E\\], .bg-\\[\\#111a2e\\], .bg-\\[\\#0D1526\\], .bg-\\[\\#0d1526\\], .bg-\\[\\#0D131F\\], .bg-\\[\\#0B1120\\] {
           background-color: ${cardBackground} !important;
+          border-color: ${borderColor} !important;
+          border-radius: ${borderRadius} !important;
+          box-shadow: ${shadowCss} !important;
+          ${glassRule}
         }
-        .border-\\[\\#1E293B\\], .border-\\[\\#1e293b\\] {
+        .border-\\[\\#1E293B\\], .border-\\[\\#1e293b\\], .border-\\[\\#162238\\] {
           border-color: ${borderColor} !important;
         }
         header.bg-\\[\\#0B1120\\], header {
-          background-color: ${cardBackground} !important;
+          background-color: ${headerBackground || cardBackground} !important;
           border-color: ${borderColor} !important;
         }
+        aside.bg-\\[\\#0B1120\\], aside {
+          background-color: ${sidebarBackground || cardBackground} !important;
+          border-color: ${borderColor} !important;
+        }
+        ${cardHover3D && animationEnabled ? `
+          .card-3d-hover:hover {
+            transform: translateY(-4px) scale(1.01) !important;
+            transition: transform 0.25s ease, box-shadow 0.25s ease !important;
+          }
+        ` : ''}
+        ${moduleCssRules}
       `;
     }
   }, [
     activePreset,
+    isDark,
     backgroundColor,
+    primaryColor,
+    secondaryColor,
+    accentColor,
     cardBackground,
+    sidebarBackground,
+    headerBackground,
+    textColor,
     borderColor,
+    gradientBackground,
     backgroundImage,
     backgroundOpacity,
     backgroundBlur,
+    borderRadius,
+    cardShadow,
+    fontFamily,
+    fontSize,
+    componentSpacing,
+    animationEnabled,
+    animationSpeed,
+    animationIntensity,
+    background3DEffect,
+    floatingClouds,
+    particlesMesh,
+    cardHover3D,
+    glassmorphism,
+    glowingBorders,
+    smoothTransitions,
+    layers,
+    moduleStyles,
     isLoaded,
   ]);
 
-  const setThemePreset = (presetId: string) => {
-    const preset = THEME_PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
+  // Set Theme Preset
+  const setThemePreset = useCallback((presetId: string) => {
+    const p = THEME_PRESETS.find(item => item.id === presetId);
+    if (!p) return;
     setActivePreset(presetId);
-    setBackgroundColorState(preset.canvasBg);
-    setCardBackgroundState(preset.cardBg);
-    setBorderColorState(preset.borderColor);
-  };
+    setIsDark(p.isDark);
+    setBackgroundColorState(p.canvasBg);
+    setCardBackgroundState(p.cardBg);
+    setBorderColorState(p.borderColor);
+    setAccentColorState(p.accentColor);
+    setPrimaryColorState(p.primaryColor);
+    setSecondaryColorState(p.secondaryColor);
+    setTextColorState(p.textColor);
+    if (p.cardShadow) setCardShadowState(p.cardShadow);
+    if (p.borderRadius) setBorderRadiusState(p.borderRadius);
+    if (p.glassmorphism !== undefined) setGlassmorphismState(p.glassmorphism);
+    if (p.background3DEffect) setBackground3DEffectState(p.background3DEffect);
+  }, []);
 
-  const setBackgroundColor = (color: string) => {
-    setActivePreset('custom');
-    setBackgroundColorState(color);
-  };
+  // Layer Updater
+  const updateLayerConfig = useCallback((layerName: keyof LayerConfig, updates: any) => {
+    setLayers(prev => ({
+      ...prev,
+      [layerName]: {
+        ...(prev[layerName] as any),
+        ...updates,
+      },
+    }));
+  }, []);
 
-  const setCardBackground = (color: string) => {
-    setActivePreset('custom');
-    setCardBackgroundState(color);
-  };
+  // Individual Module Styling
+  const updateModuleStyle = useCallback((moduleId: string, updates: Partial<ModuleStyleConfig>) => {
+    setModuleStyles(prev => ({
+      ...prev,
+      [moduleId]: {
+        ...(prev[moduleId] || {}),
+        ...updates,
+      },
+    }));
+  }, []);
 
-  const setBorderColor = (color: string) => {
-    setActivePreset('custom');
-    setBorderColorState(color);
-  };
+  const resetModuleStyle = useCallback((moduleId: string) => {
+    setModuleStyles(prev => {
+      const copy = { ...prev };
+      delete copy[moduleId];
+      return copy;
+    });
+  }, []);
 
-  const setBackgroundImage = (url: string) => {
-    setBackgroundImageState(url);
-  };
+  const getModuleStyle = useCallback((moduleId: string): ModuleStyleConfig => {
+    return moduleStyles[moduleId] || {};
+  }, [moduleStyles]);
 
-  const setBackgroundOpacity = (opacity: number) => {
-    setBackgroundOpacityState(Math.max(0, Math.min(opacity, 1)));
-  };
-
-  const setBackgroundBlur = (blur: number) => {
-    setBackgroundBlurState(Math.max(0, Math.min(blur, 20)));
-  };
-
+  // Wallpapers
   const uploadCustomWallpaper = async (file: File): Promise<string> => {
     try {
       const formData = new FormData();
@@ -378,11 +757,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         body: formData,
       });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || 'Server upload failed');
-      }
-
+      if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       const newWp: CustomWallpaper = {
         id: `wp_${Date.now()}`,
@@ -390,69 +765,205 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         url: data.url,
         date: new Date().toLocaleDateString(),
       };
-
-      setCustomWallpapers((prev) => [newWp, ...prev.filter((w) => w.url !== data.url)]);
-      setBackgroundImage(data.url);
+      setCustomWallpapers(prev => [newWp, ...prev]);
+      setBackgroundImageState(data.url);
       return data.url;
     } catch {
-      // Local FileReader fallback for offline or zero-upload restrictions
       return new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
-          const base64Url = reader.result as string;
+          const base64 = reader.result as string;
           const newWp: CustomWallpaper = {
             id: `wp_${Date.now()}`,
             title: file.name,
-            url: base64Url,
+            url: base64,
             date: new Date().toLocaleDateString(),
           };
-          setCustomWallpapers((prev) => [newWp, ...prev]);
-          setBackgroundImage(base64Url);
-          resolve(base64Url);
+          setCustomWallpapers(prev => [newWp, ...prev]);
+          setBackgroundImageState(base64);
+          resolve(base64);
         };
-        reader.onerror = () => reject(new Error('Failed to read local file'));
+        reader.onerror = reject;
         reader.readAsDataURL(file);
       });
     }
   };
 
   const addCustomWallpaperUrl = (url: string, title?: string) => {
-    if (!url || !url.trim()) return;
-    const cleanUrl = url.trim();
+    if (!url?.trim()) return;
     const newWp: CustomWallpaper = {
       id: `wp_${Date.now()}`,
       title: title || 'Custom Web Image',
-      url: cleanUrl,
+      url: url.trim(),
       date: new Date().toLocaleDateString(),
     };
-    setCustomWallpapers((prev) => [newWp, ...prev.filter((w) => w.url !== cleanUrl)]);
-    setBackgroundImage(cleanUrl);
+    setCustomWallpapers(prev => [newWp, ...prev]);
+    setBackgroundImageState(url.trim());
   };
 
   const deleteCustomWallpaper = (id: string) => {
-    setCustomWallpapers((prev) => {
-      const target = prev.find((w) => w.id === id);
-      if (target && backgroundImage === target.url) {
-        setBackgroundImage('');
-      }
-      return prev.filter((w) => w.id !== id);
-    });
+    setCustomWallpapers(prev => prev.filter(w => w.id !== id));
   };
+
+  // Database Persistence
+  const saveThemeToDatabase = async (themeName: string = 'My Custom Theme'): Promise<boolean> => {
+    try {
+      const payload = {
+        name: themeName,
+        config: {
+          activePreset,
+          isDark,
+          backgroundColor,
+          primaryColor,
+          secondaryColor,
+          accentColor,
+          cardBackground,
+          sidebarBackground,
+          headerBackground,
+          textColor,
+          borderColor,
+          gradientBackground,
+          backgroundImage,
+          backgroundOpacity,
+          backgroundBlur,
+          borderRadius,
+          cardShadow,
+          fontFamily,
+          fontSize,
+          componentSpacing,
+          animationEnabled,
+          animationSpeed,
+          animationIntensity,
+          background3DEffect,
+          floatingClouds,
+          particlesMesh,
+          cardHover3D,
+          glassmorphism,
+          glowingBorders,
+          smoothTransitions,
+          layers,
+          moduleStyles,
+        },
+      };
+
+      const res = await fetch('/api/theme/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  // Export & Import
+  const exportThemeJSON = useCallback((): string => {
+    const data = {
+      name: 'Custom Theme Export',
+      version: '3.0',
+      exportedAt: new Date().toISOString(),
+      config: {
+        activePreset,
+        isDark,
+        backgroundColor,
+        primaryColor,
+        secondaryColor,
+        accentColor,
+        cardBackground,
+        sidebarBackground,
+        headerBackground,
+        textColor,
+        borderColor,
+        borderRadius,
+        cardShadow,
+        fontFamily,
+        fontSize,
+        componentSpacing,
+        animationEnabled,
+        animationSpeed,
+        background3DEffect,
+        floatingClouds,
+        particlesMesh,
+        cardHover3D,
+        glassmorphism,
+        layers,
+        moduleStyles,
+      },
+    };
+    return JSON.stringify(data, null, 2);
+  }, [
+    activePreset,
+    isDark,
+    backgroundColor,
+    primaryColor,
+    secondaryColor,
+    accentColor,
+    cardBackground,
+    sidebarBackground,
+    headerBackground,
+    textColor,
+    borderColor,
+    borderRadius,
+    cardShadow,
+    fontFamily,
+    fontSize,
+    componentSpacing,
+    animationEnabled,
+    animationSpeed,
+    background3DEffect,
+    floatingClouds,
+    particlesMesh,
+    cardHover3D,
+    glassmorphism,
+    layers,
+    moduleStyles,
+  ]);
+
+  const importThemeJSON = useCallback((jsonString: string): boolean => {
+    try {
+      const parsed = JSON.parse(jsonString);
+      const c = parsed.config || parsed;
+      if (c.backgroundColor) setBackgroundColorState(c.backgroundColor);
+      if (c.cardBackground) setCardBackgroundState(c.cardBackground);
+      if (c.borderColor) setBorderColorState(c.borderColor);
+      if (c.accentColor) setAccentColorState(c.accentColor);
+      if (c.primaryColor) setPrimaryColorState(c.primaryColor);
+      if (c.secondaryColor) setSecondaryColorState(c.secondaryColor);
+      if (c.textColor) setTextColorState(c.textColor);
+      if (c.borderRadius) setBorderRadiusState(c.borderRadius);
+      if (c.cardShadow) setCardShadowState(c.cardShadow);
+      if (c.background3DEffect) setBackground3DEffectState(c.background3DEffect);
+      if (c.glassmorphism !== undefined) setGlassmorphismState(c.glassmorphism);
+      if (c.moduleStyles) setModuleStyles(c.moduleStyles);
+      if (c.layers) setLayers(c.layers);
+      setActivePreset('custom');
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const applyColorCircle = (circle: ColorCircleOption) => {
     setActivePreset(circle.id);
     setBackgroundColorState(circle.hex);
     setCardBackgroundState(circle.cardBg);
     setBorderColorState(circle.borderColor);
+    setIsDark(circle.isDark !== false);
   };
 
   const resetTheme = () => {
-    setThemePreset('obsidian');
-    setBackgroundImageState('');
-    setBackgroundOpacityState(0.18);
-    setBackgroundBlurState(0);
+    setThemePreset('dark-neon');
+  };
+
+  const resetEntireTheme = async () => {
+    resetTheme();
+    setModuleStyles({});
+    setLayers(DEFAULT_LAYERS);
     try {
       localStorage.removeItem(STORAGE_KEY);
+      await fetch('/api/theme/config', { method: 'DELETE' });
     } catch {}
   };
 
@@ -460,51 +971,83 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     <ThemeContext.Provider
       value={{
         activePreset,
+        isDark,
         backgroundColor,
+        primaryColor,
+        secondaryColor,
+        accentColor,
         cardBackground,
+        sidebarBackground,
+        headerBackground,
+        textColor,
         borderColor,
+        gradientBackground,
         backgroundImage,
         backgroundOpacity,
         backgroundBlur,
+        borderRadius,
+        cardShadow,
+        fontFamily,
+        fontSize,
+        componentSpacing,
+        animationEnabled,
+        animationSpeed,
+        animationIntensity,
+        background3DEffect,
+        floatingClouds,
+        particlesMesh,
+        cardHover3D,
+        glassmorphism,
+        glowingBorders,
+        smoothTransitions,
+        layers,
+        updateLayerConfig,
+        moduleStyles,
+        updateModuleStyle,
+        resetModuleStyle,
+        getModuleStyle,
         customWallpapers,
-        setThemePreset,
-        setBackgroundColor,
-        setCardBackground,
-        setBorderColor,
-        setBackgroundImage,
-        setBackgroundOpacity,
-        setBackgroundBlur,
         uploadCustomWallpaper,
         addCustomWallpaperUrl,
         deleteCustomWallpaper,
+        setThemePreset,
+        setBackgroundColor: (c) => { setActivePreset('custom'); setBackgroundColorState(c); },
+        setPrimaryColor: (c) => { setActivePreset('custom'); setPrimaryColorState(c); },
+        setSecondaryColor: (c) => { setActivePreset('custom'); setSecondaryColorState(c); },
+        setAccentColor: (c) => { setActivePreset('custom'); setAccentColorState(c); },
+        setCardBackground: (c) => { setActivePreset('custom'); setCardBackgroundState(c); },
+        setSidebarBackground: (c) => { setActivePreset('custom'); setSidebarBackgroundState(c); },
+        setHeaderBackground: (c) => { setActivePreset('custom'); setHeaderBackgroundState(c); },
+        setTextColor: (c) => { setActivePreset('custom'); setTextColorState(c); },
+        setBorderColor: (c) => { setActivePreset('custom'); setBorderColorState(c); },
+        setGradientBackground: (g) => { setActivePreset('custom'); setGradientBackgroundState(g); },
+        setBackgroundImage: (url) => { setBackgroundImageState(url); },
+        setBackgroundOpacity: (o) => { setBackgroundOpacityState(o); },
+        setBackgroundBlur: (b) => { setBackgroundBlurState(b); },
+        setBorderRadius: (r) => { setBorderRadiusState(r); },
+        setCardShadow: (s) => { setCardShadowState(s); },
+        setFontFamily: (f) => { setFontFamilyState(f); },
+        setFontSize: (s) => { setFontSizeState(s); },
+        setComponentSpacing: (s) => { setComponentSpacingState(s); },
+        setAnimationEnabled: (e) => { setAnimationEnabledState(e); },
+        setAnimationSpeed: (s) => { setAnimationSpeedState(s); },
+        setAnimationIntensity: (i) => { setAnimationIntensityState(i); },
+        setBackground3DEffect: (e) => { setBackground3DEffectState(e); },
+        setFloatingClouds: (c) => { setFloatingCloudsState(c); },
+        setParticlesMesh: (p) => { setParticlesMeshState(p); },
+        setCardHover3D: (h) => { setCardHover3DState(h); },
+        setGlassmorphism: (g) => { setGlassmorphismState(g); },
+        setGlowingBorders: (b) => { setGlowingBordersState(b); },
+        setSmoothTransitions: (t) => { setSmoothTransitionsState(t); },
         applyColorCircle,
+        saveThemeToDatabase,
+        exportThemeJSON,
+        importThemeJSON,
         resetTheme,
+        resetEntireTheme,
       }}
     >
-      <div
-        id="app-theme-wrapper"
-        className="relative min-h-screen flex flex-col transition-colors duration-300"
-        style={{
-          backgroundColor: backgroundColor,
-        }}
-      >
-        {/* Global Ambient Background Wallpaper Layer */}
-        {backgroundImage && backgroundImage.trim() !== '' && (
-          <div
-            id="app-theme-wallpaper"
-            aria-hidden="true"
-            className="fixed inset-0 pointer-events-none z-0 transition-opacity duration-500 bg-cover bg-center bg-no-repeat bg-fixed"
-            style={{
-              backgroundImage: `url("${backgroundImage}")`,
-              opacity: backgroundOpacity,
-              filter: backgroundBlur > 0 ? `blur(${backgroundBlur}px)` : 'none',
-            }}
-          />
-        )}
-        <div className="relative z-10 flex flex-col flex-1 bg-transparent">
-          {children}
-        </div>
-      </div>
+      {children}
     </ThemeContext.Provider>
   );
 }

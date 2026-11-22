@@ -4,6 +4,7 @@ import './globals.css';
 import '@xterm/xterm/css/xterm.css';
 import { MonitoringProvider } from '@/context/MonitoringContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { Background3DCanvas } from '@/components/dashboard/Background3DCanvas';
 import { NavigationScrollManager } from '@/components/navigation/NavigationScrollManager';
 
 export const metadata: Metadata = {
@@ -53,6 +54,7 @@ export default function RootLayout({
           <NavigationScrollManager />
         </Suspense>
         <ThemeProvider>
+          <Background3DCanvas />
           <MonitoringProvider>{children}</MonitoringProvider>
         </ThemeProvider>
       </body>

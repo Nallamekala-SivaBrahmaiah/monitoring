@@ -29,6 +29,7 @@ import {
   WALLPAPER_OPTIONS,
   COLOR_CIRCLES,
   ColorCircleOption,
+  WallpaperOption,
 } from '@/context/ThemeContext';
 
 export default function ThemeCustomizerPage() {
@@ -180,7 +181,7 @@ export default function ThemeCustomizerPage() {
 
             {/* Circular Color Palette Grid */}
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-9 lg:grid-cols-10 gap-3 pt-1">
-              {COLOR_CIRCLES.map((c) => {
+              {COLOR_CIRCLES.map((c: ColorCircleOption) => {
                 const isSelected = backgroundColor.toLowerCase() === c.hex.toLowerCase();
                 return (
                   <button
@@ -515,7 +516,7 @@ export default function ThemeCustomizerPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {WALLPAPER_OPTIONS.map((wp) => {
+              {WALLPAPER_OPTIONS.map((wp: WallpaperOption) => {
                 const isSelected = backgroundImage === wp.url;
                 const isNone = wp.id === 'none';
 

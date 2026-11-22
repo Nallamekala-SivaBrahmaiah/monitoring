@@ -18,6 +18,7 @@ import {
   WALLPAPER_OPTIONS,
   COLOR_CIRCLES,
   ColorCircleOption,
+  WallpaperOption,
 } from '@/context/ThemeContext';
 
 export default function HeaderThemeSwitcher() {
@@ -143,7 +144,7 @@ export default function HeaderThemeSwitcher() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {COLOR_CIRCLES.map((c) => {
+              {COLOR_CIRCLES.map((c: ColorCircleOption) => {
                 const isSelected = backgroundColor.toLowerCase() === c.hex.toLowerCase();
                 return (
                   <button
@@ -255,7 +256,7 @@ export default function HeaderThemeSwitcher() {
               })}
 
               {/* Built-in Wallpapers */}
-              {WALLPAPER_OPTIONS.map((wp) => {
+              {WALLPAPER_OPTIONS.map((wp: WallpaperOption) => {
                 const isSelected = backgroundImage === wp.url;
                 const isNone = wp.id === 'none';
 
