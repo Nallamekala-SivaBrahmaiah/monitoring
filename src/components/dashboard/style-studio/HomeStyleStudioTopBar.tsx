@@ -48,6 +48,24 @@ export function HomeStyleStudioTopBar() {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [isModuleModalOpen, setIsModuleModalOpen] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+  const [isThemeSelectOpen, setIsThemeSelectOpen] = useState<boolean>(false);
+  const themeDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (themeDropdownRef.current && !themeDropdownRef.current.contains(event.target as Node)) {
+        setIsThemeSelectOpen(false);
+      }
+    }
+    if (isThemeSelectOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isThemeSelectOpen]);
+
+  const activePresetObj = THEME_PRESETS.find((p) => p.id === activePreset) || THEME_PRESETS[0];
 
   const handleSaveTheme = async () => {
     const ok = await saveThemeToDatabase('Active Custom Theme');
@@ -84,31 +102,92 @@ export function HomeStyleStudioTopBar() {
           </div>
         </div>
 
-        {/* Center: Theme Preset Quick Pills */}
-        <div className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto py-1 px-1 scrollbar-none">
-          {THEME_PRESETS.map((preset) => {
-            const isActive = activePreset === preset.id;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => setThemePreset(preset.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                  isActive
-                    ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30 border border-cyan-400'
-                    : 'bg-[#0E1628] hover:bg-[#111A2E] text-slate-300 border border-[#1E293B]'
-                }`}
-                title={preset.description}
-              >
-                <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/40"
-                  style={{ backgroundColor: preset.accentColor }}
-                ></span>
-                <span>{preset.name}</span>
-                {isActive && <Check className="w-3 h-3 text-white" />}
-              </button>
-            );
-          })}
+        {/* Center: Theme Selector Dropdown Option (Matches User Design) */}
+        <div className="flex-1 min-w-0 flex items-center justify-start lg:justify-center gap-3">
+          <div className="relative shrink-0" ref={themeDropdownRef}>
+            {/* Dropdown Button exactly matching user screenshot */}
+            <button
+              type="button"
+              onClick={() => setIsThemeSelectOpen(!isThemeSelectOpen)}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-600/30 border-2 border-cyan-400 cursor-pointer"
+              title="Click to select dashboard theme option"
+            >
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/50"
+                style={{ backgroundColor: activePresetObj.accentColor }}
+              />
+              <span className="tracking-wide">{activePresetObj.name}</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-white transition-transform duration-200 ${isThemeSelectOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu Options Popover */}
+            {isThemeSelectOpen && (
+              <div className="absolute top-full left-0 mt-2 w-64 bg-[#0B1120] border-2 border-cyan-500/50 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md">
+                <div className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-cyan-400 border-b border-slate-800 mb-1 flex items-center justify-between">
+                  <span>Select Theme Option</span>
+                  <span className="text-slate-500 font-mono text-[9px]">{THEME_PRESETS.length} Options</span>
+                </div>
+                <div className="space-y-1">
+                  {THEME_PRESETS.map((preset) => {
+                    const isSel = activePreset === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          setThemePreset(preset.id);
+                          setIsThemeSelectOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition text-left cursor-pointer ${
+                          isSel
+                            ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30 border border-cyan-400'
+                            : 'bg-[#0E1628]/80 hover:bg-[#18233C] text-slate-200 hover:text-white border border-transparent hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className="w-3 h-3 rounded-full shrink-0 border border-black/40 shadow-sm"
+                            style={{ backgroundColor: preset.accentColor }}
+                          />
+                          <div>
+                            <div className="font-bold leading-tight">{preset.name}</div>
+                            <div className="text-[10px] text-slate-400 truncate max-w-[170px]">{preset.description}</div>
+                          </div>
+                        </div>
+                        {isSel && <Check className="w-4 h-4 text-white shrink-0 ml-2" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Selection Pills alongside for 1-click preview */}
+          <div className="hidden xl:flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+            {THEME_PRESETS.map((preset) => {
+              const isActive = activePreset === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setThemePreset(preset.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                    isActive
+                      ? 'bg-cyan-600/25 text-cyan-300 border border-cyan-500/50'
+                      : 'bg-[#0E1628]/60 hover:bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                  title={preset.description}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: preset.accentColor }}
+                  />
+                  <span>{preset.name}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Right: Quick Actions & Expand Toggle */}
