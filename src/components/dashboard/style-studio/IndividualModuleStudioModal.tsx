@@ -702,13 +702,13 @@ export function IndividualModuleStudioModal() {
                     key={t.id}
                     type="button"
                     onClick={() => setActiveTab(t.id as any)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-t-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 border-b-2 ${
                       isActive
-                        ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/25 border border-cyan-400/40'
-                        : 'bg-[#0B1120] hover:bg-[#162238] text-slate-400 hover:text-slate-200 border border-slate-800'
+                        ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                        : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
                     }`}
                   >
-                    <Icon className="w-3.5 h-3.5" />
+                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
                     <span>{t.label}</span>
                   </button>
                 );

@@ -504,7 +504,7 @@ export default function AnsiblePage() {
           <AnsibleStatsCards stats={stats} />
 
           {/* Navigation Tabs */}
-          <div className="flex items-center gap-1 border-b border-[#1E293B] overflow-x-auto pb-1 text-xs">
+          <div className="flex items-center gap-1.5 border-b border-[#1E293B] overflow-x-auto text-xs select-none">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -513,13 +513,13 @@ export default function AnsiblePage() {
                 <button
                   key={tab.id}
                   onClick={() => switchTab(tab.id)}
-                  className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-semibold transition shrink-0 ${
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-bold transition-all border-b-2 whitespace-nowrap shrink-0 cursor-pointer ${
                     isActive
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-[#18233C]'
+                      ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                      : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
                   <span>{tab.label}</span>
                 </button>
               );

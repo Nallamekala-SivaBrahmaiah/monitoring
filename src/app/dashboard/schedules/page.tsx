@@ -332,28 +332,28 @@ export default function ServerSchedulingPage() {
           </section>
 
           {/* Navigation Tabs */}
-          <div className="flex items-center gap-2 border-b border-[#1E293B] pb-1 select-none">
+          <div className="flex items-center gap-2 border-b border-[#1E293B] select-none overflow-x-auto">
             <button
               onClick={() => setActiveTab('schedules')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-bold text-xs transition-all border-b-2 whitespace-nowrap cursor-pointer ${
                 activeTab === 'schedules'
-                  ? 'border-blue-500 text-white bg-[#111A2E]'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
+                  ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
               }`}
             >
-              <CalendarClock className="w-4 h-4 text-blue-400" />
+              <CalendarClock className={`w-3.5 h-3.5 ${activeTab === 'schedules' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
               <span>Configured Schedules ({schedules.length})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('history')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-t-xl font-semibold text-xs transition-colors border-b-2 ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-bold text-xs transition-all border-b-2 whitespace-nowrap cursor-pointer ${
                 activeTab === 'history'
-                  ? 'border-blue-500 text-white bg-[#111A2E]'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
+                  ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
               }`}
             >
-              <History className="w-4 h-4 text-indigo-400" />
+              <History className={`w-3.5 h-3.5 ${activeTab === 'history' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
               <span>Execution History &amp; Audit Logs</span>
             </button>
           </div>

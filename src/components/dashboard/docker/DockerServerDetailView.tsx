@@ -1038,8 +1038,8 @@ export function DockerServerDetailView({
         </div>
       </div>
 
-      {/* Navigation Tabs (Azure VM Detail View Style) */}
-      <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-2 shadow-xl shadow-black/20 overflow-x-auto">
+      {/* Navigation Tabs (Glowing Cyan HUD Style) */}
+      <div className="border-b border-[#1E293B] overflow-x-auto select-none">
         <div className="flex items-center gap-1.5 min-w-max">
           {[
             { id: 'overview', label: 'Overview', icon: Activity },
@@ -1057,18 +1057,18 @@ export function DockerServerDetailView({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id as DockerTab)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer shrink-0 ${
                   isActive
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                    : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
+                    ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
                 <span>{tab.label}</span>
                 {tab.badge !== undefined && (
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                      isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold font-mono ${
+                      isActive ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-400'
                     }`}
                   >
                     {tab.badge}

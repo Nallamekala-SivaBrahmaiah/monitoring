@@ -24,6 +24,7 @@ import {
   Radio,
   Clock,
   Wifi,
+  Network,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -336,20 +337,25 @@ function ServerDetailContent({ params }: ServerDetailProps) {
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex items-center gap-2 border-b border-[#1E293B] pb-2">
+          <div className="flex items-center gap-2 border-b border-[#1E293B] overflow-x-auto select-none">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                activeTab === 'overview' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'overview'
+                  ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
               }`}
             >
-              Overview & Performance
+              <Activity className={`w-3.5 h-3.5 ${activeTab === 'overview' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
+              <span>Overview & Performance</span>
             </button>
 
             <button
               onClick={() => setActiveTab('docker')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                activeTab === 'docker' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'docker'
+                  ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
               }`}
             >
               <DockerIcon className="w-3.5 h-3.5" />
@@ -358,8 +364,10 @@ function ServerDetailContent({ params }: ServerDetailProps) {
 
             <button
               onClick={() => setActiveTab('kubernetes')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                activeTab === 'kubernetes' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'kubernetes'
+                  ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
               }`}
             >
               <KubernetesIcon className="w-3.5 h-3.5" />
@@ -368,29 +376,37 @@ function ServerDetailContent({ params }: ServerDetailProps) {
 
             <button
               onClick={() => setActiveTab('disks')}
-              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                activeTab === 'disks' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'disks'
+                  ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
               }`}
             >
-              Disk Partitions ({server.metrics?.disks?.length || 0})
+              <HardDrive className={`w-3.5 h-3.5 ${activeTab === 'disks' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
+              <span>Disk Partitions ({server.metrics?.disks?.length || 0})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('network')}
-              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                activeTab === 'network' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'network'
+                  ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
               }`}
             >
-              Network Interfaces ({server.metrics?.network?.length || 0})
+              <Network className={`w-3.5 h-3.5 ${activeTab === 'network' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
+              <span>Network Interfaces ({server.metrics?.network?.length || 0})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('security')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                activeTab === 'security' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'security'
+                  ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
               }`}
             >
-              <Shield className="w-3.5 h-3.5" />
+              <Shield className={`w-3.5 h-3.5 ${activeTab === 'security' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
               <span>Security & Agent</span>
             </button>
           </div>

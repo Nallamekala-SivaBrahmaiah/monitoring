@@ -471,19 +471,19 @@ export default function NotificationsPage() {
             </div>
 
             {/* Tab Pills */}
-            <div className="flex items-center bg-[#111A2E] p-1 rounded-xl border border-[#1E293B] shadow-sm self-start sm:self-auto">
+            <div className="flex items-center gap-2 border-b border-[#1E293B] self-start sm:self-auto select-none">
               <button
                 onClick={() => switchTab('feed')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
                   activeTab === 'feed'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
                 }`}
               >
-                <Bell className="w-3.5 h-3.5" />
+                <Bell className={`w-3.5 h-3.5 ${activeTab === 'feed' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
                 <span>Notifications Feed</span>
                 {unreadCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500 text-white font-bold">
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-rose-500 text-white font-bold">
                     {unreadCount}
                   </span>
                 )}
@@ -491,15 +491,19 @@ export default function NotificationsPage() {
 
               <button
                 onClick={() => switchTab('channels')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
                   activeTab === 'channels'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
                 }`}
               >
-                <Mail className="w-3.5 h-3.5" />
+                <Mail className={`w-3.5 h-3.5 ${activeTab === 'channels' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
                 <span>Channels &amp; DevOps</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  activeTab === 'channels'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                }`}>
                   {recipients.length}
                 </span>
               </button>

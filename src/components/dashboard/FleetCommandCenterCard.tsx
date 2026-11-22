@@ -174,41 +174,41 @@ export function FleetCommandCenterCard({ onOpenTerminal }: FleetCommandCenterCar
         </div>
 
         {/* 3 Main Feature Tabs */}
-        <div className="flex items-center gap-1 bg-[#0E1628] p-1 rounded-xl border border-[#1E293B] shrink-0 self-start sm:self-auto">
+        <div className="flex items-center gap-1.5 border-b border-[#1E293B] shrink-0 self-start sm:self-auto select-none">
           <button
             type="button"
             onClick={() => setActiveTab('launchpad')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border-b-2 whitespace-nowrap ${
               activeTab === 'launchpad'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
+                ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
             }`}
           >
-            <Zap className="w-3.5 h-3.5" />
+            <Zap className={`w-3.5 h-3.5 ${activeTab === 'launchpad' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
             <span>Launchpad</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('activity')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border-b-2 whitespace-nowrap ${
               activeTab === 'activity'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
+                ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
             }`}
           >
-            <Activity className="w-3.5 h-3.5" />
+            <Activity className={`w-3.5 h-3.5 ${activeTab === 'activity' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
             <span>Operations Feed</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('cost')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border-b-2 whitespace-nowrap ${
               activeTab === 'cost'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
+                ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
             }`}
           >
-            <DollarSign className="w-3.5 h-3.5" />
+            <DollarSign className={`w-3.5 h-3.5 ${activeTab === 'cost' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
             <span>Cost Optimizer</span>
           </button>
         </div>

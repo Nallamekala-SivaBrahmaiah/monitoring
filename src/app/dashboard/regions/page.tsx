@@ -14,6 +14,7 @@ import {
   Server,
   RotateCw,
   Layers,
+  Radio,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -131,19 +132,19 @@ export default function RegionsPage() {
           </div>
 
           {/* View Mode Switcher */}
-          <div className="flex items-center gap-2 border-b border-[#1E293B] pb-3">
+          <div className="flex items-center gap-2 border-b border-[#1E293B] overflow-x-auto select-none">
             <button
               onClick={() => setActiveTab('dynamic')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
                 activeTab === 'dynamic'
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
-                  : 'bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-[#1E293B]'
+                  ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
               }`}
             >
-              <Server className="w-4 h-4" />
+              <Radio className={`w-3.5 h-3.5 ${activeTab === 'dynamic' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
               <span>Active Resource Regions (Dynamic)</span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                activeTab === 'dynamic' ? 'bg-blue-500/40 text-white' : 'bg-[#18233C] text-slate-400'
+                activeTab === 'dynamic' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-[#18233C] text-slate-400'
               }`}>
                 {filteredDynamicRegions.length}
               </span>
@@ -151,16 +152,16 @@ export default function RegionsPage() {
 
             <button
               onClick={() => setActiveTab('all')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
                 activeTab === 'all'
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
-                  : 'bg-[#111A2E] text-slate-400 hover:text-slate-200 border border-[#1E293B]'
+                  ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
               }`}
             >
-              <Globe className="w-4 h-4" />
+              <Globe className={`w-3.5 h-3.5 ${activeTab === 'all' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
               <span>All Cloud Regions Catalog</span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                activeTab === 'all' ? 'bg-blue-500/40 text-white' : 'bg-[#18233C] text-slate-400'
+                activeTab === 'all' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-[#18233C] text-slate-400'
               }`}>
                 {displayedCatalogRegions.length}
               </span>

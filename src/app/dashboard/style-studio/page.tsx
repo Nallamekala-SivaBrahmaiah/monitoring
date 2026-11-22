@@ -213,64 +213,64 @@ export default function HomeStyleStudioPage() {
             </div>
 
             {/* Studio Navigation Tabs */}
-            <div className="flex items-center gap-2 mt-6 overflow-x-auto pb-1 border-t border-slate-800/80 pt-4">
+            <div className="flex items-center gap-2 mt-6 overflow-x-auto border-b border-[#1E293B] select-none">
               <button
                 onClick={() => setActiveTab('global')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+                className={`px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 border-b-2 whitespace-nowrap cursor-pointer ${
                   activeTab === 'global'
-                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
-                    : 'bg-[#0E1628] hover:bg-[#111A2E] text-slate-400 border border-slate-800'
+                    ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
                 }`}
               >
-                <Palette className="w-3.5 h-3.5" />
+                <Palette className={`w-3.5 h-3.5 ${activeTab === 'global' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
                 <span>1. Global Appearance</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('animations')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+                className={`px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 border-b-2 whitespace-nowrap cursor-pointer ${
                   activeTab === 'animations'
-                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
-                    : 'bg-[#0E1628] hover:bg-[#111A2E] text-slate-400 border border-slate-800'
+                    ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
                 }`}
               >
-                <Zap className="w-3.5 h-3.5" />
+                <Zap className={`w-3.5 h-3.5 ${activeTab === 'animations' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
                 <span>2. 3D Animation Studio</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('layers')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+                className={`px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 border-b-2 whitespace-nowrap cursor-pointer ${
                   activeTab === 'layers'
-                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
-                    : 'bg-[#0E1628] hover:bg-[#111A2E] text-slate-400 border border-slate-800'
+                    ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
                 }`}
               >
-                <Layers className="w-3.5 h-3.5" />
+                <Layers className={`w-3.5 h-3.5 ${activeTab === 'layers' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
                 <span>3. Layer & Layout Editor</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('modules')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+                className={`px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 border-b-2 whitespace-nowrap cursor-pointer ${
                   activeTab === 'modules'
-                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
-                    : 'bg-[#0E1628] hover:bg-[#111A2E] text-slate-400 border border-slate-800'
+                    ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
                 }`}
               >
-                <Box className="w-3.5 h-3.5" />
+                <Box className={`w-3.5 h-3.5 ${activeTab === 'modules' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
                 <span>4. Individual Modules ({ALL_APPLICATION_MODULES.length})</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('presets')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 shrink-0 ${
+                className={`px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 border-b-2 whitespace-nowrap cursor-pointer ${
                   activeTab === 'presets'
-                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
-                    : 'bg-[#0E1628] hover:bg-[#111A2E] text-slate-400 border border-slate-800'
+                    ? 'border-cyan-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(6,182,212,0.18)]'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
                 }`}
               >
-                <Wand2 className="w-3.5 h-3.5" />
+                <Wand2 className={`w-3.5 h-3.5 ${activeTab === 'presets' ? 'text-cyan-400 animate-pulse' : 'text-slate-400'}`} />
                 <span>5. 8 Theme Presets</span>
               </button>
             </div>
