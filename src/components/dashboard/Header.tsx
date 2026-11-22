@@ -21,6 +21,7 @@ import {
 import { CloudProvider } from '@/types/monitoring';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
+import { HeaderThemeSwitcher } from './HeaderThemeSwitcher';
 
 interface HeaderProps {
   onOpenMobileSidebar?: () => void;
@@ -504,6 +505,9 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
           </div>
         </div>
 
+
+        {/* 6c. Quick Theme & Background Color Switcher */}
+        <HeaderThemeSwitcher />
 
         {/* 7. Notification Bell with Dropdown */}
         <div className="relative">

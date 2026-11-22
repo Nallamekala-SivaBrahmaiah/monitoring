@@ -9,6 +9,7 @@ import {
   Check,
   LogOut,
   Server,
+  Palette,
 } from 'lucide-react';
 import {
   MultiCloudBrandLogo,
@@ -107,6 +108,7 @@ export function Sidebar({
       icon: NotificationChannelsIcon,
       badge: unreadNotifCount,
     },
+    { label: 'Appearance & Themes', href: '/dashboard/theme', icon: Palette },
     { label: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
   ];
 

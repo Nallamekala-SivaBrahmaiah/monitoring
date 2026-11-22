@@ -2,6 +2,7 @@ import React, { Suspense } from 'react';
 import type { Metadata } from 'next';
 import './globals.css';
 import { MonitoringProvider } from '@/context/MonitoringContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 import { NavigationScrollManager } from '@/components/navigation/NavigationScrollManager';
 
 export const metadata: Metadata = {
@@ -29,7 +30,9 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <NavigationScrollManager />
         </Suspense>
-        <MonitoringProvider>{children}</MonitoringProvider>
+        <ThemeProvider>
+          <MonitoringProvider>{children}</MonitoringProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

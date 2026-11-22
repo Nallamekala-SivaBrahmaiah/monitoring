@@ -1,0 +1,226 @@
+'use client';
+
+import React, { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
+import { Palette, Check, Sparkles, Sliders, Image, RotateCcw, ExternalLink, X } from 'lucide-react';
+import { useTheme, THEME_PRESETS, WALLPAPER_OPTIONS } from '@/context/ThemeContext';
+
+export function HeaderThemeSwitcher() {
+  const {
+    activePreset,
+    backgroundColor,
+    backgroundImage,
+    backgroundOpacity,
+    setThemePreset,
+    setBackgroundImage,
+    setBackgroundOpacity,
+    resetTheme,
+  } = useTheme();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click or Escape
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const activePresetObj = THEME_PRESETS.find((p) => p.id === activePreset) || THEME_PRESETS[0];
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      {/* Top Header Button (Palette Icon + Active Color Indicator) */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        title="Change Background Color, Wallpaper & Theme"
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer shadow-sm ${
+          isOpen
+            ? 'bg-blue-600/20 text-blue-300 border-blue-500/50 shadow-blue-500/10'
+            : 'bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border-[#1E293B] hover:border-slate-600'
+        }`}
+      >
+        <Palette className="w-3.5 h-3.5 text-blue-400" />
+        <span className="hidden sm:inline">Theme</span>
+        <span
+          className="w-2.5 h-2.5 rounded-full border border-white/30 shrink-0"
+          style={{ backgroundColor }}
+        />
+      </button>
+
+      {/* Floating Popover / Dropdown Menu at Dashboard Top */}
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#0B1120] border border-[#1E293B] rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between pb-2.5 border-b border-[#1E293B]">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center">
+                <Palette className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-white tracking-tight">Theme & Background</h3>
+                <p className="text-[10px] text-slate-400">Live background color & wallpaper switcher</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={resetTheme}
+                title="Reset to default theme"
+                className="p-1 text-slate-400 hover:text-white hover:bg-[#18233C] rounded-lg transition"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="p-1 text-slate-400 hover:text-white hover:bg-[#18233C] rounded-lg transition"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Section 1: Background Color Models */}
+          <div className="space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+              1. Background Color Models
+            </span>
+
+            <div className="grid grid-cols-2 gap-2">
+              {THEME_PRESETS.map((preset) => {
+                const isSelected = activePreset === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setThemePreset(preset.id)}
+                    className={`p-2 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-600/15 text-white shadow-sm ring-1 ring-blue-500/50'
+                        : 'border-[#1E293B] bg-[#070B14] hover:bg-[#111A2E] text-slate-300'
+                    }`}
+                  >
+                    <div
+                      className="w-5 h-5 rounded-lg border border-white/20 shrink-0 shadow-sm flex items-center justify-center"
+                      style={{ backgroundColor: preset.canvasBg }}
+                    >
+                      {isSelected && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold truncate leading-tight">{preset.name}</div>
+                      <div className="text-[9px] text-slate-500 font-mono truncate">{preset.canvasBg}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 2: Background Wallpapers & Images */}
+          <div className="space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+              2. Background Wallpapers & Images
+            </span>
+
+            <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+              {WALLPAPER_OPTIONS.map((wp) => {
+                const isSelected = backgroundImage === wp.url;
+                const isNone = wp.id === 'none';
+
+                return (
+                  <button
+                    key={wp.id}
+                    type="button"
+                    onClick={() => setBackgroundImage(wp.url)}
+                    className={`relative rounded-xl border p-1 text-left transition overflow-hidden group cursor-pointer ${
+                      isSelected
+                        ? 'border-blue-500 ring-2 ring-blue-500/50'
+                        : 'border-[#1E293B] hover:border-slate-500'
+                    }`}
+                  >
+                    <div
+                      className="w-full h-12 rounded-lg bg-cover bg-center flex items-center justify-center relative overflow-hidden bg-[#070B14]"
+                      style={{
+                        backgroundImage: isNone ? 'none' : `url(${wp.url})`,
+                      }}
+                    >
+                      {isNone ? (
+                        <span className="text-[9px] font-semibold text-slate-400">Solid Color</span>
+                      ) : (
+                        <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
+                      )}
+
+                      {isSelected && (
+                        <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md">
+                          <Check className="w-2.5 h-2.5" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-[9px] font-bold text-slate-300 truncate mt-1 px-1">
+                      {wp.title}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 3: Wallpaper Opacity Slider (Only if wallpaper is active) */}
+          {backgroundImage && backgroundImage.trim() !== '' && (
+            <div className="space-y-1.5 pt-1 border-t border-[#1E293B]/60">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Wallpaper Intensity
+                </span>
+                <span className="text-sky-400 font-mono font-bold text-xs">
+                  {Math.round(backgroundOpacity * 100)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0.05"
+                max="0.5"
+                step="0.01"
+                value={backgroundOpacity}
+                onChange={(e) => setBackgroundOpacity(parseFloat(e.target.value))}
+                className="w-full accent-blue-600 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+              />
+            </div>
+          )}
+
+          {/* Footer Link to Dedicated Module */}
+          <div className="pt-2 border-t border-[#1E293B] flex items-center justify-between">
+            <span className="text-[10px] text-slate-500">Auto-saved to your browser</span>
+            <Link
+              href="/dashboard/theme"
+              onClick={() => setIsOpen(false)}
+              className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition inline-flex items-center gap-1 group"
+            >
+              <span>Full Appearance Module</span>
+              <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition" />
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
