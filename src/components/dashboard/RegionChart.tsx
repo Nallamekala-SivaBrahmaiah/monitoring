@@ -14,6 +14,7 @@ import {
 import { MapPin, Globe } from 'lucide-react';
 import { RegionDistributionItem } from '@/types/monitoring';
 import { useMonitoring } from '@/context/MonitoringContext';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 interface RegionChartProps {
   data?: RegionDistributionItem[];
@@ -147,8 +148,8 @@ export function RegionChart({}: RegionChartProps) {
   const totalInstances = filteredRegions.reduce((sum, r) => sum + r.count, 0);
 
   return (
-    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col justify-between h-full">
-      <div className="flex items-center justify-between mb-2">
+    <div data-module-id="regions-chart" className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col justify-between h-full relative">
+      <div className="flex items-center justify-between mb-2 gap-2">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-md bg-sky-500/10 text-sky-400">
             <MapPin className="w-4 h-4" />
@@ -161,11 +162,19 @@ export function RegionChart({}: RegionChartProps) {
           </div>
         </div>
 
-        {totalInstances > 0 && (
-          <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-            {totalInstances} {totalInstances === 1 ? 'Active Instance' : 'Active Instances'}
-          </span>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {totalInstances > 0 && (
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+              {totalInstances} {totalInstances === 1 ? 'Active Instance' : 'Active Instances'}
+            </span>
+          )}
+          <ModuleCustomizeButton
+            moduleId="regions"
+            moduleName="Top Regions Chart"
+            variant="dropdown"
+            label="3D & Design"
+          />
+        </div>
       </div>
 
       <div className="w-full h-44 mt-2">

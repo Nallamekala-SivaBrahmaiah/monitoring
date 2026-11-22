@@ -21,6 +21,7 @@ import { RegionChart } from '@/components/dashboard/RegionChart';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { DynamicRegionSummary } from '@/types/monitoring';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 export default function RegionsPage() {
   const router = useRouter();
@@ -109,13 +110,19 @@ export default function RegionsPage() {
               </h2>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              <ModuleCustomizeButton
+                moduleId="regions"
+                moduleName="Geographic Regions"
+                variant="dropdown"
+                label="3D Anime, Design & Layer"
+              />
               <button
                 onClick={() => {
                   triggerRefresh();
                   fetchDynamicRegions();
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors cursor-pointer"
               >
                 <RotateCw className={`w-3.5 h-3.5 text-sky-400 ${isRefreshing ? 'animate-spin' : ''}`} />
                 <span>Sync Discovery</span>
@@ -166,14 +173,22 @@ export default function RegionsPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
                 <RegionChart />
 
-                <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm space-y-3 flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">
-                      Dynamic Discovery Summary
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Only regions that contain actual active virtual machines and instances are shown here.
-                    </p>
+                <div data-module-id="regions" className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm space-y-3 flex flex-col justify-between relative">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">
+                        Dynamic Discovery Summary
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Only regions that contain actual active virtual machines and instances are shown here.
+                      </p>
+                    </div>
+                    <ModuleCustomizeButton
+                      moduleId="regions"
+                      moduleName="Dynamic Discovery Summary"
+                      variant="dropdown"
+                      label="3D & Design"
+                    />
                   </div>
 
                   <div className="space-y-3">
@@ -232,6 +247,12 @@ export default function RegionsPage() {
                           </div>
 
                           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                            <ModuleCustomizeButton
+                              moduleId="regions"
+                              moduleName={reg.displayName}
+                              variant="pill"
+                              label="3D & Style"
+                            />
                             <Link
                               href={`/dashboard/regions/${encodeURIComponent(reg.region)}`}
                               className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-blue-600 hover:text-white text-slate-300 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1"

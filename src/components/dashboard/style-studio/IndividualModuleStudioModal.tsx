@@ -312,10 +312,13 @@ export function IndividualModuleStudioModal() {
   const [tiltPhysics, setTiltPhysics] = useState<{ rotateX: number; rotateY: number }>({ rotateX: 0, rotateY: 0 });
   const previewRef = useRef<HTMLDivElement>(null);
 
-  // Set selected module when activeCustomizingModule changes
+  // Set selected module and initial tab when activeCustomizingModule changes
   useEffect(() => {
     if (activeCustomizingModule?.id) {
       setSelectedModuleId(activeCustomizingModule.id);
+      if (activeCustomizingModule.initialTab) {
+        setActiveTab(activeCustomizingModule.initialTab as any);
+      }
     }
   }, [activeCustomizingModule]);
 

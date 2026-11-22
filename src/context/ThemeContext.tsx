@@ -363,8 +363,8 @@ interface ThemeContextType {
   updateModuleStyle: (moduleId: string, updates: Partial<ModuleStyleConfig>) => void;
   resetModuleStyle: (moduleId: string) => void;
   getModuleStyle: (moduleId: string) => ModuleStyleConfig;
-  activeCustomizingModule: { id: string; name?: string } | null;
-  openModuleCustomizer: (moduleId: string, moduleName?: string) => void;
+  activeCustomizingModule: { id: string; name?: string; initialTab?: string } | null;
+  openModuleCustomizer: (moduleId: string, moduleName?: string, initialTab?: string) => void;
   closeModuleCustomizer: () => void;
 
   // Custom Wallpapers
@@ -471,7 +471,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Individual Module Overrides
   const [moduleStyles, setModuleStyles] = useState<Record<string, ModuleStyleConfig>>({});
-  const [activeCustomizingModule, setActiveCustomizingModule] = useState<{ id: string; name?: string } | null>(null);
+  const [activeCustomizingModule, setActiveCustomizingModule] = useState<{ id: string; name?: string; initialTab?: string } | null>(null);
 
   // Wallpapers
   const [customWallpapers, setCustomWallpapers] = useState<CustomWallpaper[]>([]);
@@ -863,8 +863,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return moduleStyles[moduleId] || {};
   }, [moduleStyles]);
 
-  const openModuleCustomizer = useCallback((moduleId: string, moduleName?: string) => {
-    setActiveCustomizingModule({ id: moduleId, name: moduleName });
+  const openModuleCustomizer = useCallback((moduleId: string, moduleName?: string, initialTab?: string) => {
+    setActiveCustomizingModule({ id: moduleId, name: moduleName, initialTab });
   }, []);
 
   const closeModuleCustomizer = useCallback(() => {
