@@ -41,6 +41,7 @@ import { IAnsibleHostData } from '@/models/AnsibleHost';
 import { IAnsiblePlaybookData } from '@/models/AnsiblePlaybook';
 import { IAnsibleExecutionData } from '@/models/AnsibleExecution';
 import { IAnsibleControllerData } from '@/models/AnsibleController';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 type TabType =
   | 'overview'
@@ -465,15 +466,22 @@ export default function AnsiblePage() {
               </div>
             </div>
 
-            <a
-              href="https://docs.ansible.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600/30 via-indigo-600/30 to-purple-600/30 hover:from-blue-600/50 hover:to-purple-600/50 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-semibold shadow-lg shadow-indigo-950/40 flex items-center gap-1.5 self-start sm:self-center transition"
-            >
-              <span>Ansible Documentation</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+            <div className="flex items-center gap-2 self-start sm:self-center">
+              <ModuleCustomizeButton
+                moduleId="ansible"
+                moduleName="Ansible Module"
+                variant="pill"
+              />
+              <a
+                href="https://docs.ansible.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600/30 via-indigo-600/30 to-purple-600/30 hover:from-blue-600/50 hover:to-purple-600/50 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-semibold shadow-lg shadow-indigo-950/40 flex items-center gap-1.5 transition"
+              >
+                <span>Ansible Documentation</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
 
           {/* Status Alert Banner */}

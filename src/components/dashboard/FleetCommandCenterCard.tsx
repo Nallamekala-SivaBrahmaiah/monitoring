@@ -24,6 +24,7 @@ import {
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 interface FleetCommandCenterCardProps {
   onOpenTerminal?: (target: SSHTerminalTarget) => void;
@@ -159,6 +160,12 @@ export function FleetCommandCenterCard({ onOpenTerminal }: FleetCommandCenterCar
               <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30 uppercase tracking-wider">
                 Live Operations
               </span>
+              <ModuleCustomizeButton
+                moduleId="fleet-command"
+                moduleName="Fleet Command Center"
+                variant="icon"
+                title="Customize Fleet Command Center Appearance"
+              />
             </div>
             <p className="text-xs text-slate-400">
               Instant PuTTY terminal access, operational shortcuts, and multi-cloud intelligence

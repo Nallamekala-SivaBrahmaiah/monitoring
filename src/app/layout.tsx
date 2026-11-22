@@ -6,6 +6,7 @@ import { MonitoringProvider } from '@/context/MonitoringContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { Background3DCanvas } from '@/components/dashboard/Background3DCanvas';
 import { NavigationScrollManager } from '@/components/navigation/NavigationScrollManager';
+import { IndividualModuleStudioModal } from '@/components/dashboard/style-studio/IndividualModuleStudioModal';
 
 export const metadata: Metadata = {
   title: 'Multi-Cloud Monitoring Platform | AWS & Azure Infrastructure',
@@ -55,6 +56,7 @@ export default function RootLayout({
         </Suspense>
         <ThemeProvider>
           <Background3DCanvas />
+          <IndividualModuleStudioModal />
           <MonitoringProvider>{children}</MonitoringProvider>
         </ThemeProvider>
       </body>

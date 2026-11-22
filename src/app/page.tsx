@@ -73,6 +73,7 @@ export default function DashboardPage() {
               {(cloudProvider === 'all' || cloudProvider === 'aws') && (
                 <div data-module-id="aws-resources">
                   <MetricCard
+                    moduleId="aws-resources"
                     title="AWS Resources"
                     count={overviewMetrics.awsResources.total}
                     changeText={overviewMetrics.awsResources.changeText}
@@ -87,6 +88,7 @@ export default function DashboardPage() {
               {(cloudProvider === 'all' || cloudProvider === 'azure') && (
                 <div data-module-id="azure-resources">
                   <MetricCard
+                    moduleId="azure-resources"
                     title="Azure Resources"
                     count={overviewMetrics.azureResources.total}
                     changeText={overviewMetrics.azureResources.changeText}
@@ -100,6 +102,7 @@ export default function DashboardPage() {
               {/* Card 3: Total Servers */}
               <div data-module-id="total-servers">
                 <MetricCard
+                  moduleId="total-servers"
                   title={
                     cloudProvider === 'aws'
                       ? 'Total EC2 Instances'
@@ -118,6 +121,7 @@ export default function DashboardPage() {
               {/* Card 4: Docker Containers */}
               <div data-module-id="docker-containers">
                 <MetricCard
+                  moduleId="docker-containers"
                   title={
                     cloudProvider === 'aws'
                       ? 'AWS Containers'
@@ -136,6 +140,7 @@ export default function DashboardPage() {
               {/* Card 5: K8s Clusters */}
               <div data-module-id="k8s-clusters">
                 <MetricCard
+                  moduleId="k8s-clusters"
                   title={
                     cloudProvider === 'aws'
                       ? 'EKS Clusters'
@@ -154,6 +159,7 @@ export default function DashboardPage() {
               {/* Card 6: Active Alerts */}
               <div data-module-id="active-alerts">
                 <MetricCard
+                  moduleId="active-alerts"
                   title={
                     cloudProvider === 'aws'
                       ? 'AWS Alerts'

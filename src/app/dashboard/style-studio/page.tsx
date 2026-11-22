@@ -94,6 +94,7 @@ export default function HomeStyleStudioPage() {
     moduleStyles,
     getModuleStyle,
     resetModuleStyle,
+    openModuleCustomizer,
     // DB & File
     saveThemeToDatabase,
     exportThemeJSON,
@@ -675,8 +676,8 @@ export default function HomeStyleStudioPage() {
                   <p className="text-xs text-slate-400">Customize any module independently without altering other cards</p>
                 </div>
                 <button
-                  onClick={() => setIsModuleModalOpen(true)}
-                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md transition"
+                  onClick={() => openModuleCustomizer('aws-resources', 'AWS Resources Card')}
+                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md transition cursor-pointer"
                 >
                   + Open Module Customizer
                 </button>
@@ -708,11 +709,8 @@ export default function HomeStyleStudioPage() {
                       <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-800">
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedModuleForEdit(mod.id);
-                            setIsModuleModalOpen(true);
-                          }}
-                          className="flex-1 py-1.5 rounded-lg bg-cyan-600/80 hover:bg-cyan-600 text-white font-bold text-xs transition"
+                          onClick={() => openModuleCustomizer(mod.id, mod.name)}
+                          className="flex-1 py-1.5 rounded-lg bg-cyan-600/80 hover:bg-cyan-600 text-white font-bold text-xs transition cursor-pointer"
                         >
                           Edit Appearance
                         </button>

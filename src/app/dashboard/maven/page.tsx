@@ -30,6 +30,7 @@ import { RunAppConfigModal } from '@/components/dashboard/maven/RunAppConfigModa
 import { AppLogsModal } from '@/components/dashboard/maven/AppLogsModal';
 import { IMavenProjectData } from '@/models/MavenProject';
 import { IMavenAppData } from '@/models/MavenApp';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 interface MavenSummary {
   totalProjects: number;
@@ -268,6 +269,11 @@ export default function MavenPage() {
             </div>
 
             <div className="flex items-center gap-2">
+              <ModuleCustomizeButton
+                moduleId="maven"
+                moduleName="Maven Module"
+                variant="pill"
+              />
               <button
                 onClick={() => {
                   fetchProjectsAndSummary();

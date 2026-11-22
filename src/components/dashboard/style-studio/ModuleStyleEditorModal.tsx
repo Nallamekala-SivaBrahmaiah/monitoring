@@ -90,8 +90,8 @@ export function ModuleStyleEditorModal({
   const [modBorder, setModBorder] = useState<string>(currentStyle.borderColor || borderColor || '#1E293B');
   const [modRadius, setModRadius] = useState<string>(currentStyle.borderRadius || borderRadius || '12px');
   const [modShadow, setModShadow] = useState<string>(currentStyle.shadow || 'subtle');
-  const [modAnimation, setModAnimation] = useState<'none' | 'pulse' | 'glow' | 'tilt' | 'float'>(currentStyle.animation || 'none');
-  const [modIconStyle, setModIconStyle] = useState<'classic' | 'neon' | 'glow' | 'minimal'>(currentStyle.iconStyle || 'classic');
+  const [modAnimation, setModAnimation] = useState<ModuleStyleConfig['animation']>(currentStyle.animation || 'none');
+  const [modIconStyle, setModIconStyle] = useState<ModuleStyleConfig['iconStyle']>(currentStyle.iconStyle || 'classic');
   const [modVisible, setModVisible] = useState<boolean>(currentStyle.visible !== false);
   const [hasGradient, setHasGradient] = useState<boolean>(!!currentStyle.gradient);
   const [gradientStart, setGradientStart] = useState<string>('#1E3A8A');

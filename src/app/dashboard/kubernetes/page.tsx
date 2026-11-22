@@ -51,6 +51,7 @@ import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHT
 import { InstallK8sModal } from '@/components/dashboard/kubernetes/InstallK8sModal';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { IKubernetesServerInfo } from '@/lib/kubernetes/k8sServerService';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 export type K8sNavigationSection =
   | 'overview'
@@ -428,6 +429,11 @@ function KubernetesContent() {
 
             {/* Quick Actions */}
             <div className="flex items-center gap-2">
+              <ModuleCustomizeButton
+                moduleId="kubernetes"
+                moduleName="Kubernetes Module"
+                variant="pill"
+              />
               {selectedServer && (
                 <button
                   onClick={handleBackToServers}

@@ -6,8 +6,8 @@ import { ArrowLeft, Activity } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { ResourceOverviewChart } from '@/components/dashboard/ResourceOverviewChart';
-
 import { useMonitoring } from '@/context/MonitoringContext';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 export default function MetricsPage() {
   const { cloudProvider } = useMonitoring();
@@ -19,24 +19,33 @@ export default function MetricsPage() {
         <Header />
 
         <main className="p-4 lg:p-8 space-y-6">
-          <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-            <Link href="/" className="hover:text-blue-400 flex items-center gap-1">
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Dashboard</span>
-            </Link>
-            <span>/</span>
-            <span className="text-white">Metrics Explorer</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                <Link href="/" className="hover:text-blue-400 flex items-center gap-1">
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Dashboard</span>
+                </Link>
+                <span>/</span>
+                <span className="text-white">Metrics Explorer</span>
+              </div>
+              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                <Activity className="w-5 h-5 text-teal-400" />
+                <span>
+                  {cloudProvider === 'aws'
+                    ? 'AWS CloudWatch Metrics Explorer'
+                    : cloudProvider === 'azure'
+                    ? 'Azure Monitor Telemetry Explorer'
+                    : 'Cross-Cloud Metrics Explorer'}
+                </span>
+              </h2>
+            </div>
+            <ModuleCustomizeButton
+              moduleId="metrics-explorer"
+              moduleName="Metrics Explorer"
+              variant="pill"
+            />
           </div>
-          <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-            <Activity className="w-5 h-5 text-teal-400" />
-            <span>
-              {cloudProvider === 'aws'
-                ? 'AWS CloudWatch Metrics Explorer'
-                : cloudProvider === 'azure'
-                ? 'Azure Monitor Telemetry Explorer'
-                : 'Cross-Cloud Metrics Explorer'}
-            </span>
-          </h2>
 
           <div className="grid grid-cols-1 gap-6">
             <div className="h-96">

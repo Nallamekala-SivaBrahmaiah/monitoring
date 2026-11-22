@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { NginxLogo, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { INginxServerData } from '@/models/NginxServer';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 interface NginxTopBarProps {
   servers: INginxServerData[];
@@ -58,6 +59,11 @@ export function NginxTopBar({
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                 PROD READY
               </span>
+              <ModuleCustomizeButton
+                moduleId="nginx"
+                moduleName="Nginx Module"
+                variant="pill"
+              />
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
               Production server operations, PM2 processes, Git repositories, reverse proxy & zero-downtime deployments

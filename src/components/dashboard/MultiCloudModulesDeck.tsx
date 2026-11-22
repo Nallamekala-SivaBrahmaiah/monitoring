@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
 import { useMonitoring } from '@/context/MonitoringContext';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 interface MultiCloudModulesDeckProps {
   onOpenTerminal?: (target: SSHTerminalTarget) => void;
@@ -94,8 +95,13 @@ export function MultiCloudModulesDeck({ onOpenTerminal }: MultiCloudModulesDeckP
           </div>
         </div>
 
-        {/* 100% Operational Badge */}
+        {/* Actions & 100% Operational Badge */}
         <div className="flex items-center gap-2 shrink-0">
+          <ModuleCustomizeButton
+            moduleId="operations-matrix"
+            moduleName="Operations Matrix"
+            variant="pill"
+          />
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-bold">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span>100% Operational</span>
@@ -125,9 +131,17 @@ export function MultiCloudModulesDeck({ onOpenTerminal }: MultiCloudModulesDeckP
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border border-[#0E1628] animate-ping"></span>
             </div>
 
-            <div className="text-right">
-              <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider block">Docker</span>
-              <span className="text-[10px] font-mono text-emerald-400 font-semibold">v29.1.3 Active</span>
+            <div className="flex items-center gap-1.5">
+              <ModuleCustomizeButton
+                moduleId="docker-containers"
+                moduleName="Docker Engine"
+                variant="icon"
+                title="Customize Docker Engine Appearance"
+              />
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider block">Docker</span>
+                <span className="text-[10px] font-mono text-emerald-400 font-semibold">v29.1.3 Active</span>
+              </div>
             </div>
           </div>
 
@@ -181,9 +195,17 @@ export function MultiCloudModulesDeck({ onOpenTerminal }: MultiCloudModulesDeckP
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-400 rounded-full border border-[#0E1628] animate-pulse"></span>
             </div>
 
-            <div className="text-right">
-              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block">Kubernetes</span>
-              <span className="text-[10px] font-mono text-blue-300 font-semibold">kubectl Armed</span>
+            <div className="flex items-center gap-1.5">
+              <ModuleCustomizeButton
+                moduleId="k8s-clusters"
+                moduleName="Kubernetes Mesh"
+                variant="icon"
+                title="Customize Kubernetes Appearance"
+              />
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block">Kubernetes</span>
+                <span className="text-[10px] font-mono text-blue-300 font-semibold">kubectl Armed</span>
+              </div>
             </div>
           </div>
 
@@ -235,9 +257,17 @@ export function MultiCloudModulesDeck({ onOpenTerminal }: MultiCloudModulesDeckP
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border border-[#0E1628] animate-ping"></span>
             </div>
 
-            <div className="text-right">
-              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Nginx</span>
-              <span className="text-[10px] font-mono text-emerald-300 font-semibold">240 req/s</span>
+            <div className="flex items-center gap-1.5">
+              <ModuleCustomizeButton
+                moduleId="nginx"
+                moduleName="Nginx Gateway"
+                variant="icon"
+                title="Customize Nginx Appearance"
+              />
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Nginx</span>
+                <span className="text-[10px] font-mono text-emerald-300 font-semibold">240 req/s</span>
+              </div>
             </div>
           </div>
 
@@ -290,9 +320,17 @@ export function MultiCloudModulesDeck({ onOpenTerminal }: MultiCloudModulesDeckP
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full border border-[#0E1628] animate-pulse"></span>
             </div>
 
-            <div className="text-right">
-              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Maven</span>
-              <span className="text-[10px] font-mono text-emerald-400 font-semibold">12 JARs Built</span>
+            <div className="flex items-center gap-1.5">
+              <ModuleCustomizeButton
+                moduleId="maven"
+                moduleName="Maven Engine"
+                variant="icon"
+                title="Customize Maven Appearance"
+              />
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Maven</span>
+                <span className="text-[10px] font-mono text-emerald-400 font-semibold">12 JARs Built</span>
+              </div>
             </div>
           </div>
 
@@ -345,9 +383,17 @@ export function MultiCloudModulesDeck({ onOpenTerminal }: MultiCloudModulesDeckP
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-400 rounded-full border border-[#0E1628] animate-ping"></span>
             </div>
 
-            <div className="text-right">
-              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block">Ansible</span>
-              <span className="text-[10px] font-mono text-purple-300 font-semibold">8 Playbooks</span>
+            <div className="flex items-center gap-1.5">
+              <ModuleCustomizeButton
+                moduleId="ansible"
+                moduleName="Ansible Engine"
+                variant="icon"
+                title="Customize Ansible Appearance"
+              />
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block">Ansible</span>
+                <span className="text-[10px] font-mono text-purple-300 font-semibold">8 Playbooks</span>
+              </div>
             </div>
           </div>
 
@@ -402,9 +448,17 @@ export function MultiCloudModulesDeck({ onOpenTerminal }: MultiCloudModulesDeckP
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border border-[#0E1628] animate-ping"></span>
             </div>
 
-            <div className="text-right">
-              <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block">Fleet Servers</span>
-              <span className="text-[10px] font-mono text-emerald-400 font-semibold">18ms / 36ms</span>
+            <div className="flex items-center gap-1.5">
+              <ModuleCustomizeButton
+                moduleId="servers"
+                moduleName="Fleet Servers"
+                variant="icon"
+                title="Customize Fleet Servers Appearance"
+              />
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block">Fleet Servers</span>
+                <span className="text-[10px] font-mono text-emerald-400 font-semibold">18ms / 36ms</span>
+              </div>
             </div>
           </div>
 

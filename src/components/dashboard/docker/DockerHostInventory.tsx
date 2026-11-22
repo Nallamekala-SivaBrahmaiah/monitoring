@@ -27,6 +27,7 @@ import {
 import { DockerIcon, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { IDockerHostDetails } from '@/lib/docker/dockerEngine';
 import { InstallDockerModal } from './InstallDockerModal';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 interface DockerHostInventoryProps {
   hosts: IDockerHostDetails[];
@@ -138,6 +139,11 @@ export function DockerHostInventory({
         </div>
 
         <div className="flex items-center gap-3">
+          <ModuleCustomizeButton
+            moduleId="docker"
+            moduleName="Docker Module"
+            variant="pill"
+          />
           <button
             onClick={() => setIsInstallModalOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-emerald-600/30"

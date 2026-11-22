@@ -41,6 +41,7 @@ import { UnifiedServerRow, UnifiedServerItem } from '@/components/dashboard/Unif
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { useMonitoring } from '@/context/MonitoringContext';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 interface RegisteredServer {
   _id: string;
@@ -722,6 +723,11 @@ export default function ServersPage() {
             </div>
 
             <div className="flex items-center gap-2.5">
+              <ModuleCustomizeButton
+                moduleId="servers"
+                moduleName="Servers Registry"
+                variant="pill"
+              />
               <button
                 onClick={fetchServers}
                 disabled={loading}

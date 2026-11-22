@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 interface MetricCardProps {
   title: string;
@@ -10,6 +11,7 @@ interface MetricCardProps {
   trendData: number[];
   color: string;
   isNegative?: boolean;
+  moduleId?: string;
 }
 
 export function MetricCard({
@@ -20,6 +22,7 @@ export function MetricCard({
   trendData,
   color,
   isNegative = false,
+  moduleId,
 }: MetricCardProps) {
   // Generate an SVG path for the mini sparkline
   const min = Math.min(...trendData);
@@ -37,15 +40,27 @@ export function MetricCard({
   const pathD = `M ${points.join(' L ')}`;
 
   return (
-    <div className="bg-[#111A2E] border border-[#1E293B] hover:border-slate-700/80 rounded-xl p-4 transition-all duration-200 shadow-sm flex flex-col justify-between">
+    <div className="bg-[#111A2E] border border-[#1E293B] hover:border-slate-700/80 rounded-xl p-4 transition-all duration-200 shadow-sm flex flex-col justify-between group/card relative">
       {/* Top Header */}
-      <div className="flex items-center gap-2.5 mb-2">
-        <div className="flex-shrink-0 flex items-center justify-center">
-          {icon}
+      <div className="flex items-center justify-between gap-2 mb-2 module-header">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex-shrink-0 flex items-center justify-center module-icon">
+            {icon}
+          </div>
+          <span className="text-xs font-medium text-slate-400 truncate module-heading">
+            {title}
+          </span>
         </div>
-        <span className="text-xs font-medium text-slate-400 truncate">
-          {title}
-        </span>
+        {moduleId && (
+          <div className="shrink-0 opacity-80 group-hover/card:opacity-100 transition-opacity">
+            <ModuleCustomizeButton
+              moduleId={moduleId}
+              moduleName={title}
+              variant="icon"
+              title={`Customize ${title} Style, 3D & Layers`}
+            />
+          </div>
+        )}
       </div>
 
       {/* Main Metric & Trend Sparkline */}

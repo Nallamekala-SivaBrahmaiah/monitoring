@@ -6,6 +6,7 @@ import { PieChart as PieIcon, Cpu, HardDrive, Plus, Server as ServerIcon } from 
 import { CloudDistributionItem } from '@/types/monitoring';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 interface CloudDistributionChartProps {
   data?: CloudDistributionItem[];
@@ -172,9 +173,17 @@ export function CloudDistributionChart({}: CloudDistributionChartProps) {
           </div>
         </div>
 
-        <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-[#0D1526] text-blue-300 border border-[#1E293B]">
-          {total} {total === 1 ? 'Server' : 'Servers'}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <ModuleCustomizeButton
+            moduleId="cloud-distribution"
+            moduleName="Cloud Distribution Fleet"
+            variant="icon"
+            title="Customize Cloud Distribution Fleet Appearance"
+          />
+          <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-[#0D1526] text-blue-300 border border-[#1E293B]">
+            {total} {total === 1 ? 'Server' : 'Servers'}
+          </span>
+        </div>
       </div>
 
       {/* 2. Content Body: If empty state, display clean empty state */}

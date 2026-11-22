@@ -29,6 +29,7 @@ import { useMonitoring } from '@/context/MonitoringContext';
 import { AlertItem } from '@/types/monitoring';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { GroupedServerCardItem } from '@/app/api/alerts/grouped/route';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 export default function AlertsPage() {
   const { cloudProvider, triggerRefresh } = useMonitoring();
@@ -312,6 +313,11 @@ export default function AlertsPage() {
             </div>
 
             <div className="flex items-center gap-2">
+              <ModuleCustomizeButton
+                moduleId="alerts"
+                moduleName="Alerts Center"
+                variant="pill"
+              />
               <button
                 onClick={() => fetchAlerts(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors"

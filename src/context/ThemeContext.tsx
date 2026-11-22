@@ -2,19 +2,79 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 
+export interface ModuleLayerSettings {
+  visible: boolean;
+  opacity: number;
+  background?: string;
+  zIndex?: number;
+}
+
+export interface ModuleLayersConfig {
+  background: ModuleLayerSettings;
+  container: ModuleLayerSettings;
+  header: ModuleLayerSettings;
+  card: ModuleLayerSettings;
+  icon: ModuleLayerSettings;
+  content: ModuleLayerSettings;
+  animation: ModuleLayerSettings;
+  border: ModuleLayerSettings;
+  shadow: ModuleLayerSettings;
+}
+
 export interface ModuleStyleConfig {
+  // Preset
+  stylePreset?: string; // 'modern-enterprise' | 'dark-neon' | 'glassmorphism' | 'cyberpunk' | 'minimal' | 'premium-3d' | 'gradient-glass' | 'futuristic' | 'professional-light' | 'midnight-purple'
+
+  // Colors
   backgroundColor?: string;
   cardColor?: string;
+  headerColor?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  accentColor?: string;
   textColor?: string;
+  headingColor?: string;
+  iconColor?: string;
   borderColor?: string;
-  gradient?: string;
-  shadow?: string;
-  animation?: 'none' | 'pulse' | 'glow' | 'tilt' | 'float';
-  iconStyle?: 'classic' | 'neon' | 'glow' | 'minimal';
-  fontSize?: 'sm' | 'base' | 'lg';
+  borderWidth?: string;
   borderRadius?: string;
+  gradient?: string;
+  gradientStart?: string;
+  gradientEnd?: string;
+  hasGradient?: boolean;
+  shadow?: string;
+  shadowColor?: string;
+  hoverColor?: string;
+
+  // 3D Animation Studio
+  animationEnabled?: boolean;
+  animation?: 'none' | 'pulse' | 'glow' | 'tilt' | 'float' | 'rotating' | 'cloud' | 'particles';
+  animationSpeed?: 'slow' | 'normal' | 'fast';
+  rotationIntensity?: 'subtle' | 'medium' | 'extreme';
+  depth3D?: number; // 0 to 50
+  glowIntensity?: 'subtle' | 'medium' | 'vibrant';
+  particleDensity?: 'low' | 'medium' | 'high';
+  hoverIntensity?: 'subtle' | 'medium' | 'high';
+  mouseFollowTilt?: boolean;
+
+  // Design, Layout & Typography
+  cardDesign?: 'modern' | 'glass' | 'neon' | 'elevated' | 'minimal' | 'cyber';
+  headerDesign?: 'classic' | 'compact' | 'accent' | 'minimal';
+  iconStyle?: 'classic' | 'neon' | 'glow' | 'minimal' | 'hologram';
+  fontFamily?: string;
+  fontSize?: 'sm' | 'base' | 'lg' | 'xl';
+  fontWeight?: 'normal' | 'medium' | 'semibold' | 'bold';
   padding?: string;
+  margin?: string;
+  alignment?: 'left' | 'center' | 'split';
+  width?: string;
+  height?: string;
+  blur?: number;
+  glassmorphism?: boolean;
   visible?: boolean;
+
+  // Visual Layers
+  layers?: Partial<ModuleLayersConfig>;
 }
 
 export interface ColorCircleOption {
@@ -349,11 +409,14 @@ interface ThemeContextType {
   layers: LayerConfig;
   updateLayerConfig: (layerName: keyof LayerConfig, updates: any) => void;
 
-  // Individual Module Overrides
+  // Individual Module Overrides & Active Customizer
   moduleStyles: Record<string, ModuleStyleConfig>;
   updateModuleStyle: (moduleId: string, updates: Partial<ModuleStyleConfig>) => void;
   resetModuleStyle: (moduleId: string) => void;
   getModuleStyle: (moduleId: string) => ModuleStyleConfig;
+  activeCustomizingModule: { id: string; name?: string } | null;
+  openModuleCustomizer: (moduleId: string, moduleName?: string) => void;
+  closeModuleCustomizer: () => void;
 
   // Custom Wallpapers
   customWallpapers: CustomWallpaper[];
@@ -459,6 +522,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Individual Module Overrides
   const [moduleStyles, setModuleStyles] = useState<Record<string, ModuleStyleConfig>>({});
+  const [activeCustomizingModule, setActiveCustomizingModule] = useState<{ id: string; name?: string } | null>(null);
 
   // Wallpapers
   const [customWallpapers, setCustomWallpapers] = useState<CustomWallpaper[]>([]);
@@ -604,7 +668,34 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (cardShadow === 'neon-glow') shadowCss = `0 0 20px -2px ${accentColor}33, 0 8px 20px -4px rgba(0,0,0,0.5)`;
 
       // Generate Module Scoped CSS
-      let moduleCssRules = '';
+      let moduleCssRules = `
+        @keyframes modFloatAnim {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-7px); }
+        }
+        @keyframes modRotatingAnim {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes modPulseAnim {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.88; transform: scale(0.985); }
+        }
+        @keyframes modGlowAnim {
+          0%, 100% { filter: drop-shadow(0 0 6px rgba(6, 182, 212, 0.35)); }
+          50% { filter: drop-shadow(0 0 24px rgba(6, 182, 212, 0.75)); }
+        }
+        @keyframes modTiltAnim {
+          0%, 100% { transform: perspective(1000px) rotateX(0deg) rotateY(0deg); }
+          25% { transform: perspective(1000px) rotateX(3deg) rotateY(-3deg); }
+          75% { transform: perspective(1000px) rotateX(-3deg) rotateY(3deg); }
+        }
+        @keyframes modCloudDriftAnim {
+          0%, 100% { transform: translate(0px, 0px) scale(1); }
+          50% { transform: translate(4px, -5px) scale(1.02); }
+        }
+      `;
+
       Object.entries(moduleStyles).forEach(([modId, mod]) => {
         if (!mod) return;
         const selector = `[data-module-id="${modId}"]`;
@@ -613,11 +704,72 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (mod.cardColor) modRules += `background: ${mod.cardColor} !important;`;
         if (mod.textColor) modRules += `color: ${mod.textColor} !important;`;
         if (mod.borderColor) modRules += `border-color: ${mod.borderColor} !important;`;
+        if (mod.borderWidth) modRules += `border-width: ${mod.borderWidth} !important;`;
         if (mod.borderRadius) modRules += `border-radius: ${mod.borderRadius} !important;`;
         if (mod.shadow) modRules += `box-shadow: ${mod.shadow} !important;`;
+        if (mod.fontFamily) modRules += `font-family: ${mod.fontFamily} !important;`;
+        if (mod.padding) modRules += `padding: ${mod.padding} !important;`;
+        if (mod.width) modRules += `width: ${mod.width} !important; max-width: ${mod.width} !important;`;
+        if (mod.height) modRules += `min-height: ${mod.height} !important;`;
         if (mod.visible === false) modRules += `display: none !important;`;
+
+        if (mod.glassmorphism) {
+          const blurVal = mod.blur ?? 12;
+          modRules += `backdrop-filter: blur(${blurVal}px) !important; -webkit-backdrop-filter: blur(${blurVal}px) !important;`;
+        }
+
+        // Animation rules
+        if (mod.animationEnabled !== false && mod.animation && mod.animation !== 'none') {
+          const speed = mod.animationSpeed === 'slow' ? '4.5s' : mod.animationSpeed === 'fast' ? '1.5s' : '2.8s';
+          if (mod.animation === 'float') {
+            modRules += `animation: modFloatAnim ${speed} ease-in-out infinite !important;`;
+          } else if (mod.animation === 'rotating') {
+            const rotSpeed = mod.animationSpeed === 'slow' ? '12s' : mod.animationSpeed === 'fast' ? '4s' : '8s';
+            modRules += `animation: modRotatingAnim ${rotSpeed} linear infinite !important;`;
+          } else if (mod.animation === 'pulse') {
+            modRules += `animation: modPulseAnim ${speed} ease-in-out infinite !important;`;
+          } else if (mod.animation === 'glow') {
+            modRules += `animation: modGlowAnim ${speed} ease-in-out infinite !important;`;
+          } else if (mod.animation === 'tilt') {
+            modRules += `animation: modTiltAnim ${speed} ease-in-out infinite !important;`;
+          } else if (mod.animation === 'cloud') {
+            modRules += `animation: modCloudDriftAnim ${speed} ease-in-out infinite !important;`;
+          }
+        }
+
         if (modRules) {
           moduleCssRules += `${selector} { ${modRules} }\n`;
+        }
+
+        // Sub-elements: Header, Icon, Headings, Hover
+        if (mod.headerColor || mod.layers?.header) {
+          let headerRules = '';
+          if (mod.headerColor) headerRules += `background: ${mod.headerColor} !important;`;
+          if (mod.layers?.header?.visible === false) headerRules += `display: none !important;`;
+          if (mod.layers?.header?.opacity !== undefined) headerRules += `opacity: ${mod.layers.header.opacity} !important;`;
+          if (headerRules) moduleCssRules += `${selector} .module-header { ${headerRules} }\n`;
+        }
+
+        if (mod.iconColor || mod.layers?.icon) {
+          let iconRules = '';
+          if (mod.iconColor) iconRules += `color: ${mod.iconColor} !important; stroke: ${mod.iconColor} !important;`;
+          if (mod.layers?.icon?.visible === false) iconRules += `display: none !important;`;
+          if (mod.layers?.icon?.opacity !== undefined) iconRules += `opacity: ${mod.layers.icon.opacity} !important;`;
+          if (iconRules) moduleCssRules += `${selector} .module-icon, ${selector} svg.module-icon { ${iconRules} }\n`;
+        }
+
+        if (mod.headingColor || mod.layers?.content) {
+          let headRules = '';
+          if (mod.headingColor) headRules += `color: ${mod.headingColor} !important;`;
+          if (mod.layers?.content?.opacity !== undefined) headRules += `opacity: ${mod.layers.content.opacity} !important;`;
+          if (headRules) moduleCssRules += `${selector} h1, ${selector} h2, ${selector} h3, ${selector} .module-heading { ${headRules} }\n`;
+        }
+
+        if (mod.hoverColor || mod.mouseFollowTilt) {
+          let hoverRules = '';
+          if (mod.hoverColor) hoverRules += `border-color: ${mod.hoverColor} !important;`;
+          if (mod.mouseFollowTilt) hoverRules += `transform: perspective(1000px) translateY(-4px) scale(1.015) !important; transition: transform 0.25s ease !important;`;
+          if (hoverRules) moduleCssRules += `${selector}:hover { ${hoverRules} }\n`;
         }
       });
 
@@ -746,6 +898,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const getModuleStyle = useCallback((moduleId: string): ModuleStyleConfig => {
     return moduleStyles[moduleId] || {};
   }, [moduleStyles]);
+
+  const openModuleCustomizer = useCallback((moduleId: string, moduleName?: string) => {
+    setActiveCustomizingModule({ id: moduleId, name: moduleName });
+  }, []);
+
+  const closeModuleCustomizer = useCallback(() => {
+    setActiveCustomizingModule(null);
+  }, []);
 
   // Wallpapers
   const uploadCustomWallpaper = async (file: File): Promise<string> => {
@@ -1006,6 +1166,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         updateModuleStyle,
         resetModuleStyle,
         getModuleStyle,
+        activeCustomizingModule,
+        openModuleCustomizer,
+        closeModuleCustomizer,
         customWallpapers,
         uploadCustomWallpaper,
         addCustomWallpaperUrl,

@@ -42,6 +42,7 @@ export function HomeStyleStudioTopBar() {
     setBackgroundColor,
     setCardBackground,
     setBorderColor,
+    openModuleCustomizer,
   } = useTheme();
 
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
@@ -115,7 +116,7 @@ export function HomeStyleStudioTopBar() {
           {/* Customize Individual Modules */}
           <button
             type="button"
-            onClick={() => setIsModuleModalOpen(true)}
+            onClick={() => openModuleCustomizer('aws-resources', 'AWS Resources')}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600/80 hover:bg-purple-600 text-white font-bold text-xs transition cursor-pointer shadow-sm"
             title="Edit appearance of any specific dashboard module"
           >

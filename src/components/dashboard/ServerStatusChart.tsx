@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Zap, Server as ServerIcon, AlertTriangle, CheckCircle, ExternalLink, Clock, Plus } from 'lucide-react';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 interface ServerStatusChartProps {
   data?: any[];
@@ -222,12 +223,20 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
           </div>
         </div>
 
-        {total > 0 && (
-          <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{healthyPct}% Healthy</span>
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <ModuleCustomizeButton
+            moduleId="server-status-fleet"
+            moduleName="Server Status Fleet"
+            variant="icon"
+            title="Customize Server Status Fleet Appearance"
+          />
+          {total > 0 && (
+            <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>{healthyPct}% Healthy</span>
+            </span>
+          )}
+        </div>
       </div>
 
       {/* 2. Empty State (if 0 servers) */}
