@@ -1,6 +1,40 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Copy, Check } from 'lucide-react';
+
+/**
+ * Robust cross-browser clipboard copy with execCommand fallback
+ */
+function copyTextToClipboard(text: string): Promise<boolean> {
+  if (!text) return Promise.resolve(false);
+  if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => {
+      return fallbackExecCommandCopy(text);
+    });
+  }
+  return Promise.resolve(fallbackExecCommandCopy(text));
+}
+
+function fallbackExecCommandCopy(text: string): boolean {
+  try {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.setAttribute('readonly', '');
+    el.style.position = 'fixed';
+    el.style.left = '-9999px';
+    el.style.top = '-9999px';
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    const successful = document.execCommand('copy');
+    document.body.removeChild(el);
+    return successful;
+  } catch (err) {
+    console.warn('Fallback copy error:', err);
+    return false;
+  }
+}
 
 export interface SSHTerminalTarget {
   id?: string;
@@ -69,6 +103,8 @@ export function SSHTerminalModal({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(true);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
+  const [hasActiveSelection, setHasActiveSelection] = useState<boolean>(false);
+  const [activeSelectionText, setActiveSelectionText] = useState<string>('');
   const copyTimeoutRef = useRef<any>(null);
 
   const showCopyBadge = useCallback(() => {
@@ -76,8 +112,20 @@ export function SSHTerminalModal({
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
     copyTimeoutRef.current = setTimeout(() => {
       setCopiedNotification(false);
-    }, 1500);
+    }, 1800);
   }, []);
+
+  const handleCopyCurrentSelection = useCallback(() => {
+    let text = activeSelectionText;
+    if (!text && xtermInstanceRef.current && xtermInstanceRef.current.hasSelection()) {
+      text = xtermInstanceRef.current.getSelection();
+    }
+    if (text && text.trim().length > 0) {
+      copyTextToClipboard(text).then((ok) => {
+        if (ok) showCopyBadge();
+      });
+    }
+  }, [activeSelectionText, showCopyBadge]);
 
   const activeSessionIdRef = useRef<string | null>(null);
   const streamAbortControllerRef = useRef<AbortController | null>(null);
@@ -303,15 +351,20 @@ export function SSHTerminalModal({
     xtermInstanceRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Listen for keystrokes - immediately clear any selection when user types
+    // Track selection changes
+    term.onSelectionChange(() => {
+      const sel = term.getSelection();
+      const hasSel = !!sel && sel.length > 0;
+      setHasActiveSelection(hasSel);
+      setActiveSelectionText(sel || '');
+    });
+
+    // Listen for keystrokes - clear selection when user types command characters
     term.onData((data) => {
-      if (term.hasSelection()) {
-        term.clearSelection();
-      }
       sendInput(data);
     });
 
-    // PuTTY drag-to-copy & click-to-clear selection handlers
+    // PuTTY drag-to-copy handlers
     let isDragging = false;
     let mouseDownPos = { x: 0, y: 0 };
 
@@ -334,19 +387,11 @@ export function SSHTerminalModal({
 
     const handleMouseUp = (e: MouseEvent) => {
       if (e.button === 0) {
-        if (!isDragging) {
-          // Single click anywhere: clear selection immediately
-          if (term.hasSelection()) {
-            term.clearSelection();
-          }
-        } else {
-          // Finished drag-selecting text: copy to clipboard
-          const sel = term.getSelection();
-          if (sel && sel.trim().length > 0) {
-            navigator.clipboard.writeText(sel).then(() => {
-              showCopyBadge();
-            }).catch(() => {});
-          }
+        const sel = term.getSelection();
+        if (sel && sel.trim().length > 0) {
+          copyTextToClipboard(sel).then((ok) => {
+            if (ok) showCopyBadge();
+          });
         }
         isDragging = false;
       }
@@ -359,24 +404,54 @@ export function SSHTerminalModal({
       window.addEventListener('mouseup', handleMouseUp);
     }
 
-    // PuTTY keyboard shortcuts (Shift+Insert paste, Ctrl+Shift+C/V)
+    // PuTTY keyboard shortcuts & Ctrl+C copy interception
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       if (e.type === 'keydown') {
+        // Shift+Insert: Paste from clipboard
         if (e.shiftKey && e.key === 'Insert') {
-          navigator.clipboard.readText().then((text) => {
-            if (text) sendInput(text);
-          }).catch(() => {});
+          if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+            navigator.clipboard.readText().then((text) => {
+              if (text) sendInput(text);
+            }).catch(() => {});
+          }
           return false;
         }
-        if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+
+        // Ctrl+Insert: Copy current selection
+        if (e.ctrlKey && e.key === 'Insert') {
           const sel = term.getSelection();
-          if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+          if (sel && sel.length > 0) {
+            copyTextToClipboard(sel).then((ok) => {
+              if (ok) showCopyBadge();
+            });
+          }
           return false;
         }
-        if (e.ctrlKey && e.shiftKey && (e.key === 'V' || e.key === 'v')) {
-          navigator.clipboard.readText().then((text) => {
-            if (text) sendInput(text);
-          }).catch(() => {});
+
+        // Ctrl+C or Cmd+C:
+        // If text is selected in xterm, copy it to the clipboard and STOP event so ^C is not sent to remote bash!
+        // If NO text is selected, let event pass through to shell as normal SIGINT (return true).
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+          if (term.hasSelection()) {
+            const sel = term.getSelection();
+            if (sel && sel.length > 0) {
+              copyTextToClipboard(sel).then((ok) => {
+                if (ok) showCopyBadge();
+              });
+              return false; // Intercept: do NOT send \x03 (SIGINT) to bash!
+            }
+          }
+          // No selection: let standard Ctrl+C go through to remote bash as SIGINT
+          return true;
+        }
+
+        // Ctrl+V or Cmd+V: Paste from clipboard
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'v' || e.key === 'V')) {
+          if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+            navigator.clipboard.readText().then((text) => {
+              if (text) sendInput(text);
+            }).catch(() => {});
+          }
           return false;
         }
       }
@@ -388,7 +463,7 @@ export function SSHTerminalModal({
 
     // Connect via HTTP streaming directly on port 3000
     connectHttpStreaming(term, target, cols, rows);
-  }, [target, sendInput, connectHttpStreaming]);
+  }, [target, sendInput, connectHttpStreaming, showCopyBadge]);
 
   // Handle open/close lifecycle
   useEffect(() => {
@@ -462,14 +537,19 @@ export function SSHTerminalModal({
 
   if (!isOpen || !target) return null;
 
-  // PuTTY Right-click paste
+  // PuTTY Right-click: Copy if text selected, Paste if no selection
   const handleContextMenu = async (e: React.MouseEvent) => {
     e.preventDefault();
     if (xtermInstanceRef.current && xtermInstanceRef.current.hasSelection()) {
-      xtermInstanceRef.current.clearSelection();
+      const sel = xtermInstanceRef.current.getSelection();
+      if (sel && sel.length > 0) {
+        await copyTextToClipboard(sel);
+        showCopyBadge();
+        return;
+      }
     }
     try {
-      if (navigator.clipboard && navigator.clipboard.readText) {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
         const text = await navigator.clipboard.readText();
         if (text) {
           sendInput(text);
@@ -535,8 +615,23 @@ export function SSHTerminalModal({
               <span className="text-[#D4D4D4] font-medium tracking-wide truncate">
                 {titleText}
               </span>
+              {hasActiveSelection && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyCurrentSelection();
+                  }}
+                  className="flex items-center gap-1 px-2 py-0.5 ml-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-semibold shadow transition-all cursor-pointer animate-in fade-in"
+                  title="Click to copy selected text to clipboard (or press Ctrl+C)"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>Copy</span>
+                </button>
+              )}
               {copiedNotification && (
                 <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1 animate-in fade-in">
+                  <Check className="w-3 h-3 text-emerald-400" />
                   <span>✓ Copied to clipboard</span>
                 </span>
               )}

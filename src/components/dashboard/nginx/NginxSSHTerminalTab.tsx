@@ -14,8 +14,35 @@ import {
   Server,
   Cpu,
   Wifi,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { INginxServerData } from '@/models/NginxServer';
+
+function copyTextToClipboard(text: string): Promise<boolean> {
+  if (!text) return Promise.resolve(false);
+  if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => fallbackExecCommandCopy(text));
+  }
+  return Promise.resolve(fallbackExecCommandCopy(text));
+}
+
+function fallbackExecCommandCopy(text: string): boolean {
+  try {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.setAttribute('readonly', '');
+    el.style.position = 'fixed';
+    el.style.left = '-9999px';
+    document.body.appendChild(el);
+    el.select();
+    const successful = document.execCommand('copy');
+    document.body.removeChild(el);
+    return successful;
+  } catch {
+    return false;
+  }
+}
 
 interface NginxSSHTerminalTabProps {
   activeServer: INginxServerData | null;
@@ -29,6 +56,26 @@ export function NginxSSHTerminalTab({ activeServer }: NginxSSHTerminalTabProps) 
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [hasSelection, setHasSelection] = useState(false);
+  const [copiedBadge, setCopiedBadge] = useState(false);
+  const copyTimerRef = useRef<any>(null);
+
+  const showCopiedBadge = useCallback(() => {
+    setCopiedBadge(true);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopiedBadge(false), 1800);
+  }, []);
+
+  const handleCopySelection = useCallback(() => {
+    if (xtermRef.current && xtermRef.current.hasSelection()) {
+      const sel = xtermRef.current.getSelection();
+      if (sel && sel.trim().length > 0) {
+        copyTextToClipboard(sel).then((ok) => {
+          if (ok) showCopiedBadge();
+        });
+      }
+    }
+  }, [showCopiedBadge]);
 
   const activeSessionIdRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
@@ -161,14 +208,17 @@ export function NginxSSHTerminalTab({ activeServer }: NginxSSHTerminalTabProps) 
         term.open(terminalRef.current);
         fit.fit();
 
+        // Track selection changes
+        term.onSelectionChange(() => {
+          const sel = term.getSelection();
+          setHasSelection(!!sel && sel.length > 0);
+        });
+
         term.onData((inputData) => {
-          if (term.hasSelection()) {
-            term.clearSelection();
-          }
           sendInput(inputData);
         });
 
-        // PuTTY select-to-copy & click-to-clear selection
+        // PuTTY select-to-copy
         let isDragging = false;
         let startPos = { x: 0, y: 0 };
 
@@ -189,18 +239,60 @@ export function NginxSSHTerminalTab({ activeServer }: NginxSSHTerminalTabProps) 
           });
           window.addEventListener('mouseup', (e) => {
             if (e.button === 0) {
-              if (!isDragging) {
-                if (term.hasSelection()) term.clearSelection();
-              } else {
-                const sel = term.getSelection();
-                if (sel && sel.trim().length > 0) {
-                  navigator.clipboard.writeText(sel).catch(() => {});
-                }
+              const sel = term.getSelection();
+              if (sel && sel.trim().length > 0) {
+                copyTextToClipboard(sel).then((ok) => {
+                  if (ok) showCopiedBadge();
+                });
               }
               isDragging = false;
             }
           });
         }
+
+        // Keyboard shortcuts and Ctrl+C copy interception
+        term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+          if (e.type === 'keydown') {
+            if (e.shiftKey && e.key === 'Insert') {
+              if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+                navigator.clipboard.readText().then((text) => {
+                  if (text) sendInput(text);
+                }).catch(() => {});
+              }
+              return false;
+            }
+            if (e.ctrlKey && e.key === 'Insert') {
+              const sel = term.getSelection();
+              if (sel && sel.length > 0) {
+                copyTextToClipboard(sel).then((ok) => {
+                  if (ok) showCopiedBadge();
+                });
+              }
+              return false;
+            }
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+              if (term.hasSelection()) {
+                const sel = term.getSelection();
+                if (sel && sel.length > 0) {
+                  copyTextToClipboard(sel).then((ok) => {
+                    if (ok) showCopiedBadge();
+                  });
+                  return false; // Stop \x03 from being sent to remote shell!
+                }
+              }
+              return true; // No selection: send SIGINT
+            }
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'v' || e.key === 'V')) {
+              if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+                navigator.clipboard.readText().then((text) => {
+                  if (text) sendInput(text);
+                }).catch(() => {});
+              }
+              return false;
+            }
+          }
+          return true;
+        });
 
         xtermRef.current = term;
         fitAddonRef.current = fit;
@@ -255,6 +347,28 @@ export function NginxSSHTerminalTab({ activeServer }: NginxSSHTerminalTabProps) 
     }
   };
 
+  const handleContextMenu = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (xtermRef.current && xtermRef.current.hasSelection()) {
+      const sel = xtermRef.current.getSelection();
+      if (sel && sel.length > 0) {
+        await copyTextToClipboard(sel);
+        showCopiedBadge();
+        return;
+      }
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          sendInput(text);
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
   if (!activeServer) {
     return (
       <div className="bg-[#111A2E]/90 border border-[#1E293B] rounded-2xl p-12 text-center text-slate-400">
@@ -264,7 +378,10 @@ export function NginxSSHTerminalTab({ activeServer }: NginxSSHTerminalTabProps) 
   }
 
   return (
-    <div className={`space-y-3 ${isFullscreen ? 'fixed inset-4 z-50 bg-[#0B1120] p-4 rounded-2xl border border-blue-500/50 shadow-2xl flex flex-col' : ''}`}>
+    <div
+      onContextMenu={handleContextMenu}
+      className={`space-y-3 ${isFullscreen ? 'fixed inset-4 z-50 bg-[#0B1120] p-4 rounded-2xl border border-blue-500/50 shadow-2xl flex flex-col' : ''}`}
+    >
       {/* Terminal Title Bar */}
       <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 shadow-md">
         <div className="flex items-center gap-3">
@@ -295,6 +412,24 @@ export function NginxSSHTerminalTab({ activeServer }: NginxSSHTerminalTabProps) 
         </div>
 
         <div className="flex items-center gap-2">
+          {hasSelection && (
+            <button
+              onClick={handleCopySelection}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow transition cursor-pointer animate-in fade-in"
+              title="Copy selection to clipboard (or press Ctrl+C)"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy</span>
+            </button>
+          )}
+
+          {copiedBadge && (
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold animate-in fade-in">
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Copied!</span>
+            </span>
+          )}
+
           {status === 'connected' ? (
             <button
               onClick={disconnectSession}
