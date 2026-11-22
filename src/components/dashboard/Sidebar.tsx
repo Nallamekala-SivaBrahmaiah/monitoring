@@ -7,15 +7,12 @@ import {
   Cloud,
   X,
   Check,
-  LogOut,
   Server,
   Palette,
   Sparkles,
 } from 'lucide-react';
 import {
   MultiCloudBrandLogo,
-  AwsLogo,
-  AzureLogo,
   MavenLogo,
   AnsibleLogo,
   NginxLogo,
@@ -49,13 +46,9 @@ export function Sidebar({
   const pathname = usePathname();
   const navContainerRef = React.useRef<HTMLDivElement | null>(null);
   const {
-    cloudProvider,
-    setCloudProvider,
     filteredAlerts,
   } = useMonitoring();
 
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [loggedOutToast, setLoggedOutToast] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
 
   // Auto-scroll the active navigation item into view so it is always visible
@@ -131,14 +124,6 @@ export function Sidebar({
     { label: 'Appearance & Themes', href: '/dashboard/theme', icon: Palette },
     { label: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
   ];
-
-  const handleLogout = async () => {
-    setShowLogoutConfirm(false);
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-    } catch {}
-    window.location.href = '/login';
-  };
 
   const handleNavClick = (href: string, e: React.MouseEvent<HTMLAnchorElement>) => {
     onCloseMobile?.();
@@ -277,92 +262,6 @@ export function Sidebar({
             </Link>
           );
         })}
-      </div>
-
-      {/* Multi-Cloud Support Quick Switcher Box */}
-      <div className="px-3 py-2 mx-2.5 mb-1.5 rounded-xl bg-[#0D1526]/80 border border-[#1E293B] shrink-0">
-        <div className="text-[10px] font-medium text-slate-400 text-center mb-1.5">
-          Multi-Cloud Support
-        </div>
-        <div className="flex items-center justify-around gap-2">
-          <button
-            onClick={() => setCloudProvider(cloudProvider === 'aws' ? 'all' : 'aws')}
-            title="Filter by AWS"
-            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold transition-all ${
-              cloudProvider === 'aws'
-                ? 'bg-[#FF9900]/20 border border-[#FF9900]/50 text-white shadow'
-                : 'text-slate-400 hover:text-white hover:bg-[#18233C]'
-            }`}
-          >
-            <AwsLogo className="w-3.5 h-3.5" />
-            <span>AWS</span>
-          </button>
-          <div className="h-3.5 w-px bg-slate-700/60" />
-          <button
-            onClick={() => setCloudProvider(cloudProvider === 'azure' ? 'all' : 'azure')}
-            title="Filter by Azure"
-            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold transition-all ${
-              cloudProvider === 'azure'
-                ? 'bg-[#0089D6]/20 border border-[#0089D6]/50 text-white shadow'
-                : 'text-[#5EA0EF] hover:text-white hover:bg-[#18233C]'
-            }`}
-          >
-            <AzureLogo className="w-3.5 h-3.5" />
-            <span>Azure</span>
-          </button>
-        </div>
-      </div>
-
-      {/* User Profile Footer */}
-      <div className="p-2.5 border-t border-[#1E293B] bg-[#0E1628]/60 relative shrink-0">
-        <div className="flex items-center justify-between px-1.5 py-0.5">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow shrink-0">
-              S
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-xs font-semibold text-slate-200 leading-tight truncate">
-                Siva Brahmaiah
-              </span>
-              <span className="text-[10px] text-slate-400">Admin</span>
-            </div>
-          </div>
-        </div>
-
-        <button
-          onClick={() => setShowLogoutConfirm(true)}
-          className="w-full mt-1.5 flex items-center gap-2 px-2 py-1 text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-md transition-colors"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-          <span>Logout</span>
-        </button>
-
-        {/* Logout Confirmation Dialog */}
-        {showLogoutConfirm && (
-          <div className="absolute inset-x-2 bottom-2 p-3 bg-[#111A2E] border border-[#1E293B] rounded-xl shadow-2xl z-50 text-xs">
-            <p className="font-semibold text-white mb-2">Confirm Logout?</p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleLogout}
-                className="flex-1 py-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded text-center"
-              >
-                Yes
-              </button>
-              <button
-                onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 py-1 bg-[#18233C] hover:bg-[#202E4E] text-slate-300 font-semibold rounded text-center"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {loggedOutToast && (
-          <div className="absolute inset-x-2 bottom-2 p-2 bg-emerald-600/90 text-white text-xs font-semibold rounded-lg text-center shadow-lg">
-            ✓ Logged out successfully (Demo Mode)
-          </div>
-        )}
       </div>
     </div>
   );

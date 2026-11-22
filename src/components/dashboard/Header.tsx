@@ -17,6 +17,7 @@ import {
   Trash2,
   CheckCheck,
   X,
+  LogOut,
 } from 'lucide-react';
 import { CloudProvider } from '@/types/monitoring';
 import { useMonitoring } from '@/context/MonitoringContext';
@@ -56,11 +57,13 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
   const [openCloudMenu, setOpenCloudMenu] = useState(false);
   const [openAccountMenu, setOpenAccountMenu] = useState(false);
   const [openAlertsMenu, setOpenAlertsMenu] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [inAppNotifs, setInAppNotifs] = useState<any[]>([]);
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
   const [isClearing, setIsClearing] = useState(false);
 
   const alertsMenuRef = useRef<HTMLDivElement>(null);
+  const logoutRef = useRef<HTMLDivElement>(null);
 
   // Real-time 1-second live clock and sync freshness counters
   const [liveClock, setLiveClock] = useState<string>('');
@@ -112,13 +115,17 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
       if (alertsMenuRef.current && !alertsMenuRef.current.contains(event.target as Node)) {
         setOpenAlertsMenu(false);
       }
+      if (logoutRef.current && !logoutRef.current.contains(event.target as Node)) {
+        setShowLogoutConfirm(false);
+      }
     }
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setOpenAlertsMenu(false);
+        setShowLogoutConfirm(false);
       }
     }
-    if (openAlertsMenu) {
+    if (openAlertsMenu || showLogoutConfirm) {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
     }
@@ -126,7 +133,15 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [openAlertsMenu]);
+  }, [openAlertsMenu, showLogoutConfirm]);
+
+  const handleLogout = async () => {
+    setShowLogoutConfirm(false);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
+    window.location.href = '/login';
+  };
 
   useEffect(() => {
     async function loadNotifs() {
@@ -506,7 +521,74 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
         </div>
 
 
-        {/* 6c. Quick Theme & Background Color Switcher */}
+        {/* 6c. User Profile & Logout (Positioned on the Left Side of Theme) */}
+        <div className="relative" ref={logoutRef}>
+          <button
+            type="button"
+            onClick={() => setShowLogoutConfirm(!showLogoutConfirm)}
+            title="Sign out of Multi-Cloud Monitoring"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-[#1E293B] bg-[#111A2E] hover:bg-rose-500/15 text-slate-200 hover:text-rose-400 hover:border-rose-500/40 transition-all cursor-pointer shadow-sm"
+          >
+            <div className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[9px] shrink-0">
+              S
+            </div>
+            <LogOut className="w-3.5 h-3.5 text-rose-400" />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
+
+          {showLogoutConfirm && (
+            <div className="absolute right-0 mt-2 w-64 bg-[#0B1120] border border-[#1E293B] rounded-xl shadow-2xl p-3.5 z-50 text-xs animate-in fade-in duration-150 space-y-2.5">
+              <div className="flex items-center justify-between pb-2 border-b border-[#1E293B]">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-md bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center">
+                    <LogOut className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="font-bold text-white text-xs">Confirm Logout</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="p-1 rounded text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2.5 p-2 rounded-lg bg-[#111A2E] border border-[#1E293B]">
+                <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow">
+                  S
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-white truncate">Siva Brahmaiah</div>
+                  <div className="text-[10px] text-slate-400">Admin • nallasiva552@gmail.com</div>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-400 leading-snug">
+                Are you sure you want to end your active monitoring session?
+              </p>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex-1 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-center transition-colors cursor-pointer shadow-sm shadow-rose-600/30"
+                >
+                  Yes, Logout
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 py-1.5 bg-[#18233C] hover:bg-[#202E4E] text-slate-300 font-semibold rounded-lg text-center transition-colors cursor-pointer border border-[#1E293B]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 6d. Quick Theme & Background Color Switcher */}
         <HeaderThemeSwitcher />
 
         {/* 7. Notification Bell with Dropdown */}
