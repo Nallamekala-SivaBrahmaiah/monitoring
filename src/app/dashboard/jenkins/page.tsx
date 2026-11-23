@@ -129,6 +129,7 @@ function JenkinsContent() {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as PipelineTab) || 'jenkins';
 
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PipelineTab>(initialTab);
   const [servers, setServers] = useState<IServerPipeline[]>([]);
   const [loading, setLoading] = useState(true);
@@ -336,13 +337,13 @@ function JenkinsContent() {
   }, [servers, activeTab, providerFilter, statusFilter, searchQuery]);
 
   return (
-    <div className="flex h-screen bg-[#070C18] text-slate-100 overflow-hidden font-sans">
-      <Sidebar />
+    <div className="min-h-screen bg-transparent text-slate-100 flex flex-col font-sans">
+      <Sidebar mobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <Header />
+      <div className="lg:pl-64 flex flex-col flex-1 min-w-0">
+        <Header onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
 
-        <main className="p-6 max-w-[1600px] w-full mx-auto space-y-6">
+        <main className="p-4 lg:p-7 max-w-[1700px] w-full mx-auto space-y-6">
           {/* Top Banner & Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-6 shadow-xl relative overflow-hidden">
             <div className="flex items-center gap-4">
