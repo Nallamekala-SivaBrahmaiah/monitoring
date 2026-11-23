@@ -40,6 +40,9 @@ import {
   Trash2,
   Loader2,
 } from 'lucide-react';
+import Link from 'next/link';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
+import { InstallNginxModal } from '@/components/dashboard/nginx/InstallNginxModal';
 import { NginxLogo, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { NginxServerCard } from '@/components/dashboard/nginx/NginxServerCard';
 import { NginxOverviewTab } from '@/components/dashboard/nginx/NginxOverviewTab';
@@ -96,6 +99,8 @@ export default function NginxDashboardPage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [servers, setServers] = useState<INginxServerData[]>([]);
   const [activeServer, setActiveServer] = useState<INginxServerData | null>(null);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [modalAction, setModalAction] = useState<'install' | 'uninstall'>('install');
 
   // Active Workspace Tab inside the Selected Server (Defaults directly to 'apps')
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<NginxServerWorkspaceTab>('apps');
@@ -740,89 +745,128 @@ export default function NginxDashboardPage() {
           )}
 
           {/* ========================================================================= */}
-          {/* 1. TOP HEADER (Exact match to Screenshot) */}
+          {/* 1. TOP HEADER & ACTION BAR (Single-Deck Standard - Matches Docker & K8s)  */}
           {/* ========================================================================= */}
-          <div className="bg-[#111A2E]/95 border border-[#1E293B] rounded-2xl p-4 lg:p-5 shadow-xl shadow-black/20 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center p-2 shadow-inner shrink-0">
-                <NginxLogo className="w-8 h-8" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                <Link href="/" className="hover:text-blue-400 flex items-center gap-1 transition-colors">
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Dashboard</span>
+                </Link>
+                <span>/</span>
+                {!activeServer ? (
+                  <span className="text-white font-medium">Nginx Reverse Proxy</span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setActiveServer(null)}
+                      className="text-slate-300 hover:text-white transition-colors"
+                    >
+                      Nginx
+                    </button>
+                    <span>/</span>
+                    <span className="text-emerald-400 font-mono font-bold">{activeServer.name}</span>
+                    <span>/</span>
+                    <span className="text-slate-300 capitalize font-medium">{activeWorkspaceTab}</span>
+                  </>
+                )}
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-white tracking-wide">
-                  Nginx Management
-                </h1>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Manage and monitor your Nginx reverse proxy servers
-                </p>
-              </div>
+              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2.5">
+                <NginxLogo className="w-6 h-6" />
+                <span>{!activeServer ? 'Nginx Management & Application Fleet' : `Server: ${activeServer.name}`}</span>
+                {!activeServer ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                    {servers.length} Connected
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    {activeServer.connectionStatus}
+                  </span>
+                )}
+              </h2>
             </div>
 
-            {/* Right: Updated time, Refresh, All Clouds, All Regions, Bell */}
-            <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-              {/* Updated Time Badge */}
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0B1120] border border-[#1E293B] text-xs font-mono">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-slate-400">Updated:</span>
-                <span className="text-slate-200 font-semibold">{lastUpdatedTime}</span>
-              </div>
+            {/* Right Action Suite (Single Row - Zero Wrapping) */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <ModuleCustomizeButton
+                moduleId="nginx"
+                moduleName="Nginx Module"
+                variant="pill"
+              />
+              {!activeServer ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalAction('install');
+                      setIsInstallModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-emerald-600/30 whitespace-nowrap"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Install Nginx on Server</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalAction('uninstall');
+                      setIsInstallModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-rose-600/30 whitespace-nowrap"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Uninstall Nginx on Server</span>
+                  </button>
 
-              {/* Refresh Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  fetchServers();
-                  if (activeServer) {
-                    fetchServerDetails(activeServer);
-                    fetchProxies(activeServer);
-                  }
-                  showToast('success', 'Server fleet metrics refreshed.');
-                }}
-                disabled={isLoadingServers}
-                className="p-2 rounded-xl bg-[#0B1120] hover:bg-[#18233C] text-blue-400 border border-[#1E293B] transition cursor-pointer"
-                title="Refresh Metrics"
-              >
-                <RefreshCw className={`w-4 h-4 ${isLoadingServers ? 'animate-spin' : ''}`} />
-              </button>
+                  <div className="flex items-center gap-2 text-xs bg-[#111A2E] border border-[#1E293B] px-3 py-1.5 rounded-lg whitespace-nowrap font-mono">
+                    <span className="text-emerald-400 font-bold">{onlineCount}</span>
+                    <span className="text-slate-400">Online</span>
+                    <span className="text-slate-600">|</span>
+                    <span className="text-slate-400 font-bold">{Math.max(0, servers.length - onlineCount)}</span>
+                    <span className="text-slate-400">Offline</span>
+                  </div>
 
-              {/* All Clouds Dropdown */}
-              <div className="relative">
-                <select
-                  value={cloudFilter}
-                  onChange={(e) => setCloudFilter(e.target.value as any)}
-                  className="appearance-none pl-3 pr-8 py-1.5 rounded-xl bg-[#0B1120] border border-[#1E293B] text-xs text-slate-300 font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="all">All Clouds</option>
-                  <option value="azure">Azure</option>
-                  <option value="aws">AWS</option>
-                  <option value="online">Online</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-
-              {/* All Regions Dropdown */}
-              <div className="relative">
-                <select
-                  value={regionFilter}
-                  onChange={(e) => setRegionFilter(e.target.value)}
-                  className="appearance-none pl-3 pr-8 py-1.5 rounded-xl bg-[#0B1120] border border-[#1E293B] text-xs text-slate-300 font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="all">All Regions</option>
-                  <option value="eastus">eastus</option>
-                  <option value="centralindia">centralindia</option>
-                  <option value="ap-southeast-2">ap-southeast-2</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-
-              {/* Notification Bell */}
-              <button
-                type="button"
-                className="p-2 rounded-xl bg-[#0B1120] hover:bg-[#18233C] text-slate-400 hover:text-white border border-[#1E293B] transition cursor-pointer relative"
-                title="Notifications"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="w-2 h-2 rounded-full bg-blue-500 absolute top-1.5 right-1.5" />
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fetchServers();
+                      showToast('success', 'Server fleet metrics refreshed.');
+                    }}
+                    disabled={isLoadingServers}
+                    title="Refresh Fleet Telemetry"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors cursor-pointer shadow-sm disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isLoadingServers ? 'animate-spin' : ''}`} />
+                    <span>Sync Fleet</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setActiveServer(null)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg transition shadow-sm whitespace-nowrap"
+                  >
+                    <Server className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Switch Server</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fetchServerDetails(activeServer);
+                      fetchProxies(activeServer);
+                      showToast('success', 'Server telemetry refreshed.');
+                    }}
+                    title="Refresh Server"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition shadow-sm whitespace-nowrap"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Sync Server</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -914,28 +958,8 @@ export default function NginxDashboardPage() {
           {/* ========================================================================= */}
           {!activeServer ? (
             <div className="space-y-4">
-              {/* Header Banner & Filters Toolbar */}
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-[#111A2E] border border-[#1E293B] rounded-2xl p-4 shadow-xl shadow-black/20">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
-                    <NginxLogo className="w-5 h-5 text-emerald-400" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold text-white flex items-center gap-2">
-                      <span>Nginx Server Fleet</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30 font-semibold font-mono">
-                        {servers.length} Connected
-                      </span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold font-mono">
-                        {onlineCount} Online
-                      </span>
-                    </h2>
-                    <p className="text-xs text-slate-400">
-                      Select a server to manage reverse proxies, explore files, view logs, and run deployments.
-                    </p>
-                  </div>
-                </div>
-
+              {/* Filter and View Controls Strip matching Servers Page */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-[#0B1120] border border-[#162238] rounded-xl p-3 shadow-sm">
                 {/* Cloud & Status Filter Pills */}
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {/* Default Primary Pill: Online & SSH Reachable */}
@@ -2113,6 +2137,18 @@ export default function NginxDashboardPage() {
           </div>
         </div>
       )}
+    
+        {/* Automated 1-Click Install / Uninstall Nginx Modal */}
+        <InstallNginxModal
+          isOpen={isInstallModalOpen}
+          onClose={() => setIsInstallModalOpen(false)}
+          onSuccess={() => {
+            fetchServers();
+            showToast('success', 'Nginx fleet updated.');
+          }}
+          initialAction={modalAction}
+        />
+
     </div>
   );
 }
