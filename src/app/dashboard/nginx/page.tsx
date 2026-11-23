@@ -1378,7 +1378,7 @@ export default function NginxDashboardPage() {
 
                                   {isOnline ? (
                                     <div className="flex items-center gap-1.5">
-                                      {!server.nginxInstalled ? (
+                                      {!server.nginxInstalled && (
                                         <button
                                           type="button"
                                           onClick={(e) => {
@@ -1390,20 +1390,6 @@ export default function NginxDashboardPage() {
                                         >
                                           <Zap className="w-3.5 h-3.5" />
                                           <span>Install</span>
-                                        </button>
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setPendingNginxAction({ server, action: 'uninstall' });
-                                          }}
-                                          disabled={actionLoadingServerId === server._id}
-                                          className="px-2.5 py-1.5 rounded-lg bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer disabled:opacity-50"
-                                          title="Uninstall Nginx from this server"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                          <span>Uninstall</span>
                                         </button>
                                       )}
 
@@ -1583,7 +1569,7 @@ export default function NginxDashboardPage() {
 
                             {isOnline ? (
                               <div className="flex items-center gap-2">
-                                {!server.nginxInstalled ? (
+                                {!server.nginxInstalled && (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -1595,20 +1581,6 @@ export default function NginxDashboardPage() {
                                   >
                                     <Zap className="w-3.5 h-3.5" />
                                     <span>Install Nginx</span>
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setPendingNginxAction({ server, action: 'uninstall' });
-                                    }}
-                                    disabled={actionLoadingServerId === server._id}
-                                    className="px-3 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                                    title="Uninstall Nginx from this server"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                    <span>Uninstall</span>
                                   </button>
                                 )}
 

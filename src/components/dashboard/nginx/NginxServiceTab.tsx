@@ -105,7 +105,7 @@ export function NginxServiceTab({
               <span>Refresh Status</span>
             </button>
 
-            {!isInstalled ? (
+            {!isInstalled && (
               <button
                 onClick={() => setConfirmAction('install')}
                 disabled={isActionLoading}
@@ -113,15 +113,6 @@ export function NginxServiceTab({
               >
                 <Zap className="w-3.5 h-3.5" />
                 <span>Install Nginx</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => setConfirmAction('uninstall')}
-                disabled={isActionLoading}
-                className="px-4 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Uninstall Nginx</span>
               </button>
             )}
           </div>
