@@ -148,15 +148,15 @@ export function RegionChart({}: RegionChartProps) {
   const totalInstances = filteredRegions.reduce((sum, r) => sum + r.count, 0);
 
   return (
-    <div data-module-id="regions-chart" className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col justify-between h-full relative">
+    <div data-module-id="regions-chart" className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm flex flex-col justify-between h-full relative overflow-hidden">
       <div className="flex items-center justify-between mb-2 gap-2">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-md bg-sky-500/10 text-sky-400">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="p-1.5 rounded-md bg-sky-500/10 text-sky-400 shrink-0">
             <MapPin className="w-4 h-4" />
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-white">Top Regions</h3>
-            <span className="text-[11px] text-slate-400">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-white truncate">Top Regions</h3>
+            <span className="text-[11px] text-slate-400 block truncate">
               Active infrastructure distribution by cloud region
             </span>
           </div>
@@ -164,15 +164,14 @@ export function RegionChart({}: RegionChartProps) {
 
         <div className="flex items-center gap-2 shrink-0">
           {totalInstances > 0 && (
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold whitespace-nowrap">
               {totalInstances} {totalInstances === 1 ? 'Active Instance' : 'Active Instances'}
             </span>
           )}
           <ModuleCustomizeButton
             moduleId="regions"
             moduleName="Top Regions Chart"
-            variant="dropdown"
-            label="3D & Design"
+            variant="icon"
           />
         </div>
       </div>
