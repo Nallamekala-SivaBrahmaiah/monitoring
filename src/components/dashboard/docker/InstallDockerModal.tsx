@@ -37,13 +37,20 @@ interface InstallDockerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialAction?: 'install' | 'uninstall';
 }
 
-export function InstallDockerModal({ isOpen, onClose, onSuccess }: InstallDockerModalProps) {
+export function InstallDockerModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  initialAction = 'install',
+}: InstallDockerModalProps) {
   const [servers, setServers] = useState<RegisteredServerItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterProvider, setFilterProvider] = useState('all');
+  const [activeTab, setActiveTab] = useState<'install' | 'uninstall' | 'all'>(initialAction);
 
   // Confirmation state
   const [pendingAction, setPendingAction] = useState<{
@@ -76,12 +83,13 @@ export function InstallDockerModal({ isOpen, onClose, onSuccess }: InstallDocker
   useEffect(() => {
     if (isOpen) {
       fetchServers();
+      setActiveTab(initialAction);
       setPendingAction(null);
       setActionOutput(null);
       setActionError(null);
       setActionSuccess(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialAction]);
 
   if (!isOpen) return null;
 
@@ -119,7 +127,18 @@ export function InstallDockerModal({ isOpen, onClose, onSuccess }: InstallDocker
     }
   };
 
+  const installedServers = servers.filter(
+    (s) => s.docker?.detected === true && s.docker?.status !== 'not_installed'
+  );
+  const uninstalledServers = servers.filter(
+    (s) => !(s.docker?.detected === true && s.docker?.status !== 'not_installed')
+  );
+
   const filteredServers = servers.filter((s) => {
+    const isDockerInstalled = s.docker?.detected === true && s.docker?.status !== 'not_installed';
+    if (activeTab === 'install' && isDockerInstalled) return false;
+    if (activeTab === 'uninstall' && !isDockerInstalled) return false;
+
     const q = search.toLowerCase();
     const matchesSearch =
       s.name.toLowerCase().includes(q) ||
@@ -137,29 +156,102 @@ export function InstallDockerModal({ isOpen, onClose, onSuccess }: InstallDocker
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-[#0B1120] border border-[#1E293B] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl shadow-black/60 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1E293B] bg-[#111A2E]/70">
+        <div className="flex flex-col md:flex-row md:items-center justify-between px-6 py-4 border-b border-[#1E293B] bg-[#111A2E]/70 gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#0089D6]/15 border border-[#0089D6]/30 flex items-center justify-center text-[#0089D6]">
-              <DockerIcon className="w-5 h-5" />
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                activeTab === 'uninstall'
+                  ? 'bg-rose-500/15 border-rose-500/30 text-rose-400'
+                  : 'bg-[#0089D6]/15 border-[#0089D6]/30 text-[#0089D6]'
+              }`}
+            >
+              {activeTab === 'uninstall' ? <Trash2 className="w-5 h-5" /> : <DockerIcon className="w-5 h-5" />}
             </div>
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <span>Manage Docker Host Setup</span>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-normal">
-                  Auto-Provisioning
+                <span>
+                  {activeTab === 'uninstall'
+                    ? 'Uninstall Docker on Server'
+                    : activeTab === 'install'
+                    ? 'Install Docker on Server'
+                    : 'Manage Docker Host Fleet'}
+                </span>
+                <span
+                  className={`text-[11px] font-mono px-2 py-0.5 rounded border font-normal ${
+                    activeTab === 'uninstall'
+                      ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  }`}
+                >
+                  {activeTab === 'uninstall' ? 'Uninstallation' : 'Auto-Provisioning'}
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
-                Select a server to automatically install or uninstall Docker Engine via secure SSH.
+                {activeTab === 'uninstall'
+                  ? 'Select an active server to purge Docker packages, stop all containers, and remove via SSH.'
+                  : activeTab === 'install'
+                  ? 'Select any registered server to install Docker Engine, setup systemd, and connect via SSH.'
+                  : 'Select a server to automatically install or uninstall Docker Engine via secure SSH.'}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-2.5 self-end md:self-center">
+            {/* 2 Main Options: Install vs Uninstall (+ All Fleet) */}
+            <div className="flex items-center p-1 bg-[#070B14] border border-[#1E293B] rounded-xl gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('install');
+                  setPendingAction(null);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'install'
+                    ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Install ({uninstalledServers.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('uninstall');
+                  setPendingAction(null);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'uninstall'
+                    ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Uninstall ({installedServers.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('all');
+                  setPendingAction(null);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  activeTab === 'all'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <span>All ({servers.length})</span>
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Confirmation or Execution Alert Box */}
@@ -288,8 +380,34 @@ export function InstallDockerModal({ isOpen, onClose, onSuccess }: InstallDocker
               <span>Loading registered fleet servers...</span>
             </div>
           ) : filteredServers.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 text-xs">
-              No servers match your filter.
+            <div className="py-12 text-center text-slate-400 text-xs space-y-3">
+              <p>
+                {activeTab === 'install'
+                  ? 'All registered servers currently have Docker Engine installed!'
+                  : activeTab === 'uninstall'
+                  ? 'No registered servers currently have Docker Engine installed.'
+                  : 'No servers match your search or filter.'}
+              </p>
+              {activeTab === 'install' && installedServers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('uninstall')}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm shadow-rose-600/30"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Switch to Uninstall Docker ({installedServers.length} active)</span>
+                </button>
+              )}
+              {activeTab === 'uninstall' && uninstalledServers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('install')}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm shadow-emerald-600/30"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Switch to Install Docker ({uninstalledServers.length} available)</span>
+                </button>
+              )}
             </div>
           ) : (
             filteredServers.map((s) => {
@@ -362,7 +480,7 @@ export function InstallDockerModal({ isOpen, onClose, onSuccess }: InstallDocker
                           setActionError(null);
                           setActionSuccess(null);
                         }}
-                        className="px-3 py-1.5 rounded-lg bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-rose-600/30 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         <span>Uninstall Docker</span>

@@ -50,6 +50,7 @@ export function DockerHostInventory({
 
   // Install & Uninstall modal states
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [modalAction, setModalAction] = useState<'install' | 'uninstall'>('install');
   const [hostToUninstall, setHostToUninstall] = useState<IDockerHostDetails | null>(null);
   const [isUninstalling, setIsUninstalling] = useState(false);
   const [uninstallError, setUninstallError] = useState<string | null>(null);
@@ -138,18 +139,31 @@ export function DockerHostInventory({
           </h2>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <ModuleCustomizeButton
             moduleId="docker"
             moduleName="Docker Module"
             variant="pill"
           />
           <button
-            onClick={() => setIsInstallModalOpen(true)}
+            onClick={() => {
+              setModalAction('install');
+              setIsInstallModalOpen(true);
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-emerald-600/30"
           >
             <Zap className="w-3.5 h-3.5" />
             <span>Install Docker on Server</span>
+          </button>
+          <button
+            onClick={() => {
+              setModalAction('uninstall');
+              setIsInstallModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-rose-600/30"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Uninstall Docker on Server</span>
           </button>
 
           <div className="flex items-center gap-2 text-xs bg-[#111A2E] border border-[#1E293B] px-3 py-1.5 rounded-lg">
@@ -302,14 +316,28 @@ export function DockerHostInventory({
                     <p className="text-xs text-slate-500 max-w-md mx-auto">
                       Only servers where Docker is installed and configured are displayed here. Click below to automatically install Docker on any registered server.
                     </p>
-                    <div className="pt-2">
+                    <div className="pt-2 flex items-center justify-center gap-3">
                       <button
                         type="button"
-                        onClick={() => setIsInstallModalOpen(true)}
+                        onClick={() => {
+                          setModalAction('install');
+                          setIsInstallModalOpen(true);
+                        }}
                         className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer"
                       >
                         <Zap className="w-4 h-4" />
                         <span>Install Docker on Server</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalAction('uninstall');
+                          setIsInstallModalOpen(true);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold inline-flex items-center gap-2 shadow-lg shadow-rose-600/30 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>Uninstall Docker on Server</span>
                       </button>
                     </div>
                   </td>
@@ -517,9 +545,10 @@ export function DockerHostInventory({
         </div>
       )}
 
-      {/* Install Docker Modal */}
+      {/* Install & Uninstall Docker Modal */}
       <InstallDockerModal
         isOpen={isInstallModalOpen}
+        initialAction={modalAction}
         onClose={() => setIsInstallModalOpen(false)}
         onSuccess={() => onRefresh(true)}
       />
