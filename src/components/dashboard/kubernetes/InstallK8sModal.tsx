@@ -40,13 +40,20 @@ interface InstallK8sModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialAction?: 'install' | 'uninstall';
 }
 
-export function InstallK8sModal({ isOpen, onClose, onSuccess }: InstallK8sModalProps) {
+export function InstallK8sModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  initialAction = 'install',
+}: InstallK8sModalProps) {
   const [servers, setServers] = useState<RegisteredServerItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterProvider, setFilterProvider] = useState('all');
+  const [activeTab, setActiveTab] = useState<'install' | 'uninstall' | 'all'>(initialAction);
 
   // Confirmation state
   const [pendingAction, setPendingAction] = useState<{
@@ -79,12 +86,13 @@ export function InstallK8sModal({ isOpen, onClose, onSuccess }: InstallK8sModalP
   useEffect(() => {
     if (isOpen) {
       fetchServers();
+      setActiveTab(initialAction);
       setPendingAction(null);
       setActionOutput(null);
       setActionError(null);
       setActionSuccess(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialAction]);
 
   if (!isOpen) return null;
 
@@ -125,7 +133,25 @@ export function InstallK8sModal({ isOpen, onClose, onSuccess }: InstallK8sModalP
     }
   };
 
+  const isServerK8sInstalled = (s: RegisteredServerItem) => {
+    return (
+      s.kubernetes?.detected === true ||
+      (Boolean(s.kubernetes?.version) &&
+        !s.kubernetes!.version!.includes('NOT_INSTALLED') &&
+        s.kubernetes!.version!.trim() !== '') ||
+      s.name.toLowerCase().includes('k8s') ||
+      s.name.toLowerCase().includes('cluster')
+    );
+  };
+
+  const installedServers = servers.filter((s) => isServerK8sInstalled(s));
+  const uninstalledServers = servers.filter((s) => !isServerK8sInstalled(s));
+
   const filteredServers = servers.filter((s) => {
+    const isK8s = isServerK8sInstalled(s);
+    if (activeTab === 'install' && isK8s) return false;
+    if (activeTab === 'uninstall' && !isK8s) return false;
+
     const matchesSearch =
       (s.name || '').toLowerCase().includes(search.toLowerCase()) ||
       (s.host || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -172,30 +198,103 @@ export function InstallK8sModal({ isOpen, onClose, onSuccess }: InstallK8sModalP
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col bg-[#0B1120] border border-[#1E293B] rounded-2xl shadow-2xl overflow-hidden font-sans">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1E293B] bg-[#0E1628]/80 shrink-0">
+        <div className="flex flex-col md:flex-row md:items-center justify-between px-6 py-4 border-b border-[#1E293B] bg-[#0E1628]/80 gap-3 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
-              <Layers className="w-5 h-5" />
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                activeTab === 'uninstall'
+                  ? 'bg-rose-500/15 border-rose-500/30 text-rose-400'
+                  : 'bg-sky-500/15 border-sky-500/30 text-sky-400'
+              }`}
+            >
+              {activeTab === 'uninstall' ? <Trash2 className="w-5 h-5" /> : <Layers className="w-5 h-5" />}
             </div>
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <span>Kubernetes &amp; Cloud Tools Management</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30 font-semibold uppercase tracking-wider">
-                  Automated SSH Setup
+                <span>
+                  {activeTab === 'uninstall'
+                    ? 'Uninstall Kubernetes Tools on Server'
+                    : activeTab === 'install'
+                    ? 'Install Kubernetes Tools on Server'
+                    : 'Kubernetes & Cloud Tools Management'}
+                </span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold uppercase tracking-wider ${
+                    activeTab === 'uninstall'
+                      ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                      : 'bg-sky-500/15 text-sky-400 border-sky-500/30'
+                  }`}
+                >
+                  {activeTab === 'uninstall' ? 'Uninstallation' : 'Automated SSH Setup'}
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
-                Install or uninstall Kubernetes and native cloud CLI tools tailored by provider (Azure: <span className="text-sky-300 font-mono">az + kubectl + kubelogin</span>, AWS: <span className="text-amber-300 font-mono">aws + kubectl + eksctl</span>).
+                {activeTab === 'uninstall'
+                  ? 'Select an active Kubernetes server to remove kubectl, kubelogin, eksctl, and cloud CLI binaries via SSH.'
+                  : activeTab === 'install'
+                  ? 'Install Kubernetes and native cloud CLI tools tailored by provider (Azure: az + kubectl + kubelogin, AWS: aws + kubectl + eksctl).'
+                  : 'Manage Kubernetes and native cloud CLI tools across all registered infrastructure servers.'}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#1E293B] transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-2.5 self-end md:self-center">
+            {/* Mode Selector Tabs */}
+            <div className="flex items-center p-1 bg-[#070B14] border border-[#1E293B] rounded-xl gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('install');
+                  setPendingAction(null);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'install'
+                    ? 'bg-sky-600 text-white shadow-sm shadow-sky-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Install ({uninstalledServers.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('uninstall');
+                  setPendingAction(null);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'uninstall'
+                    ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Uninstall ({installedServers.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('all');
+                  setPendingAction(null);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  activeTab === 'all'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <span>All ({servers.length})</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#1E293B] transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Search & Provider Filter Bar */}
@@ -383,8 +482,34 @@ export function InstallK8sModal({ isOpen, onClose, onSuccess }: InstallK8sModalP
               <span>Scanning registered fleet servers...</span>
             </div>
           ) : filteredServers.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 text-xs">
-              No registered servers found matching your search.
+            <div className="py-12 text-center text-slate-400 text-xs space-y-3">
+              <p>
+                {activeTab === 'install'
+                  ? 'All registered servers currently have Kubernetes tools installed!'
+                  : activeTab === 'uninstall'
+                  ? 'No registered servers currently have Kubernetes tools installed.'
+                  : 'No registered servers found matching your search.'}
+              </p>
+              {activeTab === 'install' && installedServers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('uninstall')}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm shadow-rose-600/30"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Switch to Uninstall Kubernetes ({installedServers.length} active)</span>
+                </button>
+              )}
+              {activeTab === 'uninstall' && uninstalledServers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('install')}
+                  className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm shadow-sky-600/30"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Switch to Install Kubernetes ({uninstalledServers.length} available)</span>
+                </button>
+              )}
             </div>
           ) : (
             filteredServers.map((server) => {
@@ -502,7 +627,7 @@ export function InstallK8sModal({ isOpen, onClose, onSuccess }: InstallK8sModalP
                               action: 'uninstall',
                             })
                           }
-                          className="px-3 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                          className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-rose-600/30"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Uninstall</span>

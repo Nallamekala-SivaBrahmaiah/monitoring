@@ -135,6 +135,7 @@ function KubernetesContent() {
 
   // Automated Install/Uninstall K8s & Cloud Tools Modal State
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [modalAction, setModalAction] = useState<'install' | 'uninstall'>('install');
   const [uninstallTargetServer, setUninstallTargetServer] = useState<IKubernetesServerInfo | null>(null);
   const [isUninstalling, setIsUninstalling] = useState(false);
   const [uninstallOutput, setUninstallOutput] = useState<string | null>(null);
@@ -503,11 +504,25 @@ function KubernetesContent() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setIsInstallModalOpen(true)}
+                    onClick={() => {
+                      setModalAction('install');
+                      setIsInstallModalOpen(true);
+                    }}
                     className="px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg shadow-sky-600/30 shrink-0"
                   >
                     <Zap className="w-3.5 h-3.5" />
                     <span>+ Install Kubernetes Tools on Server</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalAction('uninstall');
+                      setIsInstallModalOpen(true);
+                    }}
+                    className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-rose-600/30 shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Uninstall Kubernetes Tools on Server</span>
                   </button>
                 </div>
               </div>
@@ -656,15 +671,7 @@ function KubernetesContent() {
                                   <span>Terminal</span>
                                 </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() => setUninstallTargetServer(s)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
-                                  title="Uninstall Kubernetes & Cloud Tools from this server"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  <span>Uninstall</span>
-                                </button>
+
 
                                 <button
                                   type="button"
@@ -779,15 +786,7 @@ function KubernetesContent() {
                     <span>Sync Cluster</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setUninstallTargetServer(selectedServer)}
-                    className="px-2.5 py-1.5 text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 rounded-lg transition inline-flex items-center gap-1.5 cursor-pointer"
-                    title="Uninstall Kubernetes Tools from this server"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Uninstall</span>
-                  </button>
+
                 </div>
               </div>
 
@@ -1565,6 +1564,7 @@ function KubernetesContent() {
           {/* ========================================================================= */}
           <InstallK8sModal
             isOpen={isInstallModalOpen}
+            initialAction={modalAction}
             onClose={() => setIsInstallModalOpen(false)}
             onSuccess={() => {
               fetchServers();
