@@ -113,8 +113,6 @@ export function Sidebar({
     { label: 'Docker Containers', href: '/dashboard/docker', icon: DockerLogo },
     { label: 'Kubernetes', href: '/dashboard/kubernetes', icon: KubernetesLogo },
     { label: 'Jenkins', href: '/dashboard/jenkins', icon: JenkinsLogo },
-    { label: 'SonarQube', href: '/dashboard/sonarqube', icon: SonarQubeLogo },
-    { label: 'Trivy', href: '/dashboard/trivy', icon: TrivyLogo },
     { label: 'Metrics Explorer', href: '/dashboard/metrics', icon: MetricsExplorerIcon },
     {
       label: 'Alerts',
