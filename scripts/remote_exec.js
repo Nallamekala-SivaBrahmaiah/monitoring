@@ -34,5 +34,5 @@ conn.connect({
   port: 22,
   username,
   password,
-  readyTimeout: 10000,
+  readyTimeout: 20000,
 });

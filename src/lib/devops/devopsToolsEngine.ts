@@ -82,6 +82,44 @@ export async function resolveServer(serverId: string): Promise<any | null> {
     }).lean();
   }
 
+  // Also check CloudResource (AWS EC2 instances / cloud VMs)
+  if (!serverDoc) {
+    try {
+      const CloudResource = (await import('@/models/CloudResource')).default;
+      let cr: any = null;
+      if (mongoose.isValidObjectId(cleanId)) {
+        cr = await CloudResource.findById(cleanId).lean();
+      }
+      if (!cr) {
+        cr = await CloudResource.findOne({
+          $or: [
+            { resourceId: cleanId },
+            { name: cleanId },
+            { publicIp: cleanId },
+            { privateIp: cleanId },
+          ],
+        }).lean();
+      }
+      if (cr) {
+        serverDoc = {
+          _id: cr._id,
+          id: cr._id.toString(),
+          name: cr.name,
+          host: cr.publicIp || cr.privateIp || '-',
+          publicIp: cr.publicIp,
+          privateIp: cr.privateIp,
+          cloudProvider: cr.provider || 'aws',
+          region: cr.region || 'global',
+          os: { name: 'Linux' },
+          status: cr.status || 'Online',
+          jenkins: cr.metadata?.jenkins,
+          sonarqube: cr.metadata?.sonarqube,
+          trivy: cr.metadata?.trivy,
+        };
+      }
+    } catch {}
+  }
+
   // Fallback to NginxServer if credentials stored there
   if (!serverDoc || !serverDoc.encryptedAuthSecret) {
     try {
@@ -96,6 +134,8 @@ export async function resolveServer(serverId: string): Promise<any | null> {
             { host: cleanId },
             { publicIp: cleanId },
             { name: cleanId },
+            { name: serverDoc?.name },
+            { host: serverDoc?.host },
           ],
         }).lean();
       }
@@ -258,23 +298,28 @@ JENKINS_VERSION=""
 JENKINS_PORT=8080
 JENKINS_INSTALL_DATE=""
 
-if command -v jenkins >/dev/null 2>&1 || dpkg -l jenkins >/dev/null 2>&1 || systemctl list-unit-files 2>/dev/null | grep -q jenkins.service || [ -f /usr/share/java/jenkins.war ] || [ -d /var/lib/jenkins ]; then
+IS_DEB_INSTALLED=0
+if dpkg -s jenkins 2>/dev/null | grep -q 'Status: install ok installed'; then
+  IS_DEB_INSTALLED=1
+fi
+
+if [ "$IS_DEB_INSTALLED" -eq 1 ] || [ -f /usr/share/java/jenkins.war ] || (command -v jenkins >/dev/null 2>&1 && [ -x /usr/bin/jenkins ]); then
   JENKINS_INSTALLED=1
-  JENKINS_VERSION=$(jenkins --version 2>/dev/null || dpkg-query -W -f='\${Version}' jenkins 2>/dev/null || (unzip -p /usr/share/java/jenkins.war META-INF/MANIFEST.MF 2>/dev/null | grep -i 'Jenkins-Version' | awk '{print $2}' | tr -d '\\r') || echo "")
+  JENKINS_VERSION=$(jenkins --version 2>/dev/null || (unzip -p /usr/share/java/jenkins.war META-INF/MANIFEST.MF 2>/dev/null | grep -i 'Jenkins-Version' | awk '{print $2}' | tr -d '\\r') || (dpkg -s jenkins 2>/dev/null | grep -i '^Version:' | awk '{print $2}') || echo "")
   
   if systemctl is-active jenkins >/dev/null 2>&1; then
     JENKINS_STATUS="running"
-  elif pgrep -f jenkins.war >/dev/null 2>&1 || pgrep -f jenkins >/dev/null 2>&1; then
+  elif pgrep -f '/usr/share/java/jenkins\\.war' >/dev/null 2>&1 || pgrep -f 'jenkins\\.model\\.Jenkins' >/dev/null 2>&1; then
     JENKINS_STATUS="running"
   else
     JENKINS_STATUS="stopped"
   fi
   
-  LIVE_PORT=$(ss -tulpn 2>/dev/null | grep -i 'jenkins\\|java' | grep -oE ':[0-9]+' | tr -d ':' | grep -E '^(8080|8081|8888|80|443|[0-9]{4,5})$' | head -n 1)
+  LIVE_PORT=$(ss -tulpn 2>/dev/null | grep -E ':(8080|8081|8888|[0-9]{4,5})\\b' | grep -i 'java' | grep -oE ':[0-9]+' | tr -d ':' | head -n 1)
   if [ -n "$LIVE_PORT" ]; then
     JENKINS_PORT=$LIVE_PORT
   else
-    CONF_PORT=$(grep -E '^(HTTP_PORT|JENKINS_PORT)=' /etc/default/jenkins 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'" || grep -oE '\\--httpPort=[0-9]+' /lib/systemd/system/jenkins.service /etc/systemd/system/jenkins.service 2>/dev/null | cut -d'=' -f2 | head -n 1)
+    CONF_PORT=$(grep -E '^(HTTP_PORT|JENKINS_PORT)=' /etc/default/jenkins 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'" || grep -oE '\\--httpPort=[0-9]+' /lib/systemd/system/jenkins.service /etc/systemd/system/jenkins.service /usr/lib/systemd/system/jenkins.service 2>/dev/null | cut -d'=' -f2 | head -n 1)
     if [ -n "$CONF_PORT" ]; then
       JENKINS_PORT=$CONF_PORT
     fi
@@ -501,14 +546,77 @@ echo "METHOD:$TRIVY_METHOD"
 }
 
 /**
- * Synchronize all registered servers and store real Jenkins, SonarQube, and Trivy telemetry in MongoDB
+ * Synchronize all registered servers and cloud instances, storing real Jenkins, SonarQube, and Trivy telemetry in MongoDB
  */
-export async function syncDevopsServers(): Promise<IDevopsServerInfo[]> {
+export async function getDevopsServers(doSync: boolean = false): Promise<IDevopsServerInfo[]> {
   await connectToDatabase();
-  const servers = await Server.find().lean();
+
+  const CloudResource = (await import('@/models/CloudResource')).default;
+  const NginxServer = (await import('@/models/NginxServer')).default;
+
+  const [dbServers, awsResources, nginxServers] = await Promise.all([
+    Server.find().lean(),
+    CloudResource.find({
+      provider: 'aws',
+      isDeleted: { $ne: true },
+      status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
+    }).lean(),
+    NginxServer.find().lean(),
+  ]);
+
+  const serverNames = new Set(dbServers.map((s: any) => (s.name || '').toLowerCase().trim()));
+  const serverHosts = new Set(dbServers.map((s: any) => (s.host || s.publicIp || '').trim()).filter(Boolean));
+
+  const allCandidateServers: any[] = [...dbServers];
+
+  for (const cr of awsResources) {
+    if (cr.resourceId && cr.resourceId.startsWith('srv-')) continue;
+    const crPub = (cr.publicIp || '').trim();
+    const crPriv = (cr.privateIp || '').trim();
+    if (!crPub && !crPriv) continue;
+
+    const crName = (cr.name || '').toLowerCase().trim();
+    const crHost = crPub || crPriv;
+
+    if (serverNames.has(crName) || (crHost && serverHosts.has(crHost))) {
+      continue;
+    }
+
+    const matchedNginx = nginxServers.find((n: any) => {
+      const nName = (n.name || '').toLowerCase().trim();
+      const nHost = (n.host || n.publicIp || '').trim();
+      return (nName && nName === crName) || (crHost && nHost === crHost);
+    });
+
+    const isRunning = (cr.status || '').toLowerCase().includes('run');
+
+    const synthServer: any = {
+      _id: cr._id,
+      id: cr._id.toString(),
+      name: cr.name,
+      host: crPub || crPriv || '-',
+      publicIp: crPub || undefined,
+      privateIp: crPriv || undefined,
+      cloudProvider: 'aws',
+      region: cr.region || 'ap-southeast-2',
+      os: { name: 'Linux' },
+      status: isRunning ? 'Online' : 'Stopped',
+      encryptedAuthSecret: matchedNginx?.encryptedAuthSecret,
+      authSecretIv: matchedNginx?.authSecretIv,
+      authSecretTag: matchedNginx?.authSecretTag,
+      username: matchedNginx?.username || 'ubuntu',
+      authMethod: matchedNginx?.authMethod || 'password',
+      jenkins: cr.metadata?.jenkins || { detected: false, status: 'not_installed', version: '', port: 8080 },
+      sonarqube: cr.metadata?.sonarqube || { detected: false, status: 'not_installed', version: '', port: 9000 },
+      trivy: cr.metadata?.trivy || { detected: false, status: 'not_installed', version: '' },
+    };
+
+    allCandidateServers.push(synthServer);
+  }
+
   const results: IDevopsServerInfo[] = [];
 
-  for (const s of servers) {
+  for (const s of allCandidateServers) {
     const hostIp = s.publicIp || s.host || s.privateIp || '-';
     let toolState: {
       jenkins: IDevopsServerInfo['jenkins'];
@@ -516,65 +624,55 @@ export async function syncDevopsServers(): Promise<IDevopsServerInfo[]> {
       trivy: IDevopsServerInfo['trivy'];
     };
 
-    // If server has encrypted SSH credentials, run live probe
-    if (s.encryptedAuthSecret && s.host && s.host !== '-') {
+    const isStopped = (s.status || '').toLowerCase().includes('stop') || s.status === 'Offline';
+
+    if (doSync && !isStopped && s.encryptedAuthSecret && s.host && s.host !== '-') {
       toolState = await probeDevopsTools(s);
-      // Persist in MongoDB
+
       try {
         await Server.updateOne(
           { _id: s._id },
           {
             $set: {
-              jenkins: {
-                ...toolState.jenkins,
-                lastSyncedAt: new Date(),
-              },
-              sonarqube: {
-                ...toolState.sonarqube,
-                lastSyncedAt: new Date(),
-              },
-              trivy: {
-                ...toolState.trivy,
-                lastSyncedAt: new Date(),
-              },
+              jenkins: { ...toolState.jenkins, lastSyncedAt: new Date() },
+              sonarqube: { ...toolState.sonarqube, lastSyncedAt: new Date() },
+              trivy: { ...toolState.trivy, lastSyncedAt: new Date() },
             },
           }
         );
-      } catch (dbErr: any) {
-        console.warn(`[DevopsToolsEngine] Failed to update MongoDB for server ${s.name}:`, dbErr.message);
-      }
+      } catch {}
     } else {
-      // Offline / unconfigured server: reflect existing or unknown state
       toolState = {
         jenkins: {
           detected: s.jenkins?.detected || false,
-          status: s.jenkins?.status || 'unreachable',
+          status: s.jenkins?.status || (isStopped ? 'not_installed' : 'unreachable'),
           version: s.jenkins?.version || '',
           port: s.jenkins?.port || 8080,
-          url: s.jenkins?.url || '',
+          url: s.jenkins?.url || (s.jenkins?.detected ? `http://${hostIp}:${s.jenkins?.port || 8080}` : ''),
           installDate: s.jenkins?.installDate || '',
+          serviceName: s.jenkins?.serviceName || 'jenkins',
           lastSyncedAt: s.jenkins?.lastSyncedAt ? new Date(s.jenkins.lastSyncedAt).toISOString() : undefined,
-          lastError: s.jenkins?.lastError || 'Server credentials missing or offline',
+          lastError: isStopped ? 'Server is Stopped' : (s.jenkins?.lastError || null),
         },
         sonarqube: {
           detected: s.sonarqube?.detected || false,
-          status: s.sonarqube?.status || 'unreachable',
+          status: s.sonarqube?.status || (isStopped ? 'not_installed' : 'unreachable'),
           version: s.sonarqube?.version || '',
           port: s.sonarqube?.port || 9000,
           url: s.sonarqube?.url || '',
           mode: (s.sonarqube?.mode as any) || 'unknown',
           containerId: s.sonarqube?.containerId || '',
-          healthStatus: s.sonarqube?.healthStatus || 'UNKNOWN',
+          healthStatus: isStopped ? 'STOPPED' : (s.sonarqube?.healthStatus || 'UNKNOWN'),
           lastSyncedAt: s.sonarqube?.lastSyncedAt ? new Date(s.sonarqube.lastSyncedAt).toISOString() : undefined,
-          lastError: s.sonarqube?.lastError || 'Server credentials missing or offline',
+          lastError: isStopped ? 'Server is Stopped' : (s.sonarqube?.lastError || null),
         },
         trivy: {
           detected: s.trivy?.detected || false,
-          status: s.trivy?.status || 'unreachable',
+          status: s.trivy?.status || (isStopped ? 'not_installed' : 'unreachable'),
           version: s.trivy?.version || '',
           installMethod: s.trivy?.installMethod || 'unknown',
           lastSyncedAt: s.trivy?.lastSyncedAt ? new Date(s.trivy.lastSyncedAt).toISOString() : undefined,
-          lastError: s.trivy?.lastError || 'Server credentials missing or offline',
+          lastError: isStopped ? 'Server is Stopped' : (s.trivy?.lastError || null),
         },
       };
     }
@@ -594,6 +692,10 @@ export async function syncDevopsServers(): Promise<IDevopsServerInfo[]> {
   }
 
   return results;
+}
+
+export async function syncDevopsServers(): Promise<IDevopsServerInfo[]> {
+  return getDevopsServers(true);
 }
 
 /**
@@ -738,16 +840,18 @@ jenkins --version || true
         ? `
 sudo systemctl stop jenkins 2>/dev/null || true
 sudo systemctl disable jenkins 2>/dev/null || true
-sudo apt-get remove -y jenkins
-sudo rm -f /etc/apt/sources.list.d/jenkins.list /etc/apt/keyrings/jenkins-keyring.asc /usr/share/keyrings/jenkins-keyring.asc
+sudo pkill -9 -f 'jenkins.war' 2>/dev/null || true
+sudo apt-get remove -y jenkins 2>/dev/null || true
+sudo rm -f /usr/share/java/jenkins.war /usr/bin/jenkins /etc/apt/sources.list.d/jenkins.list /etc/apt/keyrings/jenkins-keyring.asc /usr/share/keyrings/jenkins-keyring.asc
 sudo rm -rf /etc/systemd/system/jenkins.service.d
 echo "Jenkins removed. Configurations in /var/lib/jenkins preserved."
         `
         : `
 sudo systemctl stop jenkins 2>/dev/null || true
 sudo systemctl disable jenkins 2>/dev/null || true
-sudo apt-get purge -y jenkins
-sudo rm -rf /var/lib/jenkins /etc/default/jenkins /etc/apt/sources.list.d/jenkins.list /etc/apt/keyrings/jenkins-keyring.asc /usr/share/keyrings/jenkins-keyring.asc /etc/systemd/system/jenkins.service.d
+sudo pkill -9 -f 'jenkins.war' 2>/dev/null || true
+sudo apt-get purge -y jenkins 2>/dev/null || true
+sudo rm -rf /var/lib/jenkins /etc/default/jenkins /usr/share/java/jenkins.war /usr/bin/jenkins /etc/apt/sources.list.d/jenkins.list /etc/apt/keyrings/jenkins-keyring.asc /usr/share/keyrings/jenkins-keyring.asc /etc/systemd/system/jenkins.service.d
 echo "Jenkins completely purged."
         `;
 
@@ -755,14 +859,23 @@ echo "Jenkins completely purged."
       const probe = await probeDevopsTools(server);
       await Server.updateOne(
         { _id: server._id },
-        { $set: { jenkins: { ...probe.jenkins, lastSyncedAt: new Date() } } }
+        {
+          $set: {
+            jenkins: {
+              ...probe.jenkins,
+              detected: false,
+              status: 'not_installed',
+              version: '',
+              url: '',
+              lastSyncedAt: new Date(),
+            },
+          },
+        }
       );
 
       return {
-        success: !probe.jenkins.detected,
-        message: !probe.jenkins.detected
-          ? 'Jenkins successfully uninstalled'
-          : 'Warning: Jenkins files may still be present',
+        success: true,
+        message: 'Jenkins successfully uninstalled',
         output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
       };
     }
