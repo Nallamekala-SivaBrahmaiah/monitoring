@@ -9,7 +9,6 @@ import {
   Play,
   Square,
   Pause,
-  Trash2,
   Terminal,
   RefreshCw,
   Boxes,
@@ -289,37 +288,6 @@ export function DockerServerDetailView({
   // Container Action State
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
-  // Host-level uninstall state
-  const [showUninstallModal, setShowUninstallModal] = useState(false);
-  const [isUninstallingHost, setIsUninstallingHost] = useState(false);
-  const [uninstallHostError, setUninstallHostError] = useState<string | null>(null);
-
-  const handleUninstallDockerHost = async () => {
-    setIsUninstallingHost(true);
-    setUninstallHostError(null);
-    try {
-      const res = await fetch(`/api/docker/servers/${host.id}/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'uninstall' }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setToast({ type: 'success', message: `Docker uninstalled successfully from ${host.name}!` });
-        setShowUninstallModal(false);
-        setTimeout(() => {
-          onBack();
-        }, 1200);
-      } else {
-        setUninstallHostError(data.error || data.message || 'Failed to uninstall Docker');
-      }
-    } catch (err: any) {
-      setUninstallHostError(err.message || 'Network error');
-    } finally {
-      setIsUninstallingHost(false);
-    }
-  };
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -986,20 +954,6 @@ export function DockerServerDetailView({
             >
               <Rocket className="w-3.5 h-3.5" />
               <span>Run 1-Click Deploy</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowUninstallModal(true);
-                setUninstallHostError(null);
-              }}
-              disabled={isUninstallingHost}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg transition-colors cursor-pointer"
-              title="Uninstall Docker from this server"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Uninstall Docker</span>
             </button>
           </div>
         </div>
@@ -2624,65 +2578,7 @@ export function DockerServerDetailView({
         </div>
       )}
 
-      {/* Host-Level Uninstall Docker Confirmation Modal */}
-      {showUninstallModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#0B1120] border border-[#1E293B] rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white">Confirm Docker Uninstallation</h3>
-                <p className="text-xs text-slate-400 font-mono">
-                  {host.name} ({host.host || host.publicIp})
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Are you sure you want to uninstall Docker from <strong className="text-white">{host.name}</strong>?
-              This will stop all running containers, remove Docker daemon and packages via SSH, and remove this host from the Docker Containers module.
-            </p>
-
-            {uninstallHostError && (
-              <div className="p-3 rounded-lg bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>{uninstallHostError}</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowUninstallModal(false)}
-                disabled={isUninstallingHost}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleUninstallDockerHost}
-                disabled={isUninstallingHost}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-600/30 disabled:opacity-50"
-              >
-                {isUninstallingHost ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Uninstalling Docker...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Confirm &amp; Uninstall Docker</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Log tail dialog */}
     </div>
   );
 }
