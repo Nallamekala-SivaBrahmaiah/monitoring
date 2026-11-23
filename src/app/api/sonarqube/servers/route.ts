@@ -3,8 +3,6 @@ import { syncDevopsServers } from '@/lib/devops/devopsToolsEngine';
 import connectToDatabase from '@/lib/mongodb';
 import Server from '@/models/Server';
 
-export const dynamic = 'force-dynamic';
-
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
