@@ -28,12 +28,15 @@ import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { MetricType, ResourceMetricPoint } from '@/types/monitoring';
 import { useMonitoring } from '@/context/MonitoringContext';
 
-interface ResourceOverviewChartProps {
+export interface ResourceOverviewChartProps {
   initialMetric?: MetricType;
   data?: Record<string, ResourceMetricPoint[]>;
+  selectedServerName?: string | null;
+  onServerSelect?: (serverName: string | null) => void;
+  onServersLoaded?: (servers: ServerDetailItem[]) => void;
 }
 
-interface ServerDetailItem {
+export interface ServerDetailItem {
   id: string;
   name: string;
   host: string;
@@ -203,18 +206,35 @@ function ResourceMetricCard({
 export function ResourceOverviewChart({
   initialMetric = 'CPU',
   data,
+  selectedServerName,
+  onServerSelect,
+  onServersLoaded,
 }: ResourceOverviewChartProps) {
   const { cloudProvider, lastRefreshedAt, customServers, filteredAzureVMs, filteredEC2Instances } =
     useMonitoring();
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>(initialMetric);
   const [rawList, setRawList] = useState<any[]>([]);
-  // Default to 'all' so users immediately see live fleet metrics without an empty blank box
-  const [selectedServer, setSelectedServer] = useState<string | null>('all');
+  // Default to controlled prop if provided, otherwise 'all'
+  const [selectedServer, setSelectedServer] = useState<string | null>(
+    selectedServerName !== undefined ? selectedServerName : 'all'
+  );
   const [fleetViewModel, setFleetViewModel] = useState<'gauges' | 'matrix'>('gauges');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dropdownSearch, setDropdownSearch] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Sync with controlled prop if provided by parent
+  useEffect(() => {
+    if (selectedServerName !== undefined && selectedServerName !== selectedServer) {
+      setSelectedServer(selectedServerName);
+    }
+  }, [selectedServerName]);
+
+  const handleSelectServer = (name: string | null) => {
+    setSelectedServer(name);
+    onServerSelect?.(name);
+  };
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -466,10 +486,22 @@ export function ResourceOverviewChart({
     });
   }, [allServers, dropdownSearch]);
 
+  // Notify parent of compiled server list
+  useEffect(() => {
+    if (allServers.length > 0) {
+      onServersLoaded?.(allServers);
+    }
+  }, [allServers, onServersLoaded]);
+
   // Ensure selectedServer is valid if servers change
   useEffect(() => {
-    if (selectedServer && selectedServer !== 'all' && allServers.length > 0 && !allServers.some((s) => s.name === selectedServer)) {
-      setSelectedServer(null);
+    if (
+      selectedServer &&
+      selectedServer !== 'all' &&
+      allServers.length > 0 &&
+      !allServers.some((s) => s.name === selectedServer || s.id === selectedServer)
+    ) {
+      handleSelectServer(null);
     }
   }, [allServers, selectedServer]);
 
@@ -514,7 +546,7 @@ export function ResourceOverviewChart({
   // Selected server details
   const activeServerDetail = useMemo(() => {
     if (!selectedServer || selectedServer === 'all') return null;
-    return allServers.find((s) => s.name === selectedServer) || null;
+    return allServers.find((s) => s.name === selectedServer || s.id === selectedServer) || null;
   }, [selectedServer, allServers]);
 
   const isOnline = activeServerDetail
@@ -853,7 +885,7 @@ export function ResourceOverviewChart({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedServer(null);
+                    handleSelectServer(null);
                   }}
                   className="p-0.5 text-slate-400 hover:text-white rounded hover:bg-slate-700/50"
                   title="Clear Selection"
@@ -902,7 +934,7 @@ export function ResourceOverviewChart({
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedServer('all');
+                    handleSelectServer('all');
                     setIsDropdownOpen(false);
                   }}
                   className={`w-full px-3 py-2 text-left flex items-center justify-between text-xs transition-colors cursor-pointer ${
@@ -943,7 +975,7 @@ export function ResourceOverviewChart({
                         key={srv.id || srv.name}
                         type="button"
                         onClick={() => {
-                          setSelectedServer(srv.name);
+                          handleSelectServer(srv.name);
                           setIsDropdownOpen(false);
                         }}
                         className={`w-full px-3 py-2.5 text-left flex items-center justify-between text-xs transition-colors cursor-pointer ${
@@ -1107,7 +1139,7 @@ export function ResourceOverviewChart({
               return (
                 <div
                   key={s.id}
-                  onClick={() => setSelectedServer(s.id)}
+                  onClick={() => handleSelectServer(s.name)}
                   className="bg-[#0B1120] hover:bg-[#111A2E] border border-[#1E293B] hover:border-blue-500/50 rounded-xl p-3.5 transition-all cursor-pointer group shadow-sm flex flex-col justify-between"
                 >
                   <div className="flex items-center justify-between gap-2 mb-2">
