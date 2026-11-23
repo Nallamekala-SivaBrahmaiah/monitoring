@@ -123,7 +123,31 @@ function KubernetesContent() {
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
+  const [providerFilter, setProviderFilter] = useState<'all' | 'azure' | 'aws'>('all');
   const [selectedNamespace, setSelectedNamespace] = useState('all');
+
+  const azureCount = useMemo(() => servers.filter((s) => s.cloudProvider?.toLowerCase() === 'azure').length, [servers]);
+  const awsCount = useMemo(() => servers.filter((s) => s.cloudProvider?.toLowerCase() === 'aws').length, [servers]);
+  const totalNodes = useMemo(() => servers.reduce((acc, s) => acc + (s.nodeCount || 0), 0), [servers]);
+
+  const filteredServers = useMemo(() => {
+    return servers.filter((s) => {
+      if (providerFilter !== 'all' && s.cloudProvider?.toLowerCase() !== providerFilter) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = (s.name || '').toLowerCase().includes(q);
+        const matchHost = (s.hostname || '').toLowerCase().includes(q);
+        const matchPublicIp = (s.publicIp || '').toLowerCase().includes(q);
+        const matchPrivateIp = (s.privateIp || '').toLowerCase().includes(q);
+        const matchRegion = (s.region || '').toLowerCase().includes(q);
+        const matchCluster = (s.clusterName || '').toLowerCase().includes(q);
+        return matchName || matchHost || matchPublicIp || matchPrivateIp || matchRegion || matchCluster;
+      }
+      return true;
+    });
+  }, [servers, providerFilter, searchQuery]);
 
   // Interactive YAML inspection modal
   const [inspectItem, setInspectItem] = useState<{ title: string; yaml: string } | null>(null);
@@ -383,135 +407,85 @@ function KubernetesContent() {
 
         <main className="p-3 sm:p-5 lg:p-6 space-y-4 max-w-[1920px] mx-auto w-full">
           {/* ========================================================================= */}
-          {/* 1. TOP BREADCRUMBS HIERARCHY NAVIGATION                                    */}
+          {/* 1. UNIFIED SINGLE-DECK HEADER & ACTION STRIP (Matches Docker & Servers)   */}
           {/* ========================================================================= */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#0B1120] border border-[#162238] rounded-xl px-4 py-3 shadow-md">
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Link href="/" className="hover:text-sky-400 flex items-center gap-1 transition-colors">
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Dashboard</span>
-              </Link>
-              <span>/</span>
-              <button
-                onClick={handleBackToServers}
-                className={`font-semibold transition-colors ${
-                  !selectedServer ? 'text-sky-400' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                Kubernetes
-              </button>
-              {selectedServer && (
-                <>
-                  <span>/</span>
-                  <button
-                    onClick={() => {
-                      setSelectedNode(null);
-                      setActiveSection('overview');
-                    }}
-                    className="text-sky-400 font-mono font-bold hover:underline"
-                  >
-                    {selectedServer.name}
-                  </button>
-                  <span>/</span>
-                  <span className="text-slate-300 capitalize font-medium">
-                    {NAVIGATION_SECTIONS.find((s) => s.id === activeSection)?.label.replace(/^\d+\.\s*/, '')}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                <Link href="/" className="hover:text-blue-400 flex items-center gap-1 transition-colors">
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Dashboard</span>
+                </Link>
+                <span>/</span>
+                {!selectedServer ? (
+                  <span className="text-white font-medium">Kubernetes</span>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleBackToServers}
+                      className="text-slate-300 hover:text-white transition-colors"
+                    >
+                      Kubernetes
+                    </button>
+                    <span>/</span>
+                    <button
+                      onClick={() => {
+                        setSelectedNode(null);
+                        setActiveSection('overview');
+                      }}
+                      className="text-sky-400 font-mono font-bold hover:underline"
+                    >
+                      {selectedServer.name}
+                    </button>
+                    <span>/</span>
+                    <span className="text-slate-300 capitalize font-medium">
+                      {NAVIGATION_SECTIONS.find((s) => s.id === activeSection)?.label.replace(/^\d+\.\s*/, '')}
+                    </span>
+                    {selectedNode && (
+                      <>
+                        <span>/</span>
+                        <span className="text-emerald-400 font-mono font-bold truncate max-w-[200px]">
+                          {selectedNode.metadata?.name}
+                        </span>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2.5">
+                <KubernetesIcon className="w-6 h-6 text-[#326ce5]" />
+                <span>{!selectedServer ? 'Kubernetes Cluster Infrastructure' : `Server: ${selectedServer.name}`}</span>
+                {!selectedServer ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                    {servers.length} Detected
                   </span>
-                  {selectedNode && (
-                    <>
-                      <span>/</span>
-                      <span className="text-emerald-400 font-mono font-bold truncate max-w-[200px]">
-                        {selectedNode.metadata?.name}
-                      </span>
-                    </>
-                  )}
-                </>
-              )}
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    {selectedServer.connectionStatus || 'Connected'}
+                  </span>
+                )}
+              </h2>
             </div>
 
-            {/* Quick Actions */}
-            <div className="flex items-center gap-2">
+            {/* Quick Actions Bar (Single Row - Zero Wrapping) */}
+            <div className="flex items-center gap-2.5 flex-wrap">
               <ModuleCustomizeButton
                 moduleId="kubernetes"
                 moduleName="Kubernetes Module"
                 variant="pill"
               />
-              {selectedServer && (
-                <button
-                  onClick={handleBackToServers}
-                  className="px-2.5 py-1 text-xs font-semibold bg-[#111A2E] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg transition inline-flex items-center gap-1.5 shadow-sm"
-                >
-                  <Server className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Switch Server</span>
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  if (selectedServer) {
-                    fetchClusterResources(selectedServer.name, true);
-                  } else {
-                    fetchServers();
-                  }
-                  syncNow();
-                }}
-                disabled={loadingServers || loadingCluster || isSyncing}
-                title="Refresh Live Telemetry"
-                className="p-1.5 text-slate-400 hover:text-white bg-[#111A2E] hover:bg-[#162238] border border-[#1E293B] rounded-lg transition shadow-sm disabled:opacity-50"
-              >
-                <RotateCw
-                  className={`w-4 h-4 text-sky-400 ${
-                    loadingServers || loadingCluster || isSyncing ? 'animate-spin' : ''
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* 2. MAIN PAGE: KUBERNETES INSTALLED SERVERS ONLY (SECTIONS 1 & 2)           */}
-          {/* ========================================================================= */}
-          {!selectedServer ? (
-            <div className="space-y-4">
-              {/* Header Banner */}
-              <div className="bg-[#0B1120] border border-[#162238] rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-xl bg-sky-500/15 flex items-center justify-center text-sky-400 border border-sky-500/30 shadow-[0_0_20px_rgba(56,189,248,0.25)]">
-                    <KubernetesIcon className="w-6 h-6 text-sky-400" />
-                  </div>
-                  <div>
-                    <h1 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                      <span>Kubernetes Installed Servers</span>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                        {servers.length} Detected
-                      </span>
-                    </h1>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Automatically discovered host servers configured with Kubernetes. Select any server to orchestrate its cluster hierarchy.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Summary badges & Actions */}
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <div className="px-3 py-1.5 rounded-lg bg-[#111A2E] border border-[#1E293B] text-slate-300">
-                    Cluster Hosts: <span className="text-white font-bold">{servers.length}</span>
-                  </div>
-                  <div className="px-3 py-1.5 rounded-lg bg-[#111A2E] border border-[#1E293B] text-slate-300">
-                    Live Nodes: <span className="text-sky-400 font-bold">{servers.reduce((a, s) => a + s.nodeCount, 0)}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>100% Operational</span>
-                  </div>
+              {!selectedServer ? (
+                <>
                   <button
                     type="button"
                     onClick={() => {
                       setModalAction('install');
                       setIsInstallModalOpen(true);
                     }}
-                    className="px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg shadow-sky-600/30 shrink-0"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-sky-600/30 whitespace-nowrap"
                   >
                     <Zap className="w-3.5 h-3.5" />
-                    <span>+ Install Kubernetes Tools on Server</span>
+                    <span>Install Kubernetes Tools on Server</span>
                   </button>
                   <button
                     type="button"
@@ -519,11 +493,187 @@ function KubernetesContent() {
                       setModalAction('uninstall');
                       setIsInstallModalOpen(true);
                     }}
-                    className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-rose-600/30 shrink-0"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-rose-600/30 whitespace-nowrap"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Uninstall Kubernetes Tools on Server</span>
                   </button>
+
+                  <div className="flex items-center gap-2 text-xs bg-[#111A2E] border border-[#1E293B] px-3 py-1.5 rounded-lg whitespace-nowrap">
+                    <span className="text-white font-bold">{servers.length}</span>
+                    <span className="text-slate-400">Hosts</span>
+                    <span className="text-slate-600">|</span>
+                    <span className="text-sky-400 font-bold">{totalNodes}</span>
+                    <span className="text-slate-400">Nodes</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fetchServers();
+                      syncNow();
+                    }}
+                    disabled={loadingServers || isSyncing}
+                    title="Refresh Fleet Telemetry"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors cursor-pointer shadow-sm disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 text-sky-400 ${
+                        loadingServers || isSyncing ? 'animate-spin' : ''
+                      }`}
+                    />
+                    <span>Sync Clusters</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleBackToServers}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg transition shadow-sm whitespace-nowrap"
+                  >
+                    <Server className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Switch Server</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fetchClusterResources(selectedServer.name, true);
+                      syncNow();
+                    }}
+                    disabled={loadingCluster || isSyncing}
+                    title="Refresh Live Telemetry"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition shadow-sm disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 text-sky-400 ${
+                        loadingCluster || isSyncing ? 'animate-spin' : ''
+                      }`}
+                    />
+                    <span>Sync Cluster</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* 2. MAIN PAGE: KUBERNETES INSTALLED SERVERS INVENTORY                      */}
+          {/* ========================================================================= */}
+          {!selectedServer ? (
+            <div className="space-y-4">
+              {/* 4 Summary KPI Cards matching Docker & Servers */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Total Cluster Hosts */}
+                <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Total Cluster Hosts</span>
+                    <span className="text-2xl font-bold text-white font-mono mt-1 block">{servers.length}</span>
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1 mt-1 font-semibold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>{servers.length} Monitored</span>
+                    </span>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                    <Server className="w-5 h-5" />
+                  </div>
+                </div>
+
+                {/* Live K8s Nodes */}
+                <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Live K8s Nodes</span>
+                    <span className="text-2xl font-bold text-sky-400 font-mono mt-1 block">{totalNodes}</span>
+                    <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-1 font-semibold">
+                      <span>Control plane &amp; worker nodes</span>
+                    </span>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+                    <Boxes className="w-5 h-5" />
+                  </div>
+                </div>
+
+                {/* Operational Fleet Health */}
+                <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Cluster Fleet Health</span>
+                    <span className="text-2xl font-bold text-emerald-400 font-mono mt-1 block">100%</span>
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1 mt-1 font-semibold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span>All Systems Operational</span>
+                    </span>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                </div>
+
+                {/* Cloud Tooling */}
+                <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Cloud Tooling</span>
+                    <span className="text-2xl font-bold text-indigo-400 font-mono mt-1 block">AKS / EKS</span>
+                    <span className="text-[10px] text-indigo-300 flex items-center gap-1 mt-1 font-semibold">
+                      <span>kubectl • az • aws • eksctl</span>
+                    </span>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                    <Zap className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter and Search Bar matching Servers Page and Active Applications pill */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0B1120] border border-[#162238] rounded-xl p-3 shadow-sm">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setProviderFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      providerFilter === 'all'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 border border-blue-400/50'
+                        : 'bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B]'
+                    }`}
+                  >
+                    <span>All Host Servers</span>
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 font-mono">{servers.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProviderFilter('azure')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                      providerFilter === 'azure'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 border border-blue-400/50'
+                        : 'bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B]'
+                    }`}
+                  >
+                    <AzureLogo className="w-3.5 h-3.5 text-[#0089D6]" />
+                    <span>Azure AKS ({azureCount})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProviderFilter('aws')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                      providerFilter === 'aws'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 border border-blue-400/50'
+                        : 'bg-[#111A2E] text-slate-300 hover:text-white border border-[#1E293B]'
+                    }`}
+                  >
+                    <AwsLogo className="w-3.5 h-3.5 text-[#FF9900]" />
+                    <span>AWS EKS ({awsCount})</span>
+                  </button>
+                </div>
+
+                {/* Search input */}
+                <div className="relative min-w-[260px]">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search K8s host name, IP, region..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-[#111A2E] border border-[#1E293B] rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                  />
                 </div>
               </div>
 
@@ -560,7 +710,7 @@ function KubernetesContent() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#162238]/60 font-medium">
-                      {servers.map((s) => {
+                      {filteredServers.map((s) => {
                         const isConnected = s.connectionStatus === 'Connected';
                         return (
                           <tr
@@ -689,6 +839,13 @@ function KubernetesContent() {
                     </tbody>
                   </table>
 
+                  {servers.length > 0 && filteredServers.length === 0 && (
+                    <div className="py-12 px-4 text-center">
+                      <p className="text-white font-bold text-sm mb-1">No matching servers found</p>
+                      <p className="text-slate-400 text-xs">Try adjusting your search query or provider filter.</p>
+                    </div>
+                  )}
+
                   {servers.length === 0 && !loadingServers && (
                     <div className="py-12 px-4 text-center">
                       <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center mx-auto mb-3">
@@ -700,7 +857,7 @@ function KubernetesContent() {
                       </p>
                       <button
                         type="button"
-                        onClick={() => setIsInstallModalOpen(true)}
+                        onClick={() => { setModalAction('install'); setIsInstallModalOpen(true); }}
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-lg shadow-sky-600/25 cursor-pointer"
                       >
                         <Zap className="w-4 h-4" />
