@@ -192,46 +192,11 @@ function JenkinsContent() {
     else setLoading(true);
 
     try {
-      // Use Jenkins servers endpoint with sync flag to trigger devopsToolsEngine
+      // Unified DevOps endpoint returns authoritative server and tool states
       const res = await fetch(`/api/jenkins/servers?sync=${sync ? 'true' : 'false'}`);
       if (res.ok) {
-        // Also fetch SonarQube & Trivy to ensure complete state
-        const [sonarRes, trivyRes] = await Promise.all([
-          fetch(`/api/sonarqube/servers`),
-          fetch(`/api/trivy/servers`),
-        ]);
-
         const jenkinsData = await res.json();
-        const sonarData = sonarRes.ok ? await sonarRes.json() : { servers: [] };
-        const trivyData = trivyRes.ok ? await trivyRes.json() : { servers: [] };
-
-        const combined: IServerPipeline[] = (jenkinsData.servers || []).map((js: any) => {
-          const sMatch = (sonarData.servers || []).find((ss: any) => ss.id === js.id);
-          const tMatch = (trivyData.servers || []).find((ts: any) => ts.id === js.id);
-          return {
-            ...js,
-            sonarqube: sMatch?.sonarqube || {
-              detected: false,
-              status: 'not_installed',
-              version: '',
-              port: 9000,
-              url: '',
-              mode: 'unknown',
-              containerId: '',
-              healthStatus: 'UNKNOWN',
-            },
-            trivy: tMatch?.trivy || {
-              detected: false,
-              status: 'not_installed',
-              version: '',
-              installMethod: 'unknown',
-              lastScanTarget: '',
-              lastScanSummary: { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
-            },
-          };
-        });
-
-        setServers(combined);
+        setServers(jenkinsData.servers || []);
       }
     } catch (err) {
       console.error('Failed to fetch pipeline servers:', err);
@@ -269,13 +234,13 @@ function JenkinsContent() {
       if (data.scanResult) {
         setActiveScanResult(data.scanResult);
         await fetchRecentScans();
-      } else if (data.output) {
+      } else if (data.output || data.message) {
         setModalLog({
           title: `${tool.toUpperCase()} ${action.toUpperCase()} - ${data.success ? 'Success' : 'Notice'}`,
           output: data.output || data.message,
         });
       }
-      await fetchServers(false);
+      await fetchServers(true);
     } catch (err: any) {
       setModalLog({
         title: `Action Error`,
@@ -676,7 +641,7 @@ function JenkinsContent() {
 
                   const sStatusLower = (server.status || '').toLowerCase();
                   const isServerRunning = sStatusLower === 'online' || sStatusLower === 'running';
-                  const isServerStopped = sStatusLower.includes('stop');
+                  const isServerStopped = sStatusLower.includes('stop') || sStatusLower.includes('deallocat');
                   const isServerUnreachable = !isServerRunning && !isServerStopped;
 
                   return (
@@ -812,14 +777,14 @@ function JenkinsContent() {
 
                           <button
                             type="button"
-                            disabled={isServerStopped}
+                            disabled={!isServerRunning}
                             onClick={() => openTerminal(server)}
                             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border rounded-xl transition-all ${
-                              isServerStopped
+                              !isServerRunning
                                 ? 'bg-[#111A2E]/40 text-slate-500 border-[#1E293B]/40 cursor-not-allowed opacity-50'
                                 : 'bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border-[#1E293B] cursor-pointer'
                             }`}
-                            title={isServerStopped ? 'Cannot open terminal because the host server is stopped.' : 'Open SSH Terminal'}
+                            title={!isServerRunning ? `Cannot open terminal because the host server is ${server.status || 'not running'}.` : 'Open SSH Terminal'}
                           >
                             <TerminalIcon className="w-3.5 h-3.5 text-cyan-400" />
                             <span>Terminal</span>
@@ -836,6 +801,16 @@ function JenkinsContent() {
                             >
                               <PowerOff className="w-3.5 h-3.5 text-rose-400" />
                               <span>{isInstalled ? 'Server Stopped' : 'Install Jenkins (Server Stopped)'}</span>
+                            </button>
+                          ) : isServerUnreachable ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-slate-800/60 border border-amber-500/30 text-amber-400/80 rounded-xl cursor-not-allowed"
+                              title={`Host server is unreachable (${server.status || 'Connection Timeout'}). Ensure the server is online and port 22 is open.`}
+                            >
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{isInstalled ? 'Host Unreachable' : 'Install Jenkins (Host Unreachable)'}</span>
                             </button>
                           ) : isInstalled ? (
                             <>
@@ -926,7 +901,7 @@ function JenkinsContent() {
 
                   const sStatusLower = (server.status || '').toLowerCase();
                   const isServerRunning = sStatusLower === 'online' || sStatusLower === 'running';
-                  const isServerStopped = sStatusLower.includes('stop');
+                  const isServerStopped = sStatusLower.includes('stop') || sStatusLower.includes('deallocat');
                   const isServerUnreachable = !isServerRunning && !isServerStopped;
 
                   return (
@@ -1074,14 +1049,14 @@ function JenkinsContent() {
 
                           <button
                             type="button"
-                            disabled={isServerStopped}
+                            disabled={!isServerRunning}
                             onClick={() => openTerminal(server)}
                             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border rounded-xl transition-all ${
-                              isServerStopped
+                              !isServerRunning
                                 ? 'bg-[#111A2E]/40 text-slate-500 border-[#1E293B]/40 cursor-not-allowed opacity-50'
                                 : 'bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border-[#1E293B] cursor-pointer'
                             }`}
-                            title={isServerStopped ? 'Cannot open terminal because the host server is stopped.' : 'Open SSH Terminal'}
+                            title={!isServerRunning ? `Cannot open terminal because the host server is ${server.status || 'not running'}.` : 'Open SSH Terminal'}
                           >
                             <TerminalIcon className="w-3.5 h-3.5 text-cyan-400" />
                             <span>Terminal</span>
@@ -1098,6 +1073,16 @@ function JenkinsContent() {
                             >
                               <PowerOff className="w-3.5 h-3.5 text-rose-400" />
                               <span>{isInstalled ? 'Server Stopped' : 'Deploy SonarQube (Server Stopped)'}</span>
+                            </button>
+                          ) : isServerUnreachable ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-slate-800/60 border border-amber-500/30 text-amber-400/80 rounded-xl cursor-not-allowed"
+                              title={`Host server is unreachable (${server.status || 'Connection Timeout'}). Ensure the server is online and port 22 is open.`}
+                            >
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{isInstalled ? 'Host Unreachable' : 'Deploy SonarQube (Host Unreachable)'}</span>
                             </button>
                           ) : isInstalled ? (
                             <>
@@ -1184,7 +1169,7 @@ function JenkinsContent() {
 
                 const sStatusLower = (server.status || '').toLowerCase();
                 const isServerRunning = sStatusLower === 'online' || sStatusLower === 'running';
-                const isServerStopped = sStatusLower.includes('stop');
+                const isServerStopped = sStatusLower.includes('stop') || sStatusLower.includes('deallocat');
                 const isServerUnreachable = !isServerRunning && !isServerStopped;
 
                 return (
@@ -1353,14 +1338,14 @@ function JenkinsContent() {
 
                         <button
                           type="button"
-                          disabled={isServerStopped}
+                          disabled={!isServerRunning}
                           onClick={() => openTerminal(server)}
                           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border rounded-xl transition-all ${
-                            isServerStopped
+                            !isServerRunning
                               ? 'bg-[#111A2E]/40 text-slate-500 border-[#1E293B]/40 cursor-not-allowed opacity-50'
                               : 'bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border-[#1E293B] cursor-pointer'
                           }`}
-                          title={isServerStopped ? 'Cannot open terminal because the host server is stopped.' : 'Open SSH Terminal'}
+                          title={!isServerRunning ? `Cannot open terminal because the host server is ${server.status || 'not running'}.` : 'Open SSH Terminal'}
                         >
                           <TerminalIcon className="w-3.5 h-3.5 text-cyan-400" />
                           <span>Terminal</span>
@@ -1377,6 +1362,16 @@ function JenkinsContent() {
                           >
                             <PowerOff className="w-3.5 h-3.5 text-rose-400" />
                             <span>{isInstalled ? 'Server Stopped' : 'Install Trivy CLI (Server Stopped)'}</span>
+                          </button>
+                        ) : isServerUnreachable ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-slate-800/60 border border-amber-500/30 text-amber-400/80 rounded-xl cursor-not-allowed"
+                            title={`Host server is unreachable (${server.status || 'Connection Timeout'}). Ensure the server is online and port 22 is open.`}
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                            <span>{isInstalled ? 'Host Unreachable' : 'Install Trivy CLI (Host Unreachable)'}</span>
                           </button>
                         ) : isInstalled ? (
                           <>
@@ -1459,7 +1454,7 @@ function JenkinsContent() {
                 >
                   {servers.map((s) => {
                     const st = (s.status || '').toLowerCase();
-                    const stateLabel = st.includes('stop') ? ' [STOPPED]' : st === 'online' || st === 'running' ? ' [RUNNING]' : ` [${s.status}]`;
+                    const stateLabel = st.includes('stop') || st.includes('deallocat') ? ' [STOPPED]' : st === 'online' || st === 'running' ? ' [RUNNING]' : ` [${s.status}]`;
                     return (
                       <option key={s.id} value={s.id}>
                         {s.name} ({s.publicIp || s.host}){stateLabel} {s.jenkins.detected ? '• Already Installed' : ''}
@@ -1467,12 +1462,21 @@ function JenkinsContent() {
                     );
                   })}
                 </select>
-                {servers.find((s) => s.id === jenkinsInstallServer)?.status?.toLowerCase().includes('stop') && (
-                  <div className="flex items-center gap-2 p-2.5 mt-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-                    <span>Target server is <strong>STOPPED</strong>. Power on the server first before installing.</span>
-                  </div>
-                )}
+                {(() => {
+                  const target = servers.find((s) => s.id === jenkinsInstallServer);
+                  const st = (target?.status || '').toLowerCase();
+                  const isRun = st === 'online' || st === 'running';
+                  const isStop = st.includes('stop') || st.includes('deallocat');
+                  if (!target || isRun) return null;
+                  return (
+                    <div className="flex items-center gap-2 p-2.5 mt-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                      <span>
+                        Target server is <strong>{isStop ? 'STOPPED' : target.status || 'UNREACHABLE'}</strong>. Power on the server first before installing Jenkins.
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
@@ -1497,13 +1501,13 @@ function JenkinsContent() {
               </button>
               <button
                 type="button"
-                disabled={Boolean(servers.find((s) => s.id === jenkinsInstallServer)?.status?.toLowerCase().includes('stop'))}
+                disabled={!['online', 'running'].includes((servers.find((s) => s.id === jenkinsInstallServer)?.status || '').toLowerCase())}
                 onClick={() => {
                   setJenkinsInstallOpen(false);
                   handleAction('jenkins', jenkinsInstallServer, 'install', { port: jenkinsPort });
                 }}
                 className={`px-4 py-2 text-xs font-bold rounded-xl shadow-lg transition-all ${
-                  servers.find((s) => s.id === jenkinsInstallServer)?.status?.toLowerCase().includes('stop')
+                  !['online', 'running'].includes((servers.find((s) => s.id === jenkinsInstallServer)?.status || '').toLowerCase())
                     ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shadow-none'
                     : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 text-white shadow-red-500/20'
                 }`}
@@ -1546,7 +1550,7 @@ function JenkinsContent() {
                 >
                   {servers.map((s) => {
                     const st = (s.status || '').toLowerCase();
-                    const stateLabel = st.includes('stop') ? ' [STOPPED]' : st === 'online' || st === 'running' ? ' [RUNNING]' : ` [${s.status}]`;
+                    const stateLabel = st.includes('stop') || st.includes('deallocat') ? ' [STOPPED]' : st === 'online' || st === 'running' ? ' [RUNNING]' : ` [${s.status}]`;
                     return (
                       <option key={s.id} value={s.id}>
                         {s.name} ({s.publicIp || s.host}){stateLabel} {s.sonarqube.detected ? '• Already Installed' : ''}
@@ -1554,12 +1558,21 @@ function JenkinsContent() {
                     );
                   })}
                 </select>
-                {servers.find((s) => s.id === sonarInstallServer)?.status?.toLowerCase().includes('stop') && (
-                  <div className="flex items-center gap-2 p-2.5 mt-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-                    <span>Target server is <strong>STOPPED</strong>. Power on the server first before deploying SonarQube.</span>
-                  </div>
-                )}
+                {(() => {
+                  const target = servers.find((s) => s.id === sonarInstallServer);
+                  const st = (target?.status || '').toLowerCase();
+                  const isRun = st === 'online' || st === 'running';
+                  const isStop = st.includes('stop') || st.includes('deallocat');
+                  if (!target || isRun) return null;
+                  return (
+                    <div className="flex items-center gap-2 p-2.5 mt-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                      <span>
+                        Target server is <strong>{isStop ? 'STOPPED' : target.status || 'UNREACHABLE'}</strong>. Power on the server first before deploying SonarQube.
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
@@ -1584,13 +1597,13 @@ function JenkinsContent() {
               </button>
               <button
                 type="button"
-                disabled={Boolean(servers.find((s) => s.id === sonarInstallServer)?.status?.toLowerCase().includes('stop'))}
+                disabled={!['online', 'running'].includes((servers.find((s) => s.id === sonarInstallServer)?.status || '').toLowerCase())}
                 onClick={() => {
                   setSonarInstallOpen(false);
                   handleAction('sonarqube', sonarInstallServer, 'install', { port: sonarPort });
                 }}
                 className={`px-4 py-2 text-xs font-bold rounded-xl shadow-lg transition-all ${
-                  servers.find((s) => s.id === sonarInstallServer)?.status?.toLowerCase().includes('stop')
+                  !['online', 'running'].includes((servers.find((s) => s.id === sonarInstallServer)?.status || '').toLowerCase())
                     ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shadow-none'
                     : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 text-white shadow-cyan-500/20'
                 }`}
@@ -1633,7 +1646,7 @@ function JenkinsContent() {
                 >
                   {servers.map((s) => {
                     const st = (s.status || '').toLowerCase();
-                    const stateLabel = st.includes('stop') ? ' [STOPPED]' : st === 'online' || st === 'running' ? ' [RUNNING]' : ` [${s.status}]`;
+                    const stateLabel = st.includes('stop') || st.includes('deallocat') ? ' [STOPPED]' : st === 'online' || st === 'running' ? ' [RUNNING]' : ` [${s.status}]`;
                     return (
                       <option key={s.id} value={s.id}>
                         {s.name} ({s.publicIp || s.host}){stateLabel} {s.trivy.detected ? '• Trivy Ready' : '(Not installed)'}
@@ -1641,12 +1654,21 @@ function JenkinsContent() {
                     );
                   })}
                 </select>
-                {servers.find((s) => s.id === trivyScanServer)?.status?.toLowerCase().includes('stop') && (
-                  <div className="flex items-center gap-2 p-2.5 mt-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-                    <span>Target server is <strong>STOPPED</strong>. Power on the server first before running Trivy scans.</span>
-                  </div>
-                )}
+                {(() => {
+                  const target = servers.find((s) => s.id === trivyScanServer);
+                  const st = (target?.status || '').toLowerCase();
+                  const isRun = st === 'online' || st === 'running';
+                  const isStop = st.includes('stop') || st.includes('deallocat');
+                  if (!target || isRun) return null;
+                  return (
+                    <div className="flex items-center gap-2 p-2.5 mt-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                      <span>
+                        Target server is <strong>{isStop ? 'STOPPED' : target.status || 'UNREACHABLE'}</strong>. Power on the server first before running Trivy scans.
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
@@ -1708,14 +1730,14 @@ function JenkinsContent() {
               </button>
               <button
                 type="button"
-                disabled={Boolean(servers.find((s) => s.id === trivyScanServer)?.status?.toLowerCase().includes('stop'))}
+                disabled={!['online', 'running'].includes((servers.find((s) => s.id === trivyScanServer)?.status || '').toLowerCase())}
                 onClick={() => {
                   setTrivyScanOpen(false);
                   const action = trivyScanType === 'image' ? 'scan_image' : 'scan_fs';
                   handleAction('trivy', trivyScanServer, action, { target: trivyTarget.trim() });
                 }}
                 className={`px-4 py-2 text-xs font-bold rounded-xl shadow-lg transition-all ${
-                  servers.find((s) => s.id === trivyScanServer)?.status?.toLowerCase().includes('stop')
+                  !['online', 'running'].includes((servers.find((s) => s.id === trivyScanServer)?.status || '').toLowerCase())
                     ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shadow-none'
                     : 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 text-white shadow-teal-500/20'
                 }`}

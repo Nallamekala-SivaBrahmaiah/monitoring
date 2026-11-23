@@ -215,6 +215,28 @@ export function buildSSHConfig(server: any, timeoutMs: number = 10000): ConnectC
 }
 
 /**
+ * Persists DevOps tool telemetry synchronously to Server and CloudResource documents
+ */
+export async function updateDevopsMetadata(serverId: any, updateFields: Record<string, any>) {
+  try {
+    const CloudResource = (await import('@/models/CloudResource')).default;
+    const crFields: Record<string, any> = {};
+    for (const [k, v] of Object.entries(updateFields)) {
+      if (k === 'jenkins' || k.startsWith('jenkins.')) crFields[`metadata.${k}`] = v;
+      else if (k === 'sonarqube' || k.startsWith('sonarqube.')) crFields[`metadata.${k}`] = v;
+      else if (k === 'trivy' || k.startsWith('trivy.')) crFields[`metadata.${k}`] = v;
+      else crFields[k] = v;
+    }
+    await Promise.allSettled([
+      Server.updateOne({ _id: serverId }, { $set: updateFields }),
+      CloudResource.updateOne({ _id: serverId }, { $set: crFields }),
+    ]);
+  } catch (err: any) {
+    console.warn('[updateDevopsMetadata] Warning:', err?.message);
+  }
+}
+
+/**
  * Runs a remote command via SSH with full stdout/stderr capture
  */
 export async function executeSSH(
@@ -903,22 +925,20 @@ export async function executeSonarQubeAction(
   const port = options.port || 9000;
 
   const sStatus = (server.status || '').toLowerCase();
-  const isStopped = sStatus.includes('stop') || sStatus === 'offline';
-  if (isStopped && action !== 'detect') {
+  const isOnline = sStatus === 'online' || sStatus === 'running';
+  if (!isOnline && action !== 'detect') {
+    const isStopped = sStatus.includes('stop') || sStatus.includes('deallocat');
     return {
       success: false,
-      message: `Cannot execute "${action}" on "${server.name}" because the server is currently STOPPED. Please start the host server first.`,
-      output: `Server status is "${server.status}". Host must be running to execute commands via SSH.`,
+      message: `Cannot execute "${action}" on "${server.name}" because the server is currently ${isStopped ? 'STOPPED' : server.status || 'UNREACHABLE'}. Please ensure the host server is running and reachable first.`,
+      output: `Server status is "${server.status}". Host must be running and reachable to execute commands via SSH.`,
     };
   }
 
   switch (action) {
     case 'detect': {
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } } }
-      );
+      await updateDevopsMetadata(server._id, { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } });
       return {
         success: true,
         message: probe.sonarqube.detected
@@ -941,10 +961,7 @@ fi
       `;
       const res = await executeSSH(server, cmd, 20000);
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { 'sonarqube.status': probe.sonarqube.status, 'sonarqube.lastSyncedAt': new Date() } }
-      );
+      await updateDevopsMetadata(server._id, { 'sonarqube.status': probe.sonarqube.status, 'sonarqube.lastSyncedAt': new Date() });
       return {
         success: probe.sonarqube.status === 'running',
         message: probe.sonarqube.status === 'running' ? 'SonarQube started successfully' : 'Failed to start SonarQube',
@@ -961,10 +978,7 @@ elif systemctl list-unit-files 2>/dev/null | grep -qE 'sonar(qube)?\\.service'; 
 fi
       `;
       const res = await executeSSH(server, cmd, 20000);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { 'sonarqube.status': 'stopped', 'sonarqube.lastSyncedAt': new Date() } }
-      );
+      await updateDevopsMetadata(server._id, { 'sonarqube.status': 'stopped', 'sonarqube.lastSyncedAt': new Date() });
       return { success: true, message: 'SonarQube stopped successfully', output: res.stdout };
     }
 
@@ -978,10 +992,7 @@ fi
       `;
       const res = await executeSSH(server, cmd, 25000);
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { 'sonarqube.status': probe.sonarqube.status, 'sonarqube.lastSyncedAt': new Date() } }
-      );
+      await updateDevopsMetadata(server._id, { 'sonarqube.status': probe.sonarqube.status, 'sonarqube.lastSyncedAt': new Date() });
       return {
         success: probe.sonarqube.status === 'running',
         message: probe.sonarqube.status === 'running' ? 'SonarQube restarted successfully' : 'Failed to restart SonarQube',
@@ -1035,10 +1046,7 @@ $DOCKER_CMD ps --filter "name=sonarqube"
 
       const res = await executeSSH(server, installScript, 120000);
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } } }
-      );
+      await updateDevopsMetadata(server._id, { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } });
 
       return {
         success: probe.sonarqube.detected,
@@ -1078,10 +1086,7 @@ fi
 
       const res = await executeSSH(server, uninstallScript, 60000);
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } } }
-      );
+      await updateDevopsMetadata(server._id, { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } });
 
       return {
         success: !probe.sonarqube.detected,
@@ -1103,11 +1108,12 @@ export async function executeTrivyAction(
   options: { target?: string; severity?: string } = {}
 ): Promise<{ success: boolean; message: string; output: string; scanResult?: any }> {
   const sStatus = (server.status || '').toLowerCase();
-  const isStopped = sStatus.includes('stop') || sStatus === 'offline';
-  if (isStopped && action !== 'detect') {
+  const isOnline = sStatus === 'online' || sStatus === 'running';
+  if (!isOnline && action !== 'detect') {
+    const isStopped = sStatus.includes('stop') || sStatus.includes('deallocat');
     return {
       success: false,
-      message: `Cannot execute Trivy "${action}" on "${server.name}" because the server is currently STOPPED. Please start the host server first.`,
+      message: `Cannot execute Trivy "${action}" on "${server.name}" because the server is currently ${isStopped ? 'STOPPED' : server.status || 'UNREACHABLE'}. Please ensure the host server is running and reachable first.`,
       output: `Server status is "${server.status}". Host must be running to execute Trivy via SSH.`,
     };
   }
@@ -1115,10 +1121,7 @@ export async function executeTrivyAction(
     case 'detect':
     case 'version': {
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { trivy: { ...probe.trivy, lastSyncedAt: new Date() } } }
-      );
+      await updateDevopsMetadata(server._id, { trivy: { ...probe.trivy, lastSyncedAt: new Date() } });
       return {
         success: probe.trivy.detected,
         message: probe.trivy.detected
@@ -1148,7 +1151,8 @@ INSTALLED=0
 
 # Method A: Official Aqua Security debian repository
 sudo mkdir -p /etc/apt/keyrings
-if wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor --batch --yes -o /etc/apt/keyrings/trivy.gpg 2>/dev/null; then
+sudo chmod 755 /etc/apt/keyrings
+if wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor --batch --yes | sudo tee /etc/apt/keyrings/trivy.gpg > /dev/null; then
   sudo chmod 644 /etc/apt/keyrings/trivy.gpg
   CODENAME=$(lsb_release -sc 2>/dev/null || echo 'noble')
   echo "deb [signed-by=/etc/apt/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb \${CODENAME} main" | sudo tee /etc/apt/sources.list.d/trivy.list > /dev/null
@@ -1184,10 +1188,7 @@ which trivy || /usr/local/bin/trivy --version
 
       const res = await executeSSH(server, installScript, 180000); // 3 minute timeout
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { trivy: { ...probe.trivy, lastSyncedAt: new Date() } } }
-      );
+      await updateDevopsMetadata(server._id, { trivy: { ...probe.trivy, lastSyncedAt: new Date() } });
 
       return {
         success: probe.trivy.detected,
@@ -1206,10 +1207,7 @@ echo "Trivy CLI removed successfully."
       `;
       const res = await executeSSH(server, uninstallScript, 30000);
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { trivy: { ...probe.trivy, lastSyncedAt: new Date() } } }
-      );
+      await updateDevopsMetadata(server._id, { trivy: { ...probe.trivy, lastSyncedAt: new Date() } });
 
       return {
         success: !probe.trivy.detected,
@@ -1362,16 +1360,11 @@ echo "Trivy CLI removed successfully."
         scannedAt: new Date(),
       });
 
-      await Server.updateOne(
-        { _id: server._id },
-        {
-          $set: {
-            'trivy.lastScanAt': new Date(),
-            'trivy.lastScanTarget': targetPath,
-            'trivy.lastScanSummary': summary,
-          },
-        }
-      );
+      await updateDevopsMetadata(server._id, {
+        'trivy.lastScanAt': new Date(),
+        'trivy.lastScanTarget': targetPath,
+        'trivy.lastScanSummary': summary,
+      });
 
       return {
         success: true,
