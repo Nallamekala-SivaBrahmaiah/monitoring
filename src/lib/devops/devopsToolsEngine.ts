@@ -667,19 +667,31 @@ export async function executeJenkinsAction(
         return { success: true, message: 'Jenkins is already installed on this server', output: check.stdout };
       }
 
-      // 2. Safe official Debian/Ubuntu Jenkins installation with Java 17
+      // 2. Safe official Debian/Ubuntu Jenkins installation with OpenJDK 21 (required by modern Jenkins 2.500+)
       const installScript = `
-set -e
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+
 echo "Updating package indices..."
-sudo apt-get update -y
-echo "Installing OpenJDK 17 and fontconfig..."
-sudo apt-get install -y fontconfig openjdk-17-jre openjdk-17-jdk wget curl gnupg
+sudo apt-get update -y || true
+
+echo "Installing OpenJDK 21 and essential prerequisites..."
+sudo apt-get install -y fontconfig openjdk-21-jre openjdk-21-jdk wget curl gnupg
+
+# Set Java 21 as default alternative if multiple exist
+sudo update-java-alternatives --set java-1.21.0-openjdk-amd64 2>/dev/null || true
 
 echo "Setting up Jenkins official repository key..."
-sudo mkdir -p /usr/share/keyrings
-sudo wget -q -O /usr/share/keyrings/jenkins-keyring.asc https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+sudo mkdir -p /etc/apt/keyrings
+sudo chmod 755 /etc/apt/keyrings
 
-echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+# Download official Jenkins 2026 key (or fallback to 2023 key / keyserver)
+if ! curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key | sudo tee /etc/apt/keyrings/jenkins-keyring.asc > /dev/null; then
+  curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /etc/apt/keyrings/jenkins-keyring.asc > /dev/null
+fi
+sudo chmod 644 /etc/apt/keyrings/jenkins-keyring.asc
+
+echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
 
 echo "Updating package index with Jenkins repo..."
 sudo apt-get update -y
@@ -687,17 +699,24 @@ sudo apt-get update -y
 echo "Installing Jenkins..."
 sudo apt-get install -y jenkins
 
+${jenkinsPort !== 8080 ? `
+echo "Configuring Jenkins HTTP port to ${jenkinsPort}..."
+sudo mkdir -p /etc/systemd/system/jenkins.service.d
+echo -e "[Service]\\nEnvironment=\\"JENKINS_PORT=${jenkinsPort}\\"" | sudo tee /etc/systemd/system/jenkins.service.d/override.conf > /dev/null
+` : ''}
+
 echo "Enabling and starting Jenkins service..."
 sudo systemctl daemon-reload
+sudo systemctl reset-failed jenkins 2>/dev/null || true
 sudo systemctl enable jenkins
 sudo systemctl restart jenkins
 
-sleep 4
+sleep 5
 systemctl is-active jenkins
 jenkins --version || true
       `;
 
-      const res = await executeSSH(server, installScript, 120000); // 2 minute timeout
+      const res = await executeSSH(server, installScript, 240000); // 4 minute timeout for package download
       const probe = await probeDevopsTools(server);
       await Server.updateOne(
         { _id: server._id },
@@ -720,14 +739,15 @@ jenkins --version || true
 sudo systemctl stop jenkins 2>/dev/null || true
 sudo systemctl disable jenkins 2>/dev/null || true
 sudo apt-get remove -y jenkins
-sudo rm -f /etc/apt/sources.list.d/jenkins.list /usr/share/keyrings/jenkins-keyring.asc
+sudo rm -f /etc/apt/sources.list.d/jenkins.list /etc/apt/keyrings/jenkins-keyring.asc /usr/share/keyrings/jenkins-keyring.asc
+sudo rm -rf /etc/systemd/system/jenkins.service.d
 echo "Jenkins removed. Configurations in /var/lib/jenkins preserved."
         `
         : `
 sudo systemctl stop jenkins 2>/dev/null || true
 sudo systemctl disable jenkins 2>/dev/null || true
 sudo apt-get purge -y jenkins
-sudo rm -rf /var/lib/jenkins /etc/default/jenkins /etc/apt/sources.list.d/jenkins.list /usr/share/keyrings/jenkins-keyring.asc
+sudo rm -rf /var/lib/jenkins /etc/default/jenkins /etc/apt/sources.list.d/jenkins.list /etc/apt/keyrings/jenkins-keyring.asc /usr/share/keyrings/jenkins-keyring.asc /etc/systemd/system/jenkins.service.d
 echo "Jenkins completely purged."
         `;
 
@@ -973,35 +993,54 @@ export async function executeTrivyAction(
         return { success: true, message: 'Trivy is already installed on this server', output: check.stdout };
       }
 
-      // 2. Install Trivy via official Aqua Security Debian/Ubuntu repo with binary fallback
+      // 2. Install Trivy via official repository with dual automatic fallbacks
       const installScript = `
-set -e
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+
 echo "Installing prerequisites..."
-sudo apt-get update -y
+sudo apt-get update -y || true
 sudo apt-get install -y wget apt-transport-https gnupg lsb-release curl
 
-echo "Setting up Aqua Security Trivy repository..."
-sudo mkdir -p /usr/share/keyrings
-wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+INSTALLED=0
 
-echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc 2>/dev/null || echo 'noble') main" | sudo tee /etc/apt/sources.list.d/trivy.list > /dev/null
+# Method A: Official Aqua Security debian repository
+sudo mkdir -p /etc/apt/keyrings
+if wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor --batch --yes -o /etc/apt/keyrings/trivy.gpg 2>/dev/null; then
+  sudo chmod 644 /etc/apt/keyrings/trivy.gpg
+  CODENAME=$(lsb_release -sc 2>/dev/null || echo 'noble')
+  echo "deb [signed-by=/etc/apt/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb \${CODENAME} main" | sudo tee /etc/apt/sources.list.d/trivy.list > /dev/null
+  if sudo apt-get update -y && sudo apt-get install -y trivy; then
+    echo "Trivy installed successfully via apt repository."
+    INSTALLED=1
+  fi
+fi
 
-if sudo apt-get update -y && sudo apt-get install -y trivy; then
-  echo "Trivy installed successfully via apt."
-else
+# Method B: Official Aqua automatic installer script fallback
+if [ "$INSTALLED" -eq 0 ] && ! command -v trivy >/dev/null 2>&1; then
+  echo "Trying Aqua official installation script..."
+  if curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin; then
+    echo "Trivy installed successfully via official script."
+    INSTALLED=1
+  fi
+fi
+
+# Method C: Direct binary release fallback
+if [ "$INSTALLED" -eq 0 ] && ! command -v trivy >/dev/null 2>&1; then
   echo "Apt repository failed, falling back to direct binary release installation..."
   ARCH=$(uname -m)
   [ "$ARCH" = "x86_64" ] && TRIVY_ARCH="64bit" || TRIVY_ARCH="ARM64"
+  wget -q https://github.com/aquasecurity/trivy/releases/download/v0.71.2/trivy_0.71.2_Linux-\${TRIVY_ARCH}.tar.gz -O /tmp/trivy.tar.gz || \
   wget -q https://github.com/aquasecurity/trivy/releases/download/v0.59.1/trivy_0.59.1_Linux-\${TRIVY_ARCH}.tar.gz -O /tmp/trivy.tar.gz
   sudo tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
   sudo chmod +x /usr/local/bin/trivy
   rm -f /tmp/trivy.tar.gz
 fi
 
-trivy --version
+which trivy || /usr/local/bin/trivy --version
       `;
 
-      const res = await executeSSH(server, installScript, 90000);
+      const res = await executeSSH(server, installScript, 180000); // 3 minute timeout
       const probe = await probeDevopsTools(server);
       await Server.updateOne(
         { _id: server._id },
@@ -1020,7 +1059,7 @@ trivy --version
     case 'uninstall': {
       const uninstallScript = `
 sudo apt-get remove -y trivy 2>/dev/null || true
-sudo rm -f /usr/local/bin/trivy /usr/bin/trivy /etc/apt/sources.list.d/trivy.list /usr/share/keyrings/trivy.gpg
+sudo rm -f /usr/local/bin/trivy /usr/bin/trivy /etc/apt/sources.list.d/trivy.list /etc/apt/keyrings/trivy.gpg /usr/share/keyrings/trivy.gpg
 echo "Trivy CLI removed successfully."
       `;
       const res = await executeSSH(server, uninstallScript, 30000);
