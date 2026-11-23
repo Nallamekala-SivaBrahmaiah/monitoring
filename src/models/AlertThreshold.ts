@@ -65,6 +65,8 @@ const AlertThresholdSchema: Schema<IAlertThreshold> = new Schema(
   }
 );
 
+AlertThresholdSchema.index({ enabled: 1, updatedAt: -1 });
+
 if (mongoose.models.AlertThreshold) {
   delete (mongoose.models as any).AlertThreshold;
 }

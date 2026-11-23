@@ -132,6 +132,10 @@ const AnsibleControllerSchema = new Schema<IAnsibleController>(
   }
 );
 
+AnsibleControllerSchema.index({ ipAddress: 1 });
+AnsibleControllerSchema.index({ status: 1, provider: 1 });
+AnsibleControllerSchema.index({ isPrimary: 1, isActive: 1 });
+
 const AnsibleController: Model<IAnsibleController> =
   mongoose.models.AnsibleController ||
   mongoose.model<IAnsibleController>('AnsibleController', AnsibleControllerSchema);

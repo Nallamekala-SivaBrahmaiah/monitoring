@@ -1,26 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
+import connectToDatabase from '@/lib/mongodb';
+import CloudAccount from '@/models/CloudAccount';
 import { ALL_AWS_REGIONS } from '@/services/regionDiscoveryService';
-import { mockAwsAccounts } from '@/mock/monitoringData';
 
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ accountId: string }> }
 ) {
-  const { accountId } = await context.params;
-  const account = mockAwsAccounts.find((a) => a.id === accountId || a.accountId === accountId);
+  try {
+    await connectToDatabase();
+    const { accountId } = await context.params;
 
-  const selectedRegionsSet = new Set(account?.enabledRegions || ['us-east-1', 'us-west-2', 'ap-south-1']);
+    const query: any = {};
+    if (accountId.match(/^[0-9a-fA-F]{24}$/)) {
+      query.$or = [{ _id: accountId }, { accountId: accountId }];
+    } else {
+      query.accountId = accountId;
+    }
 
-  const regions = ALL_AWS_REGIONS.map((r) => ({
-    ...r,
-    enabled: selectedRegionsSet.has(r.code),
-  }));
+    const account = await CloudAccount.findOne(query).lean();
+    const selectedRegionsSet = new Set((account as any)?.selectedRegions || ['us-east-1', 'us-west-2', 'ap-south-1']);
 
-  return NextResponse.json({
-    success: true,
-    accountId,
-    totalRegions: regions.length,
-    selectedCount: selectedRegionsSet.size,
-    regions,
-  });
+    const regions = ALL_AWS_REGIONS.map((r) => ({
+      ...r,
+      enabled: selectedRegionsSet.has(r.code),
+    }));
+
+    return NextResponse.json({
+      success: true,
+      accountId,
+      totalRegions: regions.length,
+      selectedCount: selectedRegionsSet.size,
+      regions,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message || 'Failed to fetch account regions' }, { status: 500 });
+  }
 }

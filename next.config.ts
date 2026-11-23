@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     '@aws-sdk/client-cloudwatch',
     'mongoose',
     'prom-client',
+    'ssh2',
   ],
   cacheComponents: true,
   partialPrefetching: true,
