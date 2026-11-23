@@ -709,3 +709,88 @@ export function LogsIcon({ className = 'w-5 h-5' }: { className?: string }) {
     </svg>
   );
 }
+
+export function JenkinsLogo({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <defs>
+        <linearGradient id="jenkinsGrad_sb" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#D33833" />
+          <stop offset="100%" stopColor="#9E1E1A" />
+        </linearGradient>
+      </defs>
+      <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#jenkinsGrad_sb)" />
+      {/* Hat brim & crown */}
+      <path d="M7 8h10M8.5 8V5.5h7V8" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="round" />
+      {/* Face contour */}
+      <path d="M8.5 8.5C8.5 12 10 13.5 12 13.5S15.5 12 15.5 8.5" fill="#FFE0B2" stroke="#FFFFFF" strokeWidth="0.8" />
+      {/* Eyes & Mustache */}
+      <circle cx="10.5" cy="10" r="0.6" fill="#3E2723" />
+      <circle cx="13.5" cy="10" r="0.6" fill="#3E2723" />
+      <path d="M10 12c1 0.6 3 0.6 4 0" stroke="#3E2723" strokeWidth="0.8" strokeLinecap="round" />
+      {/* Red bow tie & collar */}
+      <path d="M10 14.5l2 1 2-1-2 2.5-2-2.5z" fill="#FFFFFF" />
+      <circle cx="12" cy="15" r="0.8" fill="#D33833" />
+      {/* Suit lapels */}
+      <path d="M8 19l2.5-4 1.5 1 1.5-1 2.5 4" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function SonarQubeLogo({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <defs>
+        <linearGradient id="sonarGrad_sb" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#4B9FD5" />
+          <stop offset="100%" stopColor="#195589" />
+        </linearGradient>
+      </defs>
+      <rect x="2" y="2" width="20" height="20" rx="5" fill="#0B132B" stroke="#1E293B" />
+      {/* Iconic Sonar curved radar wave arcs */}
+      <path
+        d="M6 18c0-6.627 5.373-12 12-12"
+        stroke="#4B9FD5"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M6 18c0-3.866 3.134-7 7-7"
+        stroke="#00D4FF"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <circle cx="7.5" cy="16.5" r="2" fill="#FFFFFF" />
+    </svg>
+  );
+}
+
+export function TrivyLogo({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <defs>
+        <linearGradient id="trivyGrad_sb" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#19B9B9" />
+          <stop offset="100%" stopColor="#0B6B6B" />
+        </linearGradient>
+      </defs>
+      <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#trivyGrad_sb)" />
+      {/* Security Shield */}
+      <path
+        d="M12 4.5l6 2.5v5c0 4-3 7-6 8-3-1-6-4-6-8v-5l6-2.5z"
+        fill="#072C2C"
+        stroke="#4EFFFF"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      {/* Trivy Scanner geometric check/lock accent */}
+      <path
+        d="M9 12l2 2 4-4"
+        stroke="#4EFFFF"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

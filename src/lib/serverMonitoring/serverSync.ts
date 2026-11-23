@@ -95,6 +95,27 @@ export async function syncSingleServer(serverId: string): Promise<IServer | null
       ...specs.kubernetes,
       lastSyncedAt: new Date(),
     };
+
+    // Auto-detect Jenkins, SonarQube, and Trivy tools on the server
+    try {
+      const { probeDevopsTools } = await import('@/lib/devops/devopsToolsEngine');
+      const devopsState = await probeDevopsTools(server);
+      server.jenkins = {
+        ...devopsState.jenkins,
+        lastSyncedAt: new Date(),
+      };
+      server.sonarqube = {
+        ...devopsState.sonarqube,
+        lastSyncedAt: new Date(),
+      };
+      server.trivy = {
+        ...devopsState.trivy,
+        lastScanAt: devopsState.trivy.lastScanAt ? new Date(devopsState.trivy.lastScanAt) : null,
+        lastSyncedAt: new Date(),
+      };
+    } catch (toolErr: any) {
+      console.warn(`[ServerSync] DevOps tool probe warning for ${server.name}:`, toolErr?.message);
+    }
     if (!server.agent || !(server.agent as any).token) {
       server.agent = {
         installed: false,

@@ -133,6 +133,46 @@ export interface IServer extends Document {
     pods: IServerKubernetesPod[];
     lastSyncedAt: Date | null;
   };
+  jenkins?: {
+    detected: boolean;
+    status: 'running' | 'stopped' | 'not_installed' | 'unreachable';
+    version: string;
+    port: number;
+    url: string;
+    serviceName?: string;
+    installDate?: string;
+    lastSyncedAt: Date | null;
+    lastError?: string | null;
+  };
+  sonarqube?: {
+    detected: boolean;
+    status: 'running' | 'stopped' | 'not_installed' | 'unreachable';
+    version: string;
+    port: number;
+    url: string;
+    mode: 'docker' | 'service' | 'standalone' | 'unknown';
+    containerId?: string;
+    healthStatus?: string;
+    lastSyncedAt: Date | null;
+    lastError?: string | null;
+  };
+  trivy?: {
+    detected: boolean;
+    status: 'installed' | 'not_installed' | 'unreachable';
+    version: string;
+    installMethod?: string;
+    lastScanAt?: Date | null;
+    lastScanTarget?: string;
+    lastScanSummary?: {
+      critical: number;
+      high: number;
+      medium: number;
+      low: number;
+      unknown: number;
+    };
+    lastSyncedAt: Date | null;
+    lastError?: string | null;
+  };
   agent: {
     installed: boolean;
     version: string;
@@ -290,6 +330,62 @@ const ServerSchema = new Schema<IServer>(
         },
       ],
       lastSyncedAt: { type: Date, default: null },
+    },
+    jenkins: {
+      detected: { type: Boolean, default: false },
+      status: {
+        type: String,
+        enum: ['running', 'stopped', 'not_installed', 'unreachable'],
+        default: 'not_installed',
+      },
+      version: { type: String, default: '' },
+      port: { type: Number, default: 8080 },
+      url: { type: String, default: '' },
+      serviceName: { type: String, default: 'jenkins' },
+      installDate: { type: String, default: '' },
+      lastSyncedAt: { type: Date, default: null },
+      lastError: { type: String, default: null },
+    },
+    sonarqube: {
+      detected: { type: Boolean, default: false },
+      status: {
+        type: String,
+        enum: ['running', 'stopped', 'not_installed', 'unreachable'],
+        default: 'not_installed',
+      },
+      version: { type: String, default: '' },
+      port: { type: Number, default: 9000 },
+      url: { type: String, default: '' },
+      mode: {
+        type: String,
+        enum: ['docker', 'service', 'standalone', 'unknown'],
+        default: 'unknown',
+      },
+      containerId: { type: String, default: '' },
+      healthStatus: { type: String, default: 'UNKNOWN' },
+      lastSyncedAt: { type: Date, default: null },
+      lastError: { type: String, default: null },
+    },
+    trivy: {
+      detected: { type: Boolean, default: false },
+      status: {
+        type: String,
+        enum: ['installed', 'not_installed', 'unreachable'],
+        default: 'not_installed',
+      },
+      version: { type: String, default: '' },
+      installMethod: { type: String, default: 'unknown' },
+      lastScanAt: { type: Date, default: null },
+      lastScanTarget: { type: String, default: '' },
+      lastScanSummary: {
+        critical: { type: Number, default: 0 },
+        high: { type: Number, default: 0 },
+        medium: { type: Number, default: 0 },
+        low: { type: Number, default: 0 },
+        unknown: { type: Number, default: 0 },
+      },
+      lastSyncedAt: { type: Date, default: null },
+      lastError: { type: String, default: null },
     },
     agent: {
       installed: { type: Boolean, default: false },
