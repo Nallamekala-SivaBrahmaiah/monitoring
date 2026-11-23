@@ -51,21 +51,22 @@ export function Sidebar({
 
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
 
-  // Auto-scroll the active navigation item into view so it is always visible
+  // Safely scroll only the internal sidebar container if the active item is outside its visible viewport.
+  // NEVER use scrollIntoView() here because native scrollIntoView() scrolls all ancestor containers up to window/body,
+  // causing the main page, header, and cards to jump or scroll off-screen.
   React.useEffect(() => {
     if (!navContainerRef.current) return;
-    const timer = setTimeout(() => {
-      if (!navContainerRef.current) return;
-      const activeEl = navContainerRef.current.querySelector<HTMLElement>('[data-active="true"]');
-      if (activeEl) {
-        activeEl.scrollIntoView({
-          block: 'nearest',
-          inline: 'nearest',
-          behavior: 'smooth',
-        });
+    const container = navContainerRef.current;
+    const activeEl = container.querySelector<HTMLElement>('[data-active="true"]');
+    if (activeEl) {
+      const containerRect = container.getBoundingClientRect();
+      const elRect = activeEl.getBoundingClientRect();
+      if (elRect.top < containerRect.top) {
+        container.scrollTop -= (containerRect.top - elRect.top + 12);
+      } else if (elRect.bottom > containerRect.bottom) {
+        container.scrollTop += (elRect.bottom - containerRect.bottom + 12);
       }
-    }, 50);
-    return () => clearTimeout(timer);
+    }
   }, [pathname]);
 
   React.useEffect(() => {
@@ -268,7 +269,7 @@ export function Sidebar({
 
   return (
     <>
-      <aside className="hidden lg:flex fixed top-0 left-0 bottom-0 z-30 w-64">
+      <aside className="hidden lg:flex fixed top-0 left-0 bottom-0 z-30 w-64 h-screen overflow-hidden">
         {sidebarContent}
       </aside>
 

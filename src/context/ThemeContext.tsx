@@ -747,7 +747,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           background-color: ${backgroundColor} !important;
           color: ${textColor} !important;
         }
-        .bg-\\[\\#111A2E\\], .bg-\\[\\#111a2e\\], .bg-\\[\\#0D1526\\], .bg-\\[\\#0d1526\\], .bg-\\[\\#0D131F\\], .bg-\\[\\#0B1120\\] {
+        .min-h-screen {
+          background-color: transparent !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+          transform: none !important;
+          perspective: none !important;
+          filter: none !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          border: none !important;
+        }
+        .bg-\\[\\#111A2E\\], .bg-\\[\\#111a2e\\], .bg-\\[\\#0D1526\\], .bg-\\[\\#0d1526\\], .bg-\\[\\#0D131F\\], :not(.min-h-screen).bg-\\[\\#0B1120\\] {
           background-color: ${cardBackground} !important;
           border-color: ${borderColor} !important;
           border-radius: ${borderRadius} !important;
@@ -760,10 +771,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         header.bg-\\[\\#0B1120\\], header {
           background-color: ${headerBackground || cardBackground} !important;
           border-color: ${borderColor} !important;
+          position: sticky !important;
+          top: 0 !important;
+          z-index: 40 !important;
         }
         aside.bg-\\[\\#0B1120\\], aside {
           background-color: ${sidebarBackground || cardBackground} !important;
           border-color: ${borderColor} !important;
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          bottom: 0 !important;
+          height: 100vh !important;
+          z-index: 30 !important;
         }
         ${cardHover3D && animationEnabled ? `
           .card-3d-hover:hover {

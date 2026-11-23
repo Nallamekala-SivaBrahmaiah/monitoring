@@ -375,7 +375,7 @@ function KubernetesContent() {
   }, [clusterData]);
 
   return (
-    <div className="min-h-screen bg-[#070B14] text-slate-100 flex flex-col font-sans selection:bg-sky-500/30 selection:text-white">
+    <div className="min-h-screen bg-transparent text-slate-100 flex flex-col font-sans selection:bg-sky-500/30 selection:text-white">
       <Sidebar />
       <div className="lg:pl-64 flex flex-col flex-1 min-w-0">
         <Header />

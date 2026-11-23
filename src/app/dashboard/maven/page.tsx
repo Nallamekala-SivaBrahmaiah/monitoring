@@ -243,7 +243,7 @@ export default function MavenPage() {
   const runningAppsCount = apps.filter((a) => a.status === 'RUNNING' || a.status === 'STARTING').length;
 
   return (
-    <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-transparent text-slate-100 flex flex-col font-sans">
       {/* Sidebar */}
       <Sidebar mobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} />
 
