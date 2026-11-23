@@ -708,6 +708,16 @@ export async function executeJenkinsAction(
 ): Promise<{ success: boolean; message: string; output: string }> {
   const jenkinsPort = options.port || 8080;
 
+  const sStatus = (server.status || '').toLowerCase();
+  const isStopped = sStatus.includes('stop') || sStatus === 'offline';
+  if (isStopped && action !== 'detect') {
+    return {
+      success: false,
+      message: `Cannot execute "${action}" on "${server.name}" because the server is currently STOPPED. Please start the host server first.`,
+      output: `Server status is "${server.status}". Host must be running to execute commands via SSH.`,
+    };
+  }
+
   switch (action) {
     case 'detect': {
       const probe = await probeDevopsTools(server);
@@ -891,6 +901,16 @@ export async function executeSonarQubeAction(
   options: { preserveData?: boolean; port?: number } = {}
 ): Promise<{ success: boolean; message: string; output: string }> {
   const port = options.port || 9000;
+
+  const sStatus = (server.status || '').toLowerCase();
+  const isStopped = sStatus.includes('stop') || sStatus === 'offline';
+  if (isStopped && action !== 'detect') {
+    return {
+      success: false,
+      message: `Cannot execute "${action}" on "${server.name}" because the server is currently STOPPED. Please start the host server first.`,
+      output: `Server status is "${server.status}". Host must be running to execute commands via SSH.`,
+    };
+  }
 
   switch (action) {
     case 'detect': {
@@ -1082,6 +1102,15 @@ export async function executeTrivyAction(
   action: 'install' | 'uninstall' | 'scan_image' | 'scan_fs' | 'version' | 'detect',
   options: { target?: string; severity?: string } = {}
 ): Promise<{ success: boolean; message: string; output: string; scanResult?: any }> {
+  const sStatus = (server.status || '').toLowerCase();
+  const isStopped = sStatus.includes('stop') || sStatus === 'offline';
+  if (isStopped && action !== 'detect') {
+    return {
+      success: false,
+      message: `Cannot execute Trivy "${action}" on "${server.name}" because the server is currently STOPPED. Please start the host server first.`,
+      output: `Server status is "${server.status}". Host must be running to execute Trivy via SSH.`,
+    };
+  }
   switch (action) {
     case 'detect':
     case 'version': {

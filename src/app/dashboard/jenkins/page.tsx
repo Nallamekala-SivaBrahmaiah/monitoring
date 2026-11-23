@@ -27,6 +27,8 @@ import {
   Check,
   Activity,
   Cpu,
+  Power,
+  PowerOff,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -138,7 +140,9 @@ function JenkinsContent() {
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [providerFilter, setProviderFilter] = useState<'all' | 'azure' | 'aws'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'installed' | 'running' | 'stopped'>('all');
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'installed' | 'running' | 'stopped' | 'server-running' | 'server-stopped' | 'server-unreachable'
+  >('all');
 
   // Action status / logs
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -303,6 +307,31 @@ function JenkinsContent() {
 
   // Aggregated Counters
   const totalServers = servers.length;
+  const runningServersCount = useMemo(
+    () =>
+      servers.filter((s) => {
+        const st = (s.status || '').toLowerCase();
+        return st === 'online' || st === 'running';
+      }).length,
+    [servers]
+  );
+  const stoppedServersCount = useMemo(
+    () =>
+      servers.filter((s) => {
+        const st = (s.status || '').toLowerCase();
+        return st.includes('stop');
+      }).length,
+    [servers]
+  );
+  const unreachableServersCount = useMemo(
+    () =>
+      servers.filter((s) => {
+        const st = (s.status || '').toLowerCase();
+        return st !== 'online' && st !== 'running' && !st.includes('stop');
+      }).length,
+    [servers]
+  );
+
   const jenkinsInstalledCount = useMemo(() => servers.filter((s) => s.jenkins.detected).length, [servers]);
   const jenkinsRunningCount = useMemo(() => servers.filter((s) => s.jenkins.status === 'running').length, [servers]);
   const sonarInstalledCount = useMemo(() => servers.filter((s) => s.sonarqube.detected).length, [servers]);
@@ -312,6 +341,14 @@ function JenkinsContent() {
   const filteredServers = useMemo(() => {
     return servers.filter((s) => {
       if (providerFilter !== 'all' && s.cloudProvider?.toLowerCase() !== providerFilter) return false;
+
+      const sStatusLower = (s.status || '').toLowerCase();
+      const isSrvRunning = sStatusLower === 'online' || sStatusLower === 'running';
+      const isSrvStopped = sStatusLower.includes('stop');
+
+      if (statusFilter === 'server-running' && !isSrvRunning) return false;
+      if (statusFilter === 'server-stopped' && !isSrvStopped) return false;
+      if (statusFilter === 'server-unreachable' && (isSrvRunning || isSrvStopped)) return false;
 
       // Status filter depends on active tab
       if (activeTab === 'jenkins') {
@@ -330,7 +367,8 @@ function JenkinsContent() {
         const q = searchQuery.toLowerCase();
         const matchName = (s.name || '').toLowerCase().includes(q);
         const matchHost = (s.host || '').toLowerCase().includes(q);
-        return matchName || matchHost;
+        const matchStatus = (s.status || '').toLowerCase().includes(q);
+        return matchName || matchHost || matchStatus;
       }
       return true;
     });
@@ -489,6 +527,71 @@ function JenkinsContent() {
             </button>
           </div>
 
+          {/* Fleet Compute Health & Server Power Status Indicator */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0D1526] border border-[#1E293B] rounded-2xl px-5 py-3 shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <Server className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs font-semibold text-slate-300">Fleet Compute Status:</span>
+              <span className="text-xs font-bold text-white font-mono">{servers.length} Monitored Servers</span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <button
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === 'server-running' ? 'all' : 'server-running')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  statusFilter === 'server-running'
+                    ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 shadow-sm'
+                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/20'
+                }`}
+                title="Filter by running servers"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{runningServersCount} Server{runningServersCount === 1 ? '' : 's'} Running</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === 'server-stopped' ? 'all' : 'server-stopped')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  statusFilter === 'server-stopped'
+                    ? 'bg-rose-500/25 text-rose-300 border border-rose-500/60 shadow-sm'
+                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/25 hover:bg-rose-500/20'
+                }`}
+                title="Filter by stopped servers"
+              >
+                <span className="w-2 h-2 rounded-full bg-rose-500" />
+                <span>{stoppedServersCount} Server{stoppedServersCount === 1 ? '' : 's'} Stopped</span>
+              </button>
+
+              {unreachableServersCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter(statusFilter === 'server-unreachable' ? 'all' : 'server-unreachable')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    statusFilter === 'server-unreachable'
+                      ? 'bg-amber-500/25 text-amber-300 border border-amber-500/60 shadow-sm'
+                      : 'bg-amber-500/10 text-amber-400 border border-amber-500/25 hover:bg-amber-500/20'
+                  }`}
+                  title="Filter by unreachable/timeout servers"
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <span>{unreachableServersCount} Server{unreachableServersCount === 1 ? '' : 's'} Unreachable</span>
+                </button>
+              )}
+
+              {statusFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('all')}
+                  className="text-[11px] text-slate-400 hover:text-white underline underline-offset-2 ml-1"
+                >
+                  Reset filter
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Search & Filters */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#0D1526] border border-[#1E293B] rounded-xl p-3">
             <div className="relative w-full sm:w-80">
@@ -513,18 +616,25 @@ function JenkinsContent() {
                 <option value="aws">AWS EC2</option>
               </select>
 
-              {activeTab !== 'trivy' && (
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as any)}
-                  className="bg-[#111A2E] border border-[#1E293B] text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="installed">Installed Only</option>
-                  <option value="running">Running</option>
-                  <option value="stopped">Stopped</option>
-                </select>
-              )}
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="bg-[#111A2E] border border-[#1E293B] text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
+              >
+                <option value="all">All Servers & Statuses</option>
+                <option value="server-running">● Server: Running ({runningServersCount})</option>
+                <option value="server-stopped">■ Server: Stopped ({stoppedServersCount})</option>
+                {unreachableServersCount > 0 && (
+                  <option value="server-unreachable">▲ Server: Unreachable ({unreachableServersCount})</option>
+                )}
+                <option value="installed">Tool: Installed Only</option>
+                {activeTab !== 'trivy' && (
+                  <>
+                    <option value="running">Tool: Running</option>
+                    <option value="stopped">Tool: Stopped</option>
+                  </>
+                )}
+              </select>
             </div>
           </div>
 
@@ -564,21 +674,44 @@ function JenkinsContent() {
                   const port = j.port || 8080;
                   const jenkinsUrl = j.url || `http://${hostIp}:${port}`;
 
+                  const sStatusLower = (server.status || '').toLowerCase();
+                  const isServerRunning = sStatusLower === 'online' || sStatusLower === 'running';
+                  const isServerStopped = sStatusLower.includes('stop');
+                  const isServerUnreachable = !isServerRunning && !isServerStopped;
+
                   return (
                     <div
                       key={server.id}
-                      className="bg-[#0D1526] border border-[#1E293B] hover:border-slate-700 rounded-2xl p-5 shadow-lg transition-all space-y-4"
+                      className={`bg-[#0D1526] border rounded-2xl p-5 shadow-lg transition-all space-y-4 ${
+                        isServerStopped
+                          ? 'border-rose-900/40 bg-gradient-to-b from-[#0D1526] to-rose-950/10'
+                          : isServerRunning
+                          ? 'border-[#1E293B] hover:border-slate-700'
+                          : 'border-amber-900/40 bg-gradient-to-b from-[#0D1526] to-amber-950/10'
+                      }`}
                     >
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         <div className="flex items-start sm:items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-[#111A2E] border border-[#1E293B] flex items-center justify-center shrink-0">
-                            {server.cloudProvider?.toLowerCase() === 'azure' ? (
-                              <AzureLogo className="w-5 h-5" />
-                            ) : server.cloudProvider?.toLowerCase() === 'aws' ? (
-                              <AwsLogo className="w-5 h-5" />
-                            ) : (
-                              <Server className="w-5 h-5 text-slate-400" />
-                            )}
+                          <div className="relative shrink-0">
+                            <div className="w-10 h-10 rounded-xl bg-[#111A2E] border border-[#1E293B] flex items-center justify-center">
+                              {server.cloudProvider?.toLowerCase() === 'azure' ? (
+                                <AzureLogo className="w-5 h-5" />
+                              ) : server.cloudProvider?.toLowerCase() === 'aws' ? (
+                                <AwsLogo className="w-5 h-5" />
+                              ) : (
+                                <Server className="w-5 h-5 text-slate-400" />
+                              )}
+                            </div>
+                            <span
+                              className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#0D1526] ${
+                                isServerRunning
+                                  ? 'bg-emerald-400 animate-pulse'
+                                  : isServerStopped
+                                  ? 'bg-rose-500'
+                                  : 'bg-amber-400'
+                              }`}
+                              title={`Host Server: ${isServerRunning ? 'Running' : isServerStopped ? 'Stopped' : server.status || 'Offline'}`}
+                            />
                           </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
@@ -589,6 +722,24 @@ function JenkinsContent() {
                               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-800/60 px-2 py-0.5 rounded">
                                 {server.cloudProvider?.toUpperCase()} • {server.region}
                               </span>
+
+                              {/* Prominent Server Power Status Badge */}
+                              {isServerRunning ? (
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-sm">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  Server Running
+                                </span>
+                              ) : isServerStopped ? (
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 shadow-sm">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  Server Stopped
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 shadow-sm">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                  Server {server.status || 'Offline'}
+                                </span>
+                              )}
                             </div>
                             <div className="text-[11px] text-slate-400 mt-0.5">
                               Platform OS: <span className="text-slate-300 font-medium">{server.osName}</span>
@@ -600,7 +751,17 @@ function JenkinsContent() {
                         </div>
 
                         <div className="flex items-center gap-3 flex-wrap">
-                          {isInstalled ? (
+                          {isServerStopped ? (
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs font-bold">
+                                <Power className="w-3.5 h-3.5 text-rose-400" />
+                                Server Stopped
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/60 border border-slate-700/60 text-slate-400 text-xs font-semibold">
+                                {isInstalled ? 'Jenkins Installed' : 'Not Installed'}
+                              </span>
+                            </div>
+                          ) : isInstalled ? (
                             <>
                               <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-xs">
                                 <span className="text-slate-400">Port:</span>
@@ -639,7 +800,7 @@ function JenkinsContent() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all shadow-sm ${
-                                isRunning
+                                isRunning && isServerRunning
                                   ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 text-white shadow-red-500/20'
                                   : 'bg-[#111A2E] text-slate-500 border border-[#1E293B] pointer-events-none opacity-60'
                               }`}
@@ -651,8 +812,14 @@ function JenkinsContent() {
 
                           <button
                             type="button"
+                            disabled={isServerStopped}
                             onClick={() => openTerminal(server)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] rounded-xl transition-all cursor-pointer"
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border rounded-xl transition-all ${
+                              isServerStopped
+                                ? 'bg-[#111A2E]/40 text-slate-500 border-[#1E293B]/40 cursor-not-allowed opacity-50'
+                                : 'bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border-[#1E293B] cursor-pointer'
+                            }`}
+                            title={isServerStopped ? 'Cannot open terminal because the host server is stopped.' : 'Open SSH Terminal'}
                           >
                             <TerminalIcon className="w-3.5 h-3.5 text-cyan-400" />
                             <span>Terminal</span>
@@ -660,7 +827,17 @@ function JenkinsContent() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {isInstalled ? (
+                          {isServerStopped ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-slate-800/60 border border-rose-500/30 text-rose-400/80 rounded-xl cursor-not-allowed"
+                              title="Host server is stopped. Please start the server from your cloud console or Server dashboard to perform operations."
+                            >
+                              <PowerOff className="w-3.5 h-3.5 text-rose-400" />
+                              <span>{isInstalled ? 'Server Stopped' : 'Install Jenkins (Server Stopped)'}</span>
+                            </button>
+                          ) : isInstalled ? (
                             <>
                               {isRunning ? (
                                 <button
@@ -747,21 +924,44 @@ function JenkinsContent() {
                   const port = s.port || 9000;
                   const sonarUrl = s.url || `http://${hostIp}:${port}`;
 
+                  const sStatusLower = (server.status || '').toLowerCase();
+                  const isServerRunning = sStatusLower === 'online' || sStatusLower === 'running';
+                  const isServerStopped = sStatusLower.includes('stop');
+                  const isServerUnreachable = !isServerRunning && !isServerStopped;
+
                   return (
                     <div
                       key={server.id}
-                      className="bg-[#0D1526] border border-[#1E293B] hover:border-slate-700 rounded-2xl p-5 shadow-lg transition-all space-y-4"
+                      className={`bg-[#0D1526] border rounded-2xl p-5 shadow-lg transition-all space-y-4 ${
+                        isServerStopped
+                          ? 'border-rose-900/40 bg-gradient-to-b from-[#0D1526] to-rose-950/10'
+                          : isServerRunning
+                          ? 'border-[#1E293B] hover:border-slate-700'
+                          : 'border-amber-900/40 bg-gradient-to-b from-[#0D1526] to-amber-950/10'
+                      }`}
                     >
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         <div className="flex items-start sm:items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-[#111A2E] border border-[#1E293B] flex items-center justify-center shrink-0">
-                            {server.cloudProvider?.toLowerCase() === 'azure' ? (
-                              <AzureLogo className="w-5 h-5" />
-                            ) : server.cloudProvider?.toLowerCase() === 'aws' ? (
-                              <AwsLogo className="w-5 h-5" />
-                            ) : (
-                              <Server className="w-5 h-5 text-slate-400" />
-                            )}
+                          <div className="relative shrink-0">
+                            <div className="w-10 h-10 rounded-xl bg-[#111A2E] border border-[#1E293B] flex items-center justify-center">
+                              {server.cloudProvider?.toLowerCase() === 'azure' ? (
+                                <AzureLogo className="w-5 h-5" />
+                              ) : server.cloudProvider?.toLowerCase() === 'aws' ? (
+                                <AwsLogo className="w-5 h-5" />
+                              ) : (
+                                <Server className="w-5 h-5 text-slate-400" />
+                              )}
+                            </div>
+                            <span
+                              className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#0D1526] ${
+                                isServerRunning
+                                  ? 'bg-emerald-400 animate-pulse'
+                                  : isServerStopped
+                                  ? 'bg-rose-500'
+                                  : 'bg-amber-400'
+                              }`}
+                              title={`Host Server: ${isServerRunning ? 'Running' : isServerStopped ? 'Stopped' : server.status || 'Offline'}`}
+                            />
                           </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
@@ -772,6 +972,24 @@ function JenkinsContent() {
                               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-800/60 px-2 py-0.5 rounded">
                                 {server.cloudProvider?.toUpperCase()} • {server.region}
                               </span>
+
+                              {/* Prominent Server Power Status Badge */}
+                              {isServerRunning ? (
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-sm">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  Server Running
+                                </span>
+                              ) : isServerStopped ? (
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 shadow-sm">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  Server Stopped
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 shadow-sm">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                  Server {server.status || 'Offline'}
+                                </span>
+                              )}
                             </div>
                             <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
                               <span>OS: {server.osName}</span>
@@ -790,7 +1008,17 @@ function JenkinsContent() {
                         </div>
 
                         <div className="flex items-center gap-3 flex-wrap">
-                          {isInstalled ? (
+                          {isServerStopped ? (
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs font-bold">
+                                <Power className="w-3.5 h-3.5 text-rose-400" />
+                                Server Stopped
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/60 border border-slate-700/60 text-slate-400 text-xs font-semibold">
+                                {isInstalled ? 'SonarQube Installed' : 'Not Installed'}
+                              </span>
+                            </div>
+                          ) : isInstalled ? (
                             <>
                               <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-xs">
                                 <span className="text-slate-400">Port:</span>
@@ -834,7 +1062,7 @@ function JenkinsContent() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all shadow-sm ${
-                                isRunning
+                                isRunning && isServerRunning
                                   ? 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white shadow-cyan-500/20'
                                   : 'bg-[#111A2E] text-slate-500 border border-[#1E293B] pointer-events-none opacity-60'
                               }`}
@@ -846,8 +1074,14 @@ function JenkinsContent() {
 
                           <button
                             type="button"
+                            disabled={isServerStopped}
                             onClick={() => openTerminal(server)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] rounded-xl transition-all cursor-pointer"
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border rounded-xl transition-all ${
+                              isServerStopped
+                                ? 'bg-[#111A2E]/40 text-slate-500 border-[#1E293B]/40 cursor-not-allowed opacity-50'
+                                : 'bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border-[#1E293B] cursor-pointer'
+                            }`}
+                            title={isServerStopped ? 'Cannot open terminal because the host server is stopped.' : 'Open SSH Terminal'}
                           >
                             <TerminalIcon className="w-3.5 h-3.5 text-cyan-400" />
                             <span>Terminal</span>
@@ -855,7 +1089,17 @@ function JenkinsContent() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {isInstalled ? (
+                          {isServerStopped ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-slate-800/60 border border-rose-500/30 text-rose-400/80 rounded-xl cursor-not-allowed"
+                              title="Host server is stopped. Please start the server from your cloud console or Server dashboard to perform operations."
+                            >
+                              <PowerOff className="w-3.5 h-3.5 text-rose-400" />
+                              <span>{isInstalled ? 'Server Stopped' : 'Deploy SonarQube (Server Stopped)'}</span>
+                            </button>
+                          ) : isInstalled ? (
                             <>
                               {isRunning ? (
                                 <button
@@ -938,21 +1182,44 @@ function JenkinsContent() {
                 const isInstalled = t.detected;
                 const summary = t.lastScanSummary;
 
+                const sStatusLower = (server.status || '').toLowerCase();
+                const isServerRunning = sStatusLower === 'online' || sStatusLower === 'running';
+                const isServerStopped = sStatusLower.includes('stop');
+                const isServerUnreachable = !isServerRunning && !isServerStopped;
+
                 return (
                   <div
                     key={server.id}
-                    className="bg-[#0D1526] border border-[#1E293B] hover:border-slate-700 rounded-2xl p-5 shadow-lg transition-all space-y-4"
+                    className={`bg-[#0D1526] border rounded-2xl p-5 shadow-lg transition-all space-y-4 ${
+                      isServerStopped
+                        ? 'border-rose-900/40 bg-gradient-to-b from-[#0D1526] to-rose-950/10'
+                        : isServerRunning
+                        ? 'border-[#1E293B] hover:border-slate-700'
+                        : 'border-amber-900/40 bg-gradient-to-b from-[#0D1526] to-amber-950/10'
+                    }`}
                   >
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                       <div className="flex items-start sm:items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-[#111A2E] border border-[#1E293B] flex items-center justify-center shrink-0">
-                          {server.cloudProvider?.toLowerCase() === 'azure' ? (
-                            <AzureLogo className="w-5 h-5" />
-                          ) : server.cloudProvider?.toLowerCase() === 'aws' ? (
-                            <AwsLogo className="w-5 h-5" />
-                          ) : (
-                            <Server className="w-5 h-5 text-slate-400" />
-                          )}
+                        <div className="relative shrink-0">
+                          <div className="w-10 h-10 rounded-xl bg-[#111A2E] border border-[#1E293B] flex items-center justify-center">
+                            {server.cloudProvider?.toLowerCase() === 'azure' ? (
+                              <AzureLogo className="w-5 h-5" />
+                            ) : server.cloudProvider?.toLowerCase() === 'aws' ? (
+                              <AwsLogo className="w-5 h-5" />
+                            ) : (
+                              <Server className="w-5 h-5 text-slate-400" />
+                            )}
+                          </div>
+                          <span
+                            className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-[#0D1526] ${
+                              isServerRunning
+                                ? 'bg-emerald-400 animate-pulse'
+                                : isServerStopped
+                                ? 'bg-rose-500'
+                                : 'bg-amber-400'
+                            }`}
+                            title={`Host Server: ${isServerRunning ? 'Running' : isServerStopped ? 'Stopped' : server.status || 'Offline'}`}
+                          />
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
@@ -963,6 +1230,24 @@ function JenkinsContent() {
                             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-800/60 px-2 py-0.5 rounded">
                               {server.cloudProvider?.toUpperCase()} • {server.region}
                             </span>
+
+                            {/* Prominent Server Power Status Badge */}
+                            {isServerRunning ? (
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-sm">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                Server Running
+                              </span>
+                            ) : isServerStopped ? (
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 shadow-sm">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                Server Stopped
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 shadow-sm">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                Server {server.status || 'Offline'}
+                              </span>
+                            )}
                           </div>
                           <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
                             <span>OS: {server.osName}</span>
@@ -981,7 +1266,17 @@ function JenkinsContent() {
                       </div>
 
                       <div className="flex items-center gap-3 flex-wrap">
-                        {isInstalled ? (
+                        {isServerStopped ? (
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs font-bold">
+                              <Power className="w-3.5 h-3.5 text-rose-400" />
+                              Server Stopped
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/60 border border-slate-700/60 text-slate-400 text-xs font-semibold">
+                              {isInstalled ? 'Trivy Installed' : 'Not Installed'}
+                            </span>
+                          </div>
+                        ) : isInstalled ? (
                           <>
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-500/15 border border-teal-500/30 text-teal-400 text-xs font-bold font-mono">
                               <ShieldCheck className="w-3.5 h-3.5" />
@@ -1016,13 +1311,19 @@ function JenkinsContent() {
                           <>
                             <button
                               type="button"
+                              disabled={isServerStopped}
                               onClick={() => {
                                 setTrivyScanServer(server.id);
                                 setTrivyScanType('image');
                                 setTrivyTarget('nginx:alpine');
                                 setTrivyScanOpen(true);
                               }}
-                              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border border-teal-500/40 rounded-xl transition-all cursor-pointer shadow-sm"
+                              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold border rounded-xl transition-all shadow-sm ${
+                                isServerStopped
+                                  ? 'bg-[#111A2E]/40 text-slate-500 border-[#1E293B]/40 cursor-not-allowed opacity-50'
+                                  : 'bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border-teal-500/40 cursor-pointer'
+                              }`}
+                              title={isServerStopped ? 'Server is stopped.' : 'Scan container image'}
                             >
                               <Box className="w-3.5 h-3.5" />
                               <span>Scan Image</span>
@@ -1030,13 +1331,19 @@ function JenkinsContent() {
 
                             <button
                               type="button"
+                              disabled={isServerStopped}
                               onClick={() => {
                                 setTrivyScanServer(server.id);
                                 setTrivyScanType('fs');
                                 setTrivyTarget('/var/www');
                                 setTrivyScanOpen(true);
                               }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] rounded-xl transition-all cursor-pointer"
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border rounded-xl transition-all ${
+                                isServerStopped
+                                  ? 'bg-[#111A2E]/40 text-slate-500 border-[#1E293B]/40 cursor-not-allowed opacity-50'
+                                  : 'bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border-[#1E293B] cursor-pointer'
+                              }`}
+                              title={isServerStopped ? 'Server is stopped.' : 'Scan filesystem path'}
                             >
                               <FileCode className="w-3.5 h-3.5 text-cyan-400" />
                               <span>Scan Path</span>
@@ -1046,8 +1353,14 @@ function JenkinsContent() {
 
                         <button
                           type="button"
+                          disabled={isServerStopped}
                           onClick={() => openTerminal(server)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] rounded-xl transition-all cursor-pointer"
+                          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border rounded-xl transition-all ${
+                            isServerStopped
+                              ? 'bg-[#111A2E]/40 text-slate-500 border-[#1E293B]/40 cursor-not-allowed opacity-50'
+                              : 'bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border-[#1E293B] cursor-pointer'
+                          }`}
+                          title={isServerStopped ? 'Cannot open terminal because the host server is stopped.' : 'Open SSH Terminal'}
                         >
                           <TerminalIcon className="w-3.5 h-3.5 text-cyan-400" />
                           <span>Terminal</span>
@@ -1055,7 +1368,17 @@ function JenkinsContent() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {isInstalled ? (
+                        {isServerStopped ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-slate-800/60 border border-rose-500/30 text-rose-400/80 rounded-xl cursor-not-allowed"
+                            title="Host server is stopped. Please start the server from your cloud console or Server dashboard to perform operations."
+                          >
+                            <PowerOff className="w-3.5 h-3.5 text-rose-400" />
+                            <span>{isInstalled ? 'Server Stopped' : 'Install Trivy CLI (Server Stopped)'}</span>
+                          </button>
+                        ) : isInstalled ? (
                           <>
                             <button
                               type="button"
@@ -1134,12 +1457,22 @@ function JenkinsContent() {
                   onChange={(e) => setJenkinsInstallServer(e.target.value)}
                   className="w-full bg-[#111A2E] border border-[#1E293B] text-slate-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-500/50"
                 >
-                  {servers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.publicIp || s.host}) {s.jenkins.detected ? '• Already Installed' : ''}
-                    </option>
-                  ))}
+                  {servers.map((s) => {
+                    const st = (s.status || '').toLowerCase();
+                    const stateLabel = st.includes('stop') ? ' [STOPPED]' : st === 'online' || st === 'running' ? ' [RUNNING]' : ` [${s.status}]`;
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.publicIp || s.host}){stateLabel} {s.jenkins.detected ? '• Already Installed' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
+                {servers.find((s) => s.id === jenkinsInstallServer)?.status?.toLowerCase().includes('stop') && (
+                  <div className="flex items-center gap-2 p-2.5 mt-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>Target server is <strong>STOPPED</strong>. Power on the server first before installing.</span>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1164,11 +1497,16 @@ function JenkinsContent() {
               </button>
               <button
                 type="button"
+                disabled={Boolean(servers.find((s) => s.id === jenkinsInstallServer)?.status?.toLowerCase().includes('stop'))}
                 onClick={() => {
                   setJenkinsInstallOpen(false);
                   handleAction('jenkins', jenkinsInstallServer, 'install', { port: jenkinsPort });
                 }}
-                className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 text-white rounded-xl shadow-lg shadow-red-500/20"
+                className={`px-4 py-2 text-xs font-bold rounded-xl shadow-lg transition-all ${
+                  servers.find((s) => s.id === jenkinsInstallServer)?.status?.toLowerCase().includes('stop')
+                    ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shadow-none'
+                    : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 text-white shadow-red-500/20'
+                }`}
               >
                 Start Installation
               </button>
@@ -1206,12 +1544,22 @@ function JenkinsContent() {
                   onChange={(e) => setSonarInstallServer(e.target.value)}
                   className="w-full bg-[#111A2E] border border-[#1E293B] text-slate-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-cyan-500/50"
                 >
-                  {servers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.publicIp || s.host}) {s.sonarqube.detected ? '• Already Installed' : ''}
-                    </option>
-                  ))}
+                  {servers.map((s) => {
+                    const st = (s.status || '').toLowerCase();
+                    const stateLabel = st.includes('stop') ? ' [STOPPED]' : st === 'online' || st === 'running' ? ' [RUNNING]' : ` [${s.status}]`;
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.publicIp || s.host}){stateLabel} {s.sonarqube.detected ? '• Already Installed' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
+                {servers.find((s) => s.id === sonarInstallServer)?.status?.toLowerCase().includes('stop') && (
+                  <div className="flex items-center gap-2 p-2.5 mt-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>Target server is <strong>STOPPED</strong>. Power on the server first before deploying SonarQube.</span>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1236,11 +1584,16 @@ function JenkinsContent() {
               </button>
               <button
                 type="button"
+                disabled={Boolean(servers.find((s) => s.id === sonarInstallServer)?.status?.toLowerCase().includes('stop'))}
                 onClick={() => {
                   setSonarInstallOpen(false);
                   handleAction('sonarqube', sonarInstallServer, 'install', { port: sonarPort });
                 }}
-                className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 text-white rounded-xl shadow-lg shadow-cyan-500/20"
+                className={`px-4 py-2 text-xs font-bold rounded-xl shadow-lg transition-all ${
+                  servers.find((s) => s.id === sonarInstallServer)?.status?.toLowerCase().includes('stop')
+                    ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shadow-none'
+                    : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 text-white shadow-cyan-500/20'
+                }`}
               >
                 Deploy SonarQube
               </button>
@@ -1278,12 +1631,22 @@ function JenkinsContent() {
                   onChange={(e) => setTrivyScanServer(e.target.value)}
                   className="w-full bg-[#111A2E] border border-[#1E293B] text-slate-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-teal-500/50"
                 >
-                  {servers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.publicIp || s.host}) {s.trivy.detected ? '• Trivy Ready' : '(Not installed)'}
-                    </option>
-                  ))}
+                  {servers.map((s) => {
+                    const st = (s.status || '').toLowerCase();
+                    const stateLabel = st.includes('stop') ? ' [STOPPED]' : st === 'online' || st === 'running' ? ' [RUNNING]' : ` [${s.status}]`;
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.publicIp || s.host}){stateLabel} {s.trivy.detected ? '• Trivy Ready' : '(Not installed)'}
+                      </option>
+                    );
+                  })}
                 </select>
+                {servers.find((s) => s.id === trivyScanServer)?.status?.toLowerCase().includes('stop') && (
+                  <div className="flex items-center gap-2 p-2.5 mt-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>Target server is <strong>STOPPED</strong>. Power on the server first before running Trivy scans.</span>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1345,12 +1708,17 @@ function JenkinsContent() {
               </button>
               <button
                 type="button"
+                disabled={Boolean(servers.find((s) => s.id === trivyScanServer)?.status?.toLowerCase().includes('stop'))}
                 onClick={() => {
                   setTrivyScanOpen(false);
                   const action = trivyScanType === 'image' ? 'scan_image' : 'scan_fs';
                   handleAction('trivy', trivyScanServer, action, { target: trivyTarget.trim() });
                 }}
-                className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 text-white rounded-xl shadow-lg shadow-teal-500/20"
+                className={`px-4 py-2 text-xs font-bold rounded-xl shadow-lg transition-all ${
+                  servers.find((s) => s.id === trivyScanServer)?.status?.toLowerCase().includes('stop')
+                    ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shadow-none'
+                    : 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 text-white shadow-teal-500/20'
+                }`}
               >
                 Start Security Scan
               </button>
