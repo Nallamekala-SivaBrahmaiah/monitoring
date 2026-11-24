@@ -71,6 +71,9 @@ export const ALL_APPLICATION_MODULES: ModuleDefinition[] = [
   { id: 'cloud-accounts', name: 'Cloud Accounts', category: 'Compute & Servers', defaultIcon: '🔑', description: 'AWS IAM Roles and Azure Service Principals' },
 
   // DevOps & Tooling
+  { id: 'jenkins', name: 'Jenkins CI/CD Module', category: 'DevOps & Tooling', defaultIcon: '👨‍✈️', description: 'Pipeline automation, build nodes and CI/CD orchestration' },
+  { id: 'sonarqube', name: 'SonarQube Quality Module', category: 'DevOps & Tooling', defaultIcon: '🔍', description: 'Code quality gates, SAST security and issue tracking' },
+  { id: 'trivy', name: 'Trivy Security Module', category: 'DevOps & Tooling', defaultIcon: '🛡️', description: 'Container, filesystem and CVE vulnerability scanner' },
   { id: 'docker', name: 'Docker Module', category: 'DevOps & Tooling', defaultIcon: '🐳', description: 'Container logs, volumes, images and engine stats' },
   { id: 'kubernetes', name: 'Kubernetes Module', category: 'DevOps & Tooling', defaultIcon: '☸️', description: 'Nodes, pods, services, deployments and namespaces' },
   { id: 'nginx', name: 'Nginx Module', category: 'DevOps & Tooling', defaultIcon: '🌐', description: 'Reverse proxy, upstreams, SSL config and deployment' },
@@ -1668,6 +1671,12 @@ export function IndividualModuleStudioModal() {
                           {activeModuleDef.id.includes('servers')
                             ? '4'
                             : activeModuleDef.id.includes('docker')
+                            ? '1'
+                            : activeModuleDef.id.includes('jenkins')
+                            ? '1'
+                            : activeModuleDef.id.includes('sonarqube')
+                            ? '1'
+                            : activeModuleDef.id.includes('trivy')
                             ? '1'
                             : activeModuleDef.id.includes('alerts')
                             ? '0'

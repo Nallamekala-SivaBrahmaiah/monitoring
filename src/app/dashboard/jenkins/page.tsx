@@ -32,6 +32,8 @@ import {
   Sliders,
   FileEdit,
   Code2,
+  Sparkles,
+  Palette,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -44,6 +46,8 @@ import {
 } from '@/components/icons/CloudIcons';
 import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
 import { DEFAULT_DEVOPS_COMMANDS } from '@/lib/devops/devopsDefaults';
+import { useTheme } from '@/context/ThemeContext';
+import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
 export type PipelineTab = 'jenkins' | 'sonarqube' | 'trivy';
 
@@ -134,6 +138,7 @@ function JenkinsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as PipelineTab) || 'jenkins';
+  const { openModuleCustomizer, getModuleStyle } = useTheme();
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PipelineTab>(initialTab);
@@ -606,10 +611,13 @@ function JenkinsContent() {
 
         <main className="p-4 lg:p-7 max-w-[1700px] w-full mx-auto space-y-6">
           {/* Top Banner & Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-6 shadow-xl relative overflow-hidden">
-            <div className="flex items-center gap-4">
+          <div
+            data-module-id={activeTab}
+            className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-6 shadow-xl relative overflow-hidden transition-all"
+          >
+            <div className="flex items-center gap-4 module-header">
               <div
-                className={`w-14 h-14 rounded-2xl border flex items-center justify-center shrink-0 shadow-inner transition-all ${activeTab === 'jenkins'
+                className={`w-14 h-14 rounded-2xl border flex items-center justify-center shrink-0 shadow-inner transition-all module-icon ${activeTab === 'jenkins'
                   ? 'bg-gradient-to-br from-red-500/20 via-rose-500/10 to-red-600/20 border-red-500/40'
                   : activeTab === 'sonarqube'
                     ? 'bg-gradient-to-br from-blue-500/20 via-cyan-500/10 to-cyan-600/20 border-cyan-500/40'
@@ -622,7 +630,7 @@ function JenkinsContent() {
               </div>
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <h1 className="text-xl font-bold text-white tracking-tight">
+                  <h1 className="text-xl font-bold text-white tracking-tight module-heading">
                     {activeTab === 'jenkins' && 'Jenkins CI/CD & DevOps Suite'}
                     {activeTab === 'sonarqube' && 'SonarQube Code Quality & Security'}
                     {activeTab === 'trivy' && 'Aqua Trivy Security & Vulnerability Scanner'}
@@ -648,7 +656,20 @@ function JenkinsContent() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+              <ModuleCustomizeButton
+                moduleId={activeTab}
+                moduleName={
+                  activeTab === 'jenkins'
+                    ? 'Jenkins CI/CD Module'
+                    : activeTab === 'sonarqube'
+                    ? 'SonarQube Quality Module'
+                    : 'Trivy Security Module'
+                }
+                variant="dropdown"
+                label="3D Anime, Design & Layer"
+              />
+
               <button
                 type="button"
                 onClick={() => fetchServers(true)}
@@ -673,60 +694,87 @@ function JenkinsContent() {
           </div>
 
           {/* DevOps Pipeline Integrated Tool Switcher Bar */}
-          <div className="flex items-center gap-3 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-2 shadow-sm overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => switchTab('jenkins')}
-              className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${activeTab === 'jenkins'
-                ? 'bg-red-500/20 text-white border border-red-500/40 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-[#111A2E] border border-transparent'
-                }`}
-            >
-              <JenkinsLogo className="w-4 h-4" />
-              <span>Jenkins CI/CD</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                {jenkinsInstalledCount} Inst • {jenkinsRunningCount} Run
-              </span>
-            </button>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-2.5 shadow-sm overflow-x-auto">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => switchTab('jenkins')}
+                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${activeTab === 'jenkins'
+                  ? 'bg-red-500/20 text-white border border-red-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-[#111A2E] border border-transparent'
+                  }`}
+              >
+                <JenkinsLogo className="w-4 h-4" />
+                <span>Jenkins CI/CD</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                  {jenkinsInstalledCount} Inst • {jenkinsRunningCount} Run
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => switchTab('sonarqube')}
-              className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${activeTab === 'sonarqube'
-                ? 'bg-cyan-500/20 text-white border border-cyan-500/40 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-[#111A2E] border border-transparent'
-                }`}
-            >
-              <SonarQubeLogo className="w-4 h-4" />
-              <span>SonarQube Analysis</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                {sonarInstalledCount} Inst • {sonarRunningCount} Run
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={() => switchTab('sonarqube')}
+                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${activeTab === 'sonarqube'
+                  ? 'bg-cyan-500/20 text-white border border-cyan-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-[#111A2E] border border-transparent'
+                  }`}
+              >
+                <SonarQubeLogo className="w-4 h-4" />
+                <span>SonarQube Analysis</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                  {sonarInstalledCount} Inst • {sonarRunningCount} Run
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => switchTab('trivy')}
-              className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${activeTab === 'trivy'
-                ? 'bg-teal-500/20 text-white border border-teal-500/40 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-[#111A2E] border border-transparent'
-                }`}
-            >
-              <TrivyLogo className="w-4 h-4" />
-              <span>Trivy Security</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                {trivyInstalledCount} Installed
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={() => switchTab('trivy')}
+                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${activeTab === 'trivy'
+                  ? 'bg-teal-500/20 text-white border border-teal-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-[#111A2E] border border-transparent'
+                  }`}
+              >
+                <TrivyLogo className="w-4 h-4" />
+                <span>Trivy Security</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                  {trivyInstalledCount} Installed
+                </span>
+              </button>
+            </div>
+
+            {/* Quick 1-Click Studio Trigger for Active Tool */}
+            <div className="flex items-center gap-2 px-2 self-start sm:self-center">
+              <button
+                type="button"
+                onClick={() =>
+                  openModuleCustomizer(
+                    activeTab,
+                    activeTab === 'jenkins'
+                      ? 'Jenkins CI/CD Module'
+                      : activeTab === 'sonarqube'
+                      ? 'SonarQube Quality Module'
+                      : 'Trivy Security Module'
+                  )
+                }
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-semibold transition cursor-pointer"
+                title={`Customize ${activeTab.toUpperCase()} styling & 3D layers`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <span>Customize {activeTab.toUpperCase()}</span>
+              </button>
+            </div>
           </div>
 
           {/* Tool Control & Custom Command Action Hub */}
-          <div className="bg-[#0D1526] border border-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-lg space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div
+            data-module-id={activeTab}
+            className="bg-[#0D1526] border border-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-lg space-y-4 transition-all"
+          >
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 module-header">
               {/* Tool Identity & Commands Summary */}
               <div className="flex items-center gap-3.5">
                 <div
-                  className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border shadow-md ${
+                  className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border shadow-md module-icon ${
                     activeTab === 'jenkins'
                       ? 'bg-red-500/15 border-red-500/30 text-red-400'
                       : activeTab === 'sonarqube'
@@ -741,7 +789,7 @@ function JenkinsContent() {
 
                 <div>
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h3 className="text-sm font-bold text-white tracking-wide">
+                    <h3 className="text-sm font-bold text-white tracking-wide module-heading">
                       {activeTab === 'jenkins' && 'Jenkins CI/CD Automation Hub'}
                       {activeTab === 'sonarqube' && 'SonarQube Quality Gate Hub'}
                       {activeTab === 'trivy' && 'Trivy Security Scanner Hub'}
@@ -999,6 +1047,26 @@ function JenkinsContent() {
                   <span>Edit Commands</span>
                 </button>
 
+                {/* 4. Customize Design, Layer & 3D Anime */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    openModuleCustomizer(
+                      activeTab,
+                      activeTab === 'jenkins'
+                        ? 'Jenkins CI/CD Module'
+                        : activeTab === 'sonarqube'
+                        ? 'SonarQube Quality Module'
+                        : 'Trivy Security Module'
+                    )
+                  }
+                  className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold bg-[#111A2E] hover:bg-[#18233C] text-purple-300 hover:text-purple-200 border border-purple-500/30 hover:border-purple-500/60 rounded-xl transition-all cursor-pointer shadow-sm"
+                  title={`Customize ${activeTab.toUpperCase()} (3D Animations, Layer Stacks & Design)`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Design & Layer</span>
+                </button>
+
                 {/* Trivy Run Scan Button */}
                 {activeTab === 'trivy' && (
                   <button
@@ -1170,6 +1238,7 @@ function JenkinsContent() {
                   return (
                     <div
                       key={server.id}
+                      data-module-id="jenkins"
                       className={`bg-[#0D1526] border rounded-2xl p-5 shadow-lg transition-all space-y-4 ${isServerStopped
                         ? 'border-rose-900/40 bg-gradient-to-b from-[#0D1526] to-rose-950/10'
                         : isServerRunning
@@ -1177,9 +1246,9 @@ function JenkinsContent() {
                           : 'border-amber-900/40 bg-gradient-to-b from-[#0D1526] to-amber-950/10'
                         }`}
                     >
-                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 module-header">
                         <div className="flex items-start sm:items-center gap-3">
-                          <div className="relative shrink-0">
+                          <div className="relative shrink-0 module-icon">
                             <div className="w-10 h-10 rounded-xl bg-[#111A2E] border border-[#1E293B] flex items-center justify-center">
                               {server.cloudProvider?.toLowerCase() === 'azure' ? (
                                 <AzureLogo className="w-5 h-5" />
@@ -1201,7 +1270,7 @@ function JenkinsContent() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-bold text-white font-mono">{server.name}</span>
+                              <span className="text-sm font-bold text-white font-mono module-heading">{server.name}</span>
                               <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
                                 {server.publicIp || server.host}
                               </span>
@@ -1416,6 +1485,7 @@ function JenkinsContent() {
                   return (
                     <div
                       key={server.id}
+                      data-module-id="sonarqube"
                       className={`bg-[#0D1526] border rounded-2xl p-5 shadow-lg transition-all space-y-4 ${isServerStopped
                         ? 'border-rose-900/40 bg-gradient-to-b from-[#0D1526] to-rose-950/10'
                         : isServerRunning
@@ -1423,9 +1493,9 @@ function JenkinsContent() {
                           : 'border-amber-900/40 bg-gradient-to-b from-[#0D1526] to-amber-950/10'
                         }`}
                     >
-                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 module-header">
                         <div className="flex items-start sm:items-center gap-3">
-                          <div className="relative shrink-0">
+                          <div className="relative shrink-0 module-icon">
                             <div className="w-10 h-10 rounded-xl bg-[#111A2E] border border-[#1E293B] flex items-center justify-center">
                               {server.cloudProvider?.toLowerCase() === 'azure' ? (
                                 <AzureLogo className="w-5 h-5" />
@@ -1447,7 +1517,7 @@ function JenkinsContent() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-bold text-white font-mono">{server.name}</span>
+                              <span className="text-sm font-bold text-white font-mono module-heading">{server.name}</span>
                               <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
                                 {server.publicIp || server.host}
                               </span>
@@ -1670,6 +1740,7 @@ function JenkinsContent() {
                 return (
                   <div
                     key={server.id}
+                    data-module-id="trivy"
                     className={`bg-[#0D1526] border rounded-2xl p-5 shadow-lg transition-all space-y-4 ${isServerStopped
                       ? 'border-rose-900/40 bg-gradient-to-b from-[#0D1526] to-rose-950/10'
                       : isServerRunning
@@ -1677,9 +1748,9 @@ function JenkinsContent() {
                         : 'border-amber-900/40 bg-gradient-to-b from-[#0D1526] to-amber-950/10'
                       }`}
                   >
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 module-header">
                       <div className="flex items-start sm:items-center gap-3">
-                        <div className="relative shrink-0">
+                        <div className="relative shrink-0 module-icon">
                           <div className="w-10 h-10 rounded-xl bg-[#111A2E] border border-[#1E293B] flex items-center justify-center">
                             {server.cloudProvider?.toLowerCase() === 'azure' ? (
                               <AzureLogo className="w-5 h-5" />
@@ -1701,7 +1772,7 @@ function JenkinsContent() {
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-bold text-white font-mono">{server.name}</span>
+                            <span className="text-sm font-bold text-white font-mono module-heading">{server.name}</span>
                             <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
                               {server.publicIp || server.host}
                             </span>

@@ -45,6 +45,9 @@ export const ALL_APPLICATION_MODULES: ModuleDefinition[] = [
   { id: 'on-premises', name: 'On-Premises Servers', category: 'Compute & Servers', defaultIcon: '🏢', description: 'Bare metal and private datacenter hosts' },
 
   // DevOps & Tooling
+  { id: 'jenkins', name: 'Jenkins CI/CD Module', category: 'DevOps & Tooling', defaultIcon: '👨‍✈️', description: 'Pipeline automation and build management' },
+  { id: 'sonarqube', name: 'SonarQube Quality Module', category: 'DevOps & Tooling', defaultIcon: '🔍', description: 'Code quality gates and security analysis' },
+  { id: 'trivy', name: 'Trivy Security Module', category: 'DevOps & Tooling', defaultIcon: '🛡️', description: 'Container and filesystem vulnerability scanner' },
   { id: 'docker', name: 'Docker Module', category: 'DevOps & Tooling', defaultIcon: '🐳', description: 'Container logs, volumes and images' },
   { id: 'kubernetes', name: 'Kubernetes Module', category: 'DevOps & Tooling', defaultIcon: '☸️', description: 'Nodes, pods, services and deployments' },
   { id: 'nginx', name: 'Nginx Module', category: 'DevOps & Tooling', defaultIcon: '🌐', description: 'Reverse proxy, upstreams and SSL config' },
