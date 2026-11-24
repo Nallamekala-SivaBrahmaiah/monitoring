@@ -148,16 +148,6 @@ export default function ServersPage() {
   const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
 
   const handleOpenTerminal = (server: RegisteredServer) => {
-    const hasCredentials = Boolean(
-      (server as any).hasSavedKey ||
-      server.authMethod ||
-      server.status === 'Online'
-    );
-    if (!hasCredentials) {
-      handleOpenSSHModal(server);
-      return;
-    }
-
     setTerminalTarget({
       id: server._id,
       sshServerId: server._id,

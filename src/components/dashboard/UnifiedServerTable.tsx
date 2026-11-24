@@ -241,12 +241,6 @@ export function UnifiedServerTable({
   };
 
   const handleOpenTerminal = (server: UnifiedServerItem) => {
-    // If the server doesn't have saved credentials or active SSH connection, open SSH authentication modal first
-    if (!server.hasSavedKey && !server.isSSHConnected && server.status !== 'Online') {
-      handleOpenSSHModal(server);
-      return;
-    }
-
     setTerminalTarget({
       id: server.serverId || server.id,
       sshServerId: server.serverId || server.id,
@@ -255,7 +249,7 @@ export function UnifiedServerTable({
       port: server.port || 22,
       username: server.username || (server.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
       cloudProvider: server.cloudProvider,
-      isSSHConnected: Boolean(server.isSSHConnected || server.status === 'Online' || server.hasSavedKey),
+      isSSHConnected: Boolean(server.isSSHConnected || server.status === 'Online'),
     });
     setShowTerminalModal(true);
   };
