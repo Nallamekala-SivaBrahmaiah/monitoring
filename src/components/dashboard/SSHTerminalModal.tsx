@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Copy, Check } from 'lucide-react';
 
 /**
@@ -100,12 +101,17 @@ export function SSHTerminalModal({
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isUnconfigured, setIsUnconfigured] = useState<boolean>(false);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(true);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
+  const [mounted, setMounted] = useState<boolean>(false);
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
   const [hasActiveSelection, setHasActiveSelection] = useState<boolean>(false);
   const [activeSelectionText, setActiveSelectionText] = useState<string>('');
   const copyTimeoutRef = useRef<any>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const showCopyBadge = useCallback(() => {
     setCopiedNotification(true);
@@ -263,10 +269,18 @@ export function SSHTerminalModal({
                   try {
                     const parsed = JSON.parse(match[1]);
                     if (parsed && typeof parsed.data === 'string') {
-                      term.write(parsed.data);
+                      term.write(parsed.data, () => {
+                        term.scrollToBottom();
+                      });
+                    } else {
+                      term.write(match[1], () => {
+                        term.scrollToBottom();
+                      });
                     }
                   } catch {
-                    term.write(match[1]);
+                    term.write(match[1], () => {
+                      term.scrollToBottom();
+                    });
                   }
                 }
               }
@@ -571,39 +585,62 @@ export function SSHTerminalModal({
     initTerminal();
   };
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     disconnectSession();
     onClose();
-  };
+  }, [disconnectSession, onClose]);
+
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleClose]);
+
+  if (!isOpen || !target || !mounted) return null;
 
   // Title bar text: purely "PuTTY" or "PuTTY (inactive)"
   const titleText = status === 'disconnected' ? 'PuTTY (inactive)' : 'PuTTY';
 
-  return (
+  return createPortal(
     <>
       {/* Minimized Taskbar Pill */}
       {isMinimized && (
         <div
           onClick={() => setIsMinimized(false)}
-          className="fixed bottom-3 right-3 z-50 flex items-center gap-2 px-3 py-1.5 bg-[#1F1F1F] border border-[#3A3A3A] shadow-2xl text-slate-200 text-xs font-sans hover:bg-[#2A2A2A] cursor-pointer select-none transition-all"
+          className="fixed bottom-4 right-4 z-[99999] flex items-center gap-2.5 px-3.5 py-2 bg-[#1F1F1F] border border-[#3A3A3A] shadow-2xl text-slate-200 text-xs font-sans hover:bg-[#2A2A2A] cursor-pointer select-none transition-all rounded shadow-black/80"
           title="Restore PuTTY Terminal"
         >
           <PuttyIcon className="w-4 h-4" />
-          <span className="font-medium text-[#D4D4D4]">{titleText}</span>
+          <span className="font-medium text-[#D4D4D4]">{titleText} ({target.name || target.host})</span>
         </div>
       )}
 
-      {/* Main PuTTY Window Container */}
+      {/* Main PuTTY Window Container with Darkened Backdrop Overlay */}
       {!isMinimized && (
         <div
-          className={`fixed z-50 flex flex-col bg-[#000000] select-none transition-all ${
-            isFullscreen
-              ? 'inset-0 w-screen h-screen rounded-none'
-              : 'inset-3 sm:inset-6 md:inset-8 shadow-2xl border border-[#3A3A3A] rounded-none'
-          }`}
-          onClick={handleWindowClick}
-          onContextMenu={handleContextMenu}
+          className={`fixed inset-0 z-[9999] flex items-center justify-center ${
+            isFullscreen ? 'p-0' : 'p-3 sm:p-5 md:p-8'
+          } bg-black/80 backdrop-blur-sm select-none transition-all animate-in fade-in duration-150`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleClose();
+            }
+          }}
         >
+          <div
+            className={`flex flex-col bg-[#000000] border-2 border-[#555555] shadow-2xl transition-all ${
+              isFullscreen
+                ? 'w-full h-full rounded-none border-none'
+                : 'w-full max-w-5xl h-[80vh] min-h-[480px] max-h-[780px] rounded-none shadow-black/90'
+            }`}
+            onClick={handleWindowClick}
+            onContextMenu={handleContextMenu}
+          >
           {/* ================= PUTTY TITLE BAR ================= */}
           <div
             className="h-8 bg-[#181818] border-b border-[#2C2C2C] flex items-center justify-between select-none shrink-0 font-sans text-xs"
@@ -811,6 +848,7 @@ export function SSHTerminalModal({
             )}
           </div>
         </div>
+      </div>
       )}
 
       {/* Global CSS for PuTTY scrollbar & terminal viewport styling */}
@@ -846,6 +884,7 @@ export function SSHTerminalModal({
           background-color: #000000;
         }
       `}</style>
-    </>
+    </>,
+    document.body
   );
 }

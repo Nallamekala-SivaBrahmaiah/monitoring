@@ -430,11 +430,16 @@ export function UnifiedServerRow({
           {/* SSH Terminal Login */}
           <button
             type="button"
-            onClick={() => onOpenTerminal && onOpenTerminal(server)}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-md transition-all shadow-sm shrink-0 cursor-pointer whitespace-nowrap"
-            title="Login into Server (Real Interactive SSH Terminal)"
+            disabled={!isPowerRunning}
+            onClick={() => isPowerRunning && onOpenTerminal && onOpenTerminal(server)}
+            className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all shadow-sm shrink-0 whitespace-nowrap ${
+              isPowerRunning
+                ? 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 cursor-pointer'
+                : 'bg-slate-800/40 text-slate-500 border border-slate-700/40 cursor-not-allowed opacity-40'
+            }`}
+            title={isPowerRunning ? 'Login into Server (Real Interactive SSH Terminal)' : `Server is ${statusDisplay}. Power on the server first to login.`}
           >
-            <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+            <Terminal className="w-3.5 h-3.5" />
             <span>Login</span>
           </button>
 

@@ -117,7 +117,7 @@ export async function resolveServer(serverId: string): Promise<any | null> {
           trivy: cr.metadata?.trivy,
         };
       }
-    } catch {}
+    } catch { }
   }
 
   // Fallback to NginxServer if credentials stored there
@@ -150,7 +150,7 @@ export async function resolveServer(serverId: string): Promise<any | null> {
           if (!serverDoc.authMethod && nginxFallback.authMethod) serverDoc.authMethod = nginxFallback.authMethod;
         }
       }
-    } catch {}
+    } catch { }
   }
 
   return serverDoc;
@@ -254,7 +254,7 @@ export async function executeSSH(
 
       timer = setTimeout(() => {
         if (conn) {
-          try { conn.end(); } catch {}
+          try { conn.end(); } catch { }
         }
         reject(new Error(`SSH execution timed out after ${timeoutMs}ms`));
       }, timeoutMs + 2000);
@@ -662,7 +662,7 @@ export async function getDevopsServers(doSync: boolean = false): Promise<IDevops
             },
           }
         );
-      } catch {}
+      } catch { }
     } else {
       toolState = {
         jenkins: {
@@ -761,9 +761,9 @@ export async function executeJenkinsAction(
       const res = await executeSSH(server, cmd, 20000);
       const isRunning = res.stdout.trim() === 'active';
       if (isRunning) {
-        await Server.updateOne(
-          { _id: server._id },
-          { $set: { 'jenkins.status': 'running', 'jenkins.lastSyncedAt': new Date() } }
+        await updateDevopsMetadata(
+          server._id,
+          { 'jenkins.status': 'running', 'jenkins.lastSyncedAt': new Date() }
         );
         return { success: true, message: 'Jenkins service started successfully', output: res.stdout };
       }
@@ -773,9 +773,9 @@ export async function executeJenkinsAction(
     case 'stop': {
       const cmd = `sudo systemctl stop jenkins && sleep 1 && (systemctl is-active jenkins || true)`;
       const res = await executeSSH(server, cmd, 20000);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { 'jenkins.status': 'stopped', 'jenkins.lastSyncedAt': new Date() } }
+      await updateDevopsMetadata(
+        server._id,
+        { 'jenkins.status': 'stopped', 'jenkins.lastSyncedAt': new Date() }
       );
       return { success: true, message: 'Jenkins service stopped successfully', output: res.stdout };
     }
@@ -785,9 +785,9 @@ export async function executeJenkinsAction(
       const res = await executeSSH(server, cmd, 25000);
       const isRunning = res.stdout.trim() === 'active';
       if (isRunning) {
-        await Server.updateOne(
-          { _id: server._id },
-          { $set: { 'jenkins.status': 'running', 'jenkins.lastSyncedAt': new Date() } }
+        await updateDevopsMetadata(
+          server._id,
+          { 'jenkins.status': 'running', 'jenkins.lastSyncedAt': new Date() }
         );
         return { success: true, message: 'Jenkins restarted successfully', output: res.stdout };
       }
@@ -796,8 +796,8 @@ export async function executeJenkinsAction(
 
     case 'install': {
       // 1. Check if already installed
-      const check = await executeSSH(server, `command -v jenkins >/dev/null 2>&1 && echo "EXISTS" || echo "NOT_EXISTS"`);
-      if (check.stdout.includes('EXISTS')) {
+      const check = await executeSSH(server, `(command -v jenkins || [ -f /usr/share/java/jenkins.war ]) >/dev/null 2>&1 && echo "ALREADY_INSTALLED" || echo "MISSING"`);
+      if (check.stdout.includes('ALREADY_INSTALLED')) {
         return { success: true, message: 'Jenkins is already installed on this server', output: check.stdout };
       }
 
@@ -845,16 +845,22 @@ sudo systemctl reset-failed jenkins 2>/dev/null || true
 sudo systemctl enable jenkins
 sudo systemctl restart jenkins
 
-sleep 5
+# Wait for Jenkins JVM to start and initialize
+for i in $(seq 1 30); do
+  if systemctl is-active --quiet jenkins; then
+    break
+  fi
+  sleep 1
+done
 systemctl is-active jenkins
 jenkins --version || true
       `;
 
       const res = await executeSSH(server, installScript, 240000); // 4 minute timeout for package download
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { jenkins: { ...probe.jenkins, lastSyncedAt: new Date() } } }
+      await updateDevopsMetadata(
+        server._id,
+        { jenkins: { ...probe.jenkins, lastSyncedAt: new Date() } }
       );
 
       return {
@@ -889,25 +895,21 @@ echo "Jenkins completely purged."
 
       const res = await executeSSH(server, uninstallScript, 60000);
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
+      await updateDevopsMetadata(
+        server._id,
         {
-          $set: {
-            jenkins: {
-              ...probe.jenkins,
-              detected: false,
-              status: 'not_installed',
-              version: '',
-              url: '',
-              lastSyncedAt: new Date(),
-            },
+          jenkins: {
+            ...probe.jenkins,
+            lastSyncedAt: new Date(),
           },
         }
       );
 
       return {
-        success: true,
-        message: 'Jenkins successfully uninstalled',
+        success: !probe.jenkins.detected,
+        message: !probe.jenkins.detected
+          ? 'Jenkins successfully uninstalled'
+          : 'Warning: Jenkins components may still be detected',
         output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
       };
     }
@@ -925,20 +927,22 @@ export async function executeSonarQubeAction(
   const port = options.port || 9000;
 
   const sStatus = (server.status || '').toLowerCase();
-  const isOnline = sStatus === 'online' || sStatus === 'running';
-  if (!isOnline && action !== 'detect') {
-    const isStopped = sStatus.includes('stop') || sStatus.includes('deallocat');
+  const isStopped = sStatus.includes('stop') || sStatus === 'offline';
+  if (isStopped && action !== 'detect') {
     return {
       success: false,
-      message: `Cannot execute "${action}" on "${server.name}" because the server is currently ${isStopped ? 'STOPPED' : server.status || 'UNREACHABLE'}. Please ensure the host server is running and reachable first.`,
-      output: `Server status is "${server.status}". Host must be running and reachable to execute commands via SSH.`,
+      message: `Cannot execute "${action}" on "${server.name}" because the server is currently STOPPED. Please start the host server first.`,
+      output: `Server status is "${server.status}". Host must be running to execute commands via SSH.`,
     };
   }
 
   switch (action) {
     case 'detect': {
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(server._id, { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } });
+      await Server.updateOne(
+        { _id: server._id },
+        { $set: { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } } }
+      );
       return {
         success: true,
         message: probe.sonarqube.detected
@@ -961,7 +965,10 @@ fi
       `;
       const res = await executeSSH(server, cmd, 20000);
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(server._id, { 'sonarqube.status': probe.sonarqube.status, 'sonarqube.lastSyncedAt': new Date() });
+      await Server.updateOne(
+        { _id: server._id },
+        { $set: { 'sonarqube.status': probe.sonarqube.status, 'sonarqube.lastSyncedAt': new Date() } }
+      );
       return {
         success: probe.sonarqube.status === 'running',
         message: probe.sonarqube.status === 'running' ? 'SonarQube started successfully' : 'Failed to start SonarQube',
@@ -978,7 +985,10 @@ elif systemctl list-unit-files 2>/dev/null | grep -qE 'sonar(qube)?\\.service'; 
 fi
       `;
       const res = await executeSSH(server, cmd, 20000);
-      await updateDevopsMetadata(server._id, { 'sonarqube.status': 'stopped', 'sonarqube.lastSyncedAt': new Date() });
+      await Server.updateOne(
+        { _id: server._id },
+        { $set: { 'sonarqube.status': 'stopped', 'sonarqube.lastSyncedAt': new Date() } }
+      );
       return { success: true, message: 'SonarQube stopped successfully', output: res.stdout };
     }
 
@@ -992,7 +1002,10 @@ fi
       `;
       const res = await executeSSH(server, cmd, 25000);
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(server._id, { 'sonarqube.status': probe.sonarqube.status, 'sonarqube.lastSyncedAt': new Date() });
+      await Server.updateOne(
+        { _id: server._id },
+        { $set: { 'sonarqube.status': probe.sonarqube.status, 'sonarqube.lastSyncedAt': new Date() } }
+      );
       return {
         success: probe.sonarqube.status === 'running',
         message: probe.sonarqube.status === 'running' ? 'SonarQube restarted successfully' : 'Failed to restart SonarQube',
@@ -1046,7 +1059,10 @@ $DOCKER_CMD ps --filter "name=sonarqube"
 
       const res = await executeSSH(server, installScript, 120000);
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(server._id, { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } });
+      await Server.updateOne(
+        { _id: server._id },
+        { $set: { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } } }
+      );
 
       return {
         success: probe.sonarqube.detected,
@@ -1071,12 +1087,11 @@ if $DOCKER_CMD ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^sonarqube$'; 
   $DOCKER_CMD rm sonarqube 2>/dev/null || true
 fi
 
-${
-  !preserve
-    ? `echo "Purging persistent Docker volumes..."
+${!preserve
+          ? `echo "Purging persistent Docker volumes..."
        $DOCKER_CMD volume rm sonarqube_data sonarqube_extensions sonarqube_logs 2>/dev/null || true`
-    : `echo "Persistent volumes sonarqube_data preserved."`
-}
+          : `echo "Persistent volumes sonarqube_data preserved."`
+        }
 
 if systemctl list-unit-files 2>/dev/null | grep -qE 'sonar(qube)?\\.service'; then
   sudo systemctl stop sonar 2>/dev/null || sudo systemctl stop sonarqube 2>/dev/null || true
@@ -1086,7 +1101,10 @@ fi
 
       const res = await executeSSH(server, uninstallScript, 60000);
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(server._id, { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } });
+      await Server.updateOne(
+        { _id: server._id },
+        { $set: { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } } }
+      );
 
       return {
         success: !probe.sonarqube.detected,
@@ -1108,12 +1126,11 @@ export async function executeTrivyAction(
   options: { target?: string; severity?: string } = {}
 ): Promise<{ success: boolean; message: string; output: string; scanResult?: any }> {
   const sStatus = (server.status || '').toLowerCase();
-  const isOnline = sStatus === 'online' || sStatus === 'running';
-  if (!isOnline && action !== 'detect') {
-    const isStopped = sStatus.includes('stop') || sStatus.includes('deallocat');
+  const isStopped = sStatus.includes('stop') || sStatus === 'offline';
+  if (isStopped && action !== 'detect') {
     return {
       success: false,
-      message: `Cannot execute Trivy "${action}" on "${server.name}" because the server is currently ${isStopped ? 'STOPPED' : server.status || 'UNREACHABLE'}. Please ensure the host server is running and reachable first.`,
+      message: `Cannot execute Trivy "${action}" on "${server.name}" because the server is currently STOPPED. Please start the host server first.`,
       output: `Server status is "${server.status}". Host must be running to execute Trivy via SSH.`,
     };
   }
@@ -1121,7 +1138,10 @@ export async function executeTrivyAction(
     case 'detect':
     case 'version': {
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(server._id, { trivy: { ...probe.trivy, lastSyncedAt: new Date() } });
+      await Server.updateOne(
+        { _id: server._id },
+        { $set: { trivy: { ...probe.trivy, lastSyncedAt: new Date() } } }
+      );
       return {
         success: probe.trivy.detected,
         message: probe.trivy.detected
@@ -1133,8 +1153,8 @@ export async function executeTrivyAction(
 
     case 'install': {
       // 1. Check if already installed
-      const check = await executeSSH(server, `command -v trivy >/dev/null 2>&1 && echo "EXISTS" || echo "NOT_EXISTS"`);
-      if (check.stdout.includes('EXISTS')) {
+      const check = await executeSSH(server, `(command -v trivy || [ -x /usr/local/bin/trivy ] || [ -x /usr/bin/trivy ]) >/dev/null 2>&1 && echo "ALREADY_INSTALLED" || echo "MISSING"`);
+      if (check.stdout.includes('ALREADY_INSTALLED')) {
         return { success: true, message: 'Trivy is already installed on this server', output: check.stdout };
       }
 
@@ -1167,6 +1187,7 @@ if [ "$INSTALLED" -eq 0 ] && ! command -v trivy >/dev/null 2>&1; then
   echo "Trying Aqua official installation script..."
   if curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin; then
     echo "Trivy installed successfully via official script."
+    sudo ln -sf /usr/local/bin/trivy /usr/bin/trivy 2>/dev/null || true
     INSTALLED=1
   fi
 fi
@@ -1180,6 +1201,7 @@ if [ "$INSTALLED" -eq 0 ] && ! command -v trivy >/dev/null 2>&1; then
   wget -q https://github.com/aquasecurity/trivy/releases/download/v0.59.1/trivy_0.59.1_Linux-\${TRIVY_ARCH}.tar.gz -O /tmp/trivy.tar.gz
   sudo tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
   sudo chmod +x /usr/local/bin/trivy
+  sudo ln -sf /usr/local/bin/trivy /usr/bin/trivy 2>/dev/null || true
   rm -f /tmp/trivy.tar.gz
 fi
 
@@ -1188,7 +1210,10 @@ which trivy || /usr/local/bin/trivy --version
 
       const res = await executeSSH(server, installScript, 180000); // 3 minute timeout
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(server._id, { trivy: { ...probe.trivy, lastSyncedAt: new Date() } });
+      await updateDevopsMetadata(
+        server._id,
+        { trivy: { ...probe.trivy, lastSyncedAt: new Date() } }
+      );
 
       return {
         success: probe.trivy.detected,
@@ -1207,7 +1232,10 @@ echo "Trivy CLI removed successfully."
       `;
       const res = await executeSSH(server, uninstallScript, 30000);
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(server._id, { trivy: { ...probe.trivy, lastSyncedAt: new Date() } });
+      await updateDevopsMetadata(
+        server._id,
+        { trivy: { ...probe.trivy, lastSyncedAt: new Date() } }
+      );
 
       return {
         success: !probe.trivy.detected,
@@ -1343,7 +1371,7 @@ echo "Trivy CLI removed successfully."
             });
           }
         }
-      } catch {}
+      } catch { }
 
       const hostIp = server.publicIp || server.host || server.privateIp;
       const scanDoc = await TrivyScanResult.create({
@@ -1360,11 +1388,16 @@ echo "Trivy CLI removed successfully."
         scannedAt: new Date(),
       });
 
-      await updateDevopsMetadata(server._id, {
-        'trivy.lastScanAt': new Date(),
-        'trivy.lastScanTarget': targetPath,
-        'trivy.lastScanSummary': summary,
-      });
+      await Server.updateOne(
+        { _id: server._id },
+        {
+          $set: {
+            'trivy.lastScanAt': new Date(),
+            'trivy.lastScanTarget': targetPath,
+            'trivy.lastScanSummary': summary,
+          },
+        }
+      );
 
       return {
         success: true,
