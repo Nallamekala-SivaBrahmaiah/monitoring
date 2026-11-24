@@ -8,7 +8,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { action, target, severity } = body;
+    const { action, target, severity, customCommands, verificationCommands } = body;
 
     if (!action || !['install', 'uninstall', 'scan_image', 'scan_fs', 'version', 'detect'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action provided' }, { status: 400 });
@@ -19,7 +19,7 @@ export async function POST(
       return NextResponse.json({ error: `Server not found with ID ${id}` }, { status: 404 });
     }
 
-    const result = await executeTrivyAction(server, action, { target, severity });
+    const result = await executeTrivyAction(server, action, { target, severity, customCommands, verificationCommands });
     return NextResponse.json(result);
   } catch (err: any) {
     console.error('[TrivyActionAPI] Error:', err);

@@ -8,7 +8,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { action, preserveData, port } = body;
+    const { action, preserveData, port, customCommands, verificationCommands } = body;
 
     if (!action || !['start', 'stop', 'restart', 'install', 'uninstall', 'detect'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action provided' }, { status: 400 });
@@ -19,7 +19,7 @@ export async function POST(
       return NextResponse.json({ error: `Server not found with ID ${id}` }, { status: 404 });
     }
 
-    const result = await executeSonarQubeAction(server, action, { preserveData, port });
+    const result = await executeSonarQubeAction(server, action, { preserveData, port, customCommands, verificationCommands });
     return NextResponse.json(result);
   } catch (err: any) {
     console.error('[SonarQubeActionAPI] Error:', err);

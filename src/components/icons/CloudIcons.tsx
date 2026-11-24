@@ -712,82 +712,123 @@ export function LogsIcon({ className = 'w-5 h-5' }: { className?: string }) {
 
 export function JenkinsLogo({ className = 'w-5 h-5' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <defs>
-        <linearGradient id="jenkinsGrad_sb" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#D33833" />
-          <stop offset="100%" stopColor="#9E1E1A" />
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#jenkinsGrad_sb)" />
-      {/* Hat brim & crown */}
-      <path d="M7 8h10M8.5 8V5.5h7V8" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="round" />
-      {/* Face contour */}
-      <path d="M8.5 8.5C8.5 12 10 13.5 12 13.5S15.5 12 15.5 8.5" fill="#FFE0B2" stroke="#FFFFFF" strokeWidth="0.8" />
-      {/* Eyes & Mustache */}
-      <circle cx="10.5" cy="10" r="0.6" fill="#3E2723" />
-      <circle cx="13.5" cy="10" r="0.6" fill="#3E2723" />
-      <path d="M10 12c1 0.6 3 0.6 4 0" stroke="#3E2723" strokeWidth="0.8" strokeLinecap="round" />
-      {/* Red bow tie & collar */}
-      <path d="M10 14.5l2 1 2-1-2 2.5-2-2.5z" fill="#FFFFFF" />
-      <circle cx="12" cy="15" r="0.8" fill="#D33833" />
-      {/* Suit lapels */}
-      <path d="M8 19l2.5-4 1.5 1 1.5-1 2.5 4" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      {/* Official Jenkins Butler */}
+      {/* Tuxedo Coat & Shoulders */}
+      <path
+        d="M6 30c0-6 4-9 10-9s10 3 10 9"
+        fill="#1E272E"
+      />
+      {/* White Shirt Collar & Chest */}
+      <path
+        d="M12 21l4 5 4-5h-8z"
+        fill="#FFFFFF"
+      />
+      {/* Red Bow Tie */}
+      <path
+        d="M13.5 21.5l2.5 1.5 2.5-1.5-2.5 3-2.5-3z"
+        fill="#D33833"
+      />
+      <circle cx="16" cy="22.2" r="1" fill="#B71C1C" />
+      {/* Coat Lapels */}
+      <path
+        d="M10 23l4 4M22 23l-4 4"
+        stroke="#111827"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      {/* White Hair (Sideburns) */}
+      <ellipse cx="10" cy="15" rx="3" ry="4" fill="#E2E8F0" />
+      <ellipse cx="22" cy="15" rx="3" ry="4" fill="#E2E8F0" />
+      {/* Head / Face */}
+      <path
+        d="M11 11.5C11 7 21 7 21 11.5c0 5-2.5 8.5-5 8.5s-5-3.5-5-8.5z"
+        fill="#F9CCA4"
+      />
+      {/* Rosy Cheek Accent */}
+      <circle cx="12.5" cy="15" r="1.2" fill="#F87171" opacity="0.35" />
+      <circle cx="19.5" cy="15" r="1.2" fill="#F87171" opacity="0.35" />
+      {/* Eyes */}
+      <ellipse cx="13.5" cy="13" rx="0.9" ry="1.2" fill="#2C3E50" />
+      <ellipse cx="18.5" cy="13" rx="0.9" ry="1.2" fill="#2C3E50" />
+      <circle cx="13.8" cy="12.6" r="0.4" fill="#FFFFFF" />
+      <circle cx="18.8" cy="12.6" r="0.4" fill="#FFFFFF" />
+      {/* Eyebrows */}
+      <path d="M12.5 11.2c.8-.5 1.8-.4 2.2 0M17.3 11.2c.4-.4 1.4-.5 2.2 0" stroke="#718096" strokeWidth="0.8" strokeLinecap="round" />
+      {/* Nose */}
+      <path d="M16 13v2.2l-.6.4" stroke="#D97706" strokeWidth="0.7" strokeLinecap="round" />
+      {/* Mustache */}
+      <path
+        d="M13 16.5c1.5.8 3 .2 3 .2s1.5.6 3-.2c.5-.3.2-.8-.4-.7-1 .2-2-.3-2.6-.7 0 0-.6.5-1.6.7-.6-.1-.9.4-.4.7z"
+        fill="#2D3748"
+      />
+      {/* Black Top Hat Crown */}
+      <path
+        d="M11.5 3h9c.5 0 1 .5 1 1v6.5h-11V4c0-.5.5-1 1-1z"
+        fill="#1E272E"
+      />
+      {/* Red Ribbon on Hat */}
+      <rect x="10.5" y="8.5" width="11" height="2" fill="#D33833" />
+      {/* Hat Brim */}
+      <ellipse cx="16" cy="10.8" rx="8" ry="1.6" fill="#2D3748" />
     </svg>
   );
 }
 
 export function SonarQubeLogo({ className = 'w-5 h-5' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <defs>
-        <linearGradient id="sonarGrad_sb" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#4B9FD5" />
-          <stop offset="100%" stopColor="#195589" />
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="20" height="20" rx="5" fill="#0B132B" stroke="#1E293B" />
-      {/* Iconic Sonar curved radar wave arcs */}
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      {/* Official SonarQube Concentric Waves */}
       <path
-        d="M6 18c0-6.627 5.373-12 12-12"
+        d="M6 26C6 14.954 14.954 6 26 6"
         stroke="#4B9FD5"
-        strokeWidth="2.2"
+        strokeWidth="3.2"
         strokeLinecap="round"
       />
       <path
-        d="M6 18c0-3.866 3.134-7 7-7"
-        stroke="#00D4FF"
-        strokeWidth="2.2"
+        d="M6 26C6 17.716 12.716 11 21 11"
+        stroke="#2080F0"
+        strokeWidth="3.2"
         strokeLinecap="round"
       />
-      <circle cx="7.5" cy="16.5" r="2" fill="#FFFFFF" />
+      <path
+        d="M6 26C6 20.477 10.477 16 16 16"
+        stroke="#00D4FF"
+        strokeWidth="3.2"
+        strokeLinecap="round"
+      />
+      <circle cx="7.5" cy="24.5" r="2.5" fill="#FFFFFF" />
     </svg>
   );
 }
 
 export function TrivyLogo({ className = 'w-5 h-5' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <defs>
-        <linearGradient id="trivyGrad_sb" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#19B9B9" />
-          <stop offset="100%" stopColor="#0B6B6B" />
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#trivyGrad_sb)" />
-      {/* Security Shield */}
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      {/* Official Aqua Security Trivy Shield & Scanner Emblem */}
       <path
-        d="M12 4.5l6 2.5v5c0 4-3 7-6 8-3-1-6-4-6-8v-5l6-2.5z"
-        fill="#072C2C"
-        stroke="#4EFFFF"
-        strokeWidth="1.2"
+        d="M16 2.5L27 6.5V15C27 21.8 22.3 26.8 16 29.5 9.7 26.8 5 21.8 5 15V6.5L16 2.5Z"
+        fill="#073B4C"
+        stroke="#19B9B9"
+        strokeWidth="2.2"
         strokeLinejoin="round"
       />
-      {/* Trivy Scanner geometric check/lock accent */}
+      {/* Scanner Radar Beam Grid */}
       <path
-        d="M9 12l2 2 4-4"
-        stroke="#4EFFFF"
-        strokeWidth="1.8"
+        d="M16 7v18M8 15h16"
+        stroke="#00D4FF"
+        strokeWidth="1"
+        strokeDasharray="2 2"
+        opacity="0.6"
+      />
+      {/* Trivy Target Reticle */}
+      <circle cx="16" cy="15" r="6" stroke="#4EFFFF" strokeWidth="1.8" />
+      <circle cx="16" cy="15" r="2.2" fill="#00FFFF" />
+      {/* Diagonal Check Accent */}
+      <path
+        d="M12.5 15l2.5 2.5 5-5"
+        stroke="#FFFFFF"
+        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

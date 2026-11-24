@@ -5,6 +5,7 @@ import { convertPPKToOpenSSH } from '@/lib/serverMonitoring/ppkConverter';
 import Server from '@/models/Server';
 import TrivyScanResult, { ITrivyVulnerability } from '@/models/TrivyScanResult';
 import connectToDatabase from '@/lib/mongodb';
+import DevopsToolConfig from '@/models/DevopsToolConfig';
 
 export interface IDevopsServerInfo {
   id: string;
@@ -227,9 +228,13 @@ export async function updateDevopsMetadata(serverId: any, updateFields: Record<s
       else if (k === 'trivy' || k.startsWith('trivy.')) crFields[`metadata.${k}`] = v;
       else crFields[k] = v;
     }
+    const filter = mongoose.isValidObjectId(serverId)
+      ? { _id: serverId }
+      : { $or: [{ _id: serverId }, { resourceId: serverId }, { name: serverId }, { host: serverId }] };
+
     await Promise.allSettled([
-      Server.updateOne({ _id: serverId }, { $set: updateFields }),
-      CloudResource.updateOne({ _id: serverId }, { $set: crFields }),
+      Server.updateOne(filter, { $set: updateFields }),
+      CloudResource.updateOne(filter, { $set: crFields }),
     ]);
   } catch (err: any) {
     console.warn('[updateDevopsMetadata] Warning:', err?.message);
@@ -260,11 +265,7 @@ export async function executeSSH(
       }, timeoutMs + 2000);
 
       conn.on('ready', () => {
-        const fullCmd = `
-          export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-          ${command}
-        `;
-        conn!.exec(fullCmd, (err, stream) => {
+        conn!.exec('bash -s', (err, stream) => {
           if (err) {
             if (timer) clearTimeout(timer);
             conn!.end();
@@ -286,6 +287,9 @@ export async function executeSSH(
           stream.stderr.on('data', (d: Buffer) => {
             stderr += d.toString();
           });
+
+          const fullCmd = `export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"\n${command}\n`;
+          stream.end(fullCmd);
         });
       });
 
@@ -664,21 +668,24 @@ export async function getDevopsServers(doSync: boolean = false): Promise<IDevops
         );
       } catch { }
     } else {
+      const isJenkinsDetected = Boolean(s.jenkins?.detected);
       toolState = {
         jenkins: {
-          detected: s.jenkins?.detected || false,
-          status: s.jenkins?.status || (isStopped ? 'not_installed' : 'unreachable'),
-          version: s.jenkins?.version || '',
-          port: s.jenkins?.port || 8080,
-          url: s.jenkins?.url || (s.jenkins?.detected ? `http://${hostIp}:${s.jenkins?.port || 8080}` : ''),
-          installDate: s.jenkins?.installDate || '',
+          detected: isJenkinsDetected,
+          status: isJenkinsDetected
+            ? (s.jenkins?.status || (isStopped ? 'stopped' : 'running'))
+            : 'not_installed',
+          version: isJenkinsDetected ? (s.jenkins?.version || '') : '',
+          port: isJenkinsDetected ? (s.jenkins?.port || 8080) : 8080,
+          url: isJenkinsDetected ? (s.jenkins?.url || `http://${hostIp}:${s.jenkins?.port || 8080}`) : '',
+          installDate: isJenkinsDetected ? (s.jenkins?.installDate || '') : '',
           serviceName: s.jenkins?.serviceName || 'jenkins',
           lastSyncedAt: s.jenkins?.lastSyncedAt ? new Date(s.jenkins.lastSyncedAt).toISOString() : undefined,
           lastError: isStopped ? 'Server is Stopped' : (s.jenkins?.lastError || null),
         },
         sonarqube: {
           detected: s.sonarqube?.detected || false,
-          status: s.sonarqube?.status || (isStopped ? 'not_installed' : 'unreachable'),
+          status: s.sonarqube?.status || (isStopped || !s.sonarqube?.detected ? 'not_installed' : 'unreachable'),
           version: s.sonarqube?.version || '',
           port: s.sonarqube?.port || 9000,
           url: s.sonarqube?.url || '',
@@ -690,7 +697,7 @@ export async function getDevopsServers(doSync: boolean = false): Promise<IDevops
         },
         trivy: {
           detected: s.trivy?.detected || false,
-          status: s.trivy?.status || (isStopped ? 'not_installed' : 'unreachable'),
+          status: s.trivy?.status || (isStopped || !s.trivy?.detected ? 'not_installed' : 'unreachable'),
           version: s.trivy?.version || '',
           installMethod: s.trivy?.installMethod || 'unknown',
           lastSyncedAt: s.trivy?.lastSyncedAt ? new Date(s.trivy.lastSyncedAt).toISOString() : undefined,
@@ -721,13 +728,41 @@ export async function syncDevopsServers(): Promise<IDevopsServerInfo[]> {
 }
 
 /**
+ * Standard robust apt/dpkg lock release helper script for non-interactive commands
+ */
+const APT_LOCK_WAIT_SCRIPT = `
+wait_for_apt_lock() {
+  _max_wait=45
+  _count=0
+  while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+    echo "Waiting for apt/dpkg lock to be released (\$_count/\$_max_wait)..."
+    sleep 2
+    _count=\$((_count+2))
+    if [ \$_count -ge \$_max_wait ]; then
+      echo "Force releasing stale apt locks..."
+      sudo killall apt apt-get dpkg 2>/dev/null || true
+      sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock
+      break
+    fi
+  done
+  sudo dpkg --configure -a 2>/dev/null || true
+}
+`;
+
+/**
  * Execute Jenkins management actions
  */
 export async function executeJenkinsAction(
   server: any,
   action: 'start' | 'stop' | 'restart' | 'install' | 'uninstall' | 'detect',
-  options: { preserveData?: boolean; port?: number } = {}
-): Promise<{ success: boolean; message: string; output: string }> {
+  options: {
+    preserveData?: boolean;
+    port?: number;
+    customCommands?: string;
+    verificationCommands?: string;
+  } = {}
+): Promise<{ success: boolean; message: string; output: string; jenkins?: IDevopsServerInfo['jenkins'] }> {
+  const hostIp = server.publicIp || server.host || server.privateIp;
   const jenkinsPort = options.port || 8080;
 
   const sStatus = (server.status || '').toLowerCase();
@@ -740,19 +775,26 @@ export async function executeJenkinsAction(
     };
   }
 
+  let toolConfig: any = null;
+  try {
+    toolConfig = await DevopsToolConfig.findOne({ tool: 'jenkins' }).lean();
+  } catch (err) {
+    console.warn('[executeJenkinsAction] Warning loading DevopsToolConfig:', err);
+  }
+
   switch (action) {
     case 'detect': {
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { jenkins: { ...probe.jenkins, lastSyncedAt: new Date() } } }
-      );
+      await updateDevopsMetadata(server._id, {
+        jenkins: { ...probe.jenkins, lastSyncedAt: new Date() },
+      });
       return {
         success: true,
         message: probe.jenkins.detected
           ? `Jenkins detected: ${probe.jenkins.version || 'Version detected'} (${probe.jenkins.status}) on port ${probe.jenkins.port}`
           : 'Jenkins is not installed on this server',
         output: JSON.stringify(probe.jenkins, null, 2),
+        jenkins: probe.jenkins,
       };
     }
 
@@ -760,77 +802,102 @@ export async function executeJenkinsAction(
       const cmd = `sudo systemctl start jenkins && sleep 2 && systemctl is-active jenkins`;
       const res = await executeSSH(server, cmd, 20000);
       const isRunning = res.stdout.trim() === 'active';
-      if (isRunning) {
-        await updateDevopsMetadata(
-          server._id,
-          { 'jenkins.status': 'running', 'jenkins.lastSyncedAt': new Date() }
-        );
-        return { success: true, message: 'Jenkins service started successfully', output: res.stdout };
-      }
-      return { success: false, message: `Failed to start Jenkins: ${res.stderr || res.stdout}`, output: res.stderr || res.stdout };
+      const probe = await probeDevopsTools(server);
+      const updatedStatus = isRunning ? 'running' : probe.jenkins.status;
+      await updateDevopsMetadata(server._id, {
+        'jenkins.status': updatedStatus,
+        'jenkins.lastSyncedAt': new Date(),
+      });
+      return {
+        success: isRunning,
+        message: isRunning ? 'Jenkins service started successfully' : `Failed to start Jenkins: ${res.stderr || res.stdout}`,
+        output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
+        jenkins: {
+          ...probe.jenkins,
+          status: updatedStatus,
+        },
+      };
     }
 
     case 'stop': {
       const cmd = `sudo systemctl stop jenkins && sleep 1 && (systemctl is-active jenkins || true)`;
       const res = await executeSSH(server, cmd, 20000);
-      await updateDevopsMetadata(
-        server._id,
-        { 'jenkins.status': 'stopped', 'jenkins.lastSyncedAt': new Date() }
-      );
-      return { success: true, message: 'Jenkins service stopped successfully', output: res.stdout };
+      const probe = await probeDevopsTools(server);
+      await updateDevopsMetadata(server._id, {
+        'jenkins.status': 'stopped',
+        'jenkins.lastSyncedAt': new Date(),
+      });
+      return {
+        success: true,
+        message: 'Jenkins service stopped successfully',
+        output: res.stdout,
+        jenkins: {
+          ...probe.jenkins,
+          status: 'stopped',
+        },
+      };
     }
 
     case 'restart': {
       const cmd = `sudo systemctl restart jenkins && sleep 2 && systemctl is-active jenkins`;
       const res = await executeSSH(server, cmd, 25000);
       const isRunning = res.stdout.trim() === 'active';
-      if (isRunning) {
-        await updateDevopsMetadata(
-          server._id,
-          { 'jenkins.status': 'running', 'jenkins.lastSyncedAt': new Date() }
-        );
-        return { success: true, message: 'Jenkins restarted successfully', output: res.stdout };
-      }
-      return { success: false, message: `Failed to restart Jenkins: ${res.stderr || res.stdout}`, output: res.stderr || res.stdout };
+      const probe = await probeDevopsTools(server);
+      const updatedStatus = isRunning ? 'running' : probe.jenkins.status;
+      await updateDevopsMetadata(server._id, {
+        'jenkins.status': updatedStatus,
+        'jenkins.lastSyncedAt': new Date(),
+      });
+      return {
+        success: isRunning,
+        message: isRunning ? 'Jenkins restarted successfully' : `Failed to restart Jenkins: ${res.stderr || res.stdout}`,
+        output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
+        jenkins: {
+          ...probe.jenkins,
+          status: updatedStatus,
+        },
+      };
     }
 
     case 'install': {
-      // 1. Check if already installed
-      const check = await executeSSH(server, `(command -v jenkins || [ -f /usr/share/java/jenkins.war ]) >/dev/null 2>&1 && echo "ALREADY_INSTALLED" || echo "MISSING"`);
-      if (check.stdout.includes('ALREADY_INSTALLED')) {
-        return { success: true, message: 'Jenkins is already installed on this server', output: check.stdout };
-      }
+      const customInstall = options.customCommands?.trim() || toolConfig?.installCommands?.trim();
+      const customVerify = options.verificationCommands?.trim() || toolConfig?.verificationCommands?.trim();
 
-      // 2. Safe official Debian/Ubuntu Jenkins installation with OpenJDK 21 (required by modern Jenkins 2.500+)
-      const installScript = `
+      const defaultInstallScript = `
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
+
+${APT_LOCK_WAIT_SCRIPT}
+wait_for_apt_lock
 
 echo "Updating package indices..."
 sudo apt-get update -y || true
 
-echo "Installing OpenJDK 21 and essential prerequisites..."
-sudo apt-get install -y fontconfig openjdk-21-jre openjdk-21-jdk wget curl gnupg
+wait_for_apt_lock
+echo "Installing OpenJDK Java and essential prerequisites..."
+sudo apt-get install -y fontconfig openjdk-21-jre-headless openjdk-21-jdk-headless wget curl gnupg || \\
+sudo apt-get install -y fontconfig openjdk-17-jre-headless openjdk-17-jdk-headless wget curl gnupg
 
-# Set Java 21 as default alternative if multiple exist
+# Set Java alternative if needed
 sudo update-java-alternatives --set java-1.21.0-openjdk-amd64 2>/dev/null || true
 
 echo "Setting up Jenkins official repository key..."
 sudo mkdir -p /etc/apt/keyrings
 sudo chmod 755 /etc/apt/keyrings
 
-# Download official Jenkins 2026 key (or fallback to 2023 key / keyserver)
-if ! curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key | sudo tee /etc/apt/keyrings/jenkins-keyring.asc > /dev/null; then
-  curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /etc/apt/keyrings/jenkins-keyring.asc > /dev/null
+if ! curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /etc/apt/keyrings/jenkins-keyring.asc > /dev/null; then
+  wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /etc/apt/keyrings/jenkins-keyring.asc > /dev/null
 fi
 sudo chmod 644 /etc/apt/keyrings/jenkins-keyring.asc
 
 echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
 
+wait_for_apt_lock
 echo "Updating package index with Jenkins repo..."
 sudo apt-get update -y
 
-echo "Installing Jenkins..."
+wait_for_apt_lock
+echo "Installing Jenkins package..."
 sudo apt-get install -y jenkins
 
 ${jenkinsPort !== 8080 ? `
@@ -846,71 +913,165 @@ sudo systemctl enable jenkins
 sudo systemctl restart jenkins
 
 # Wait for Jenkins JVM to start and initialize
+echo "Waiting for Jenkins JVM service to initialize..."
 for i in $(seq 1 30); do
   if systemctl is-active --quiet jenkins; then
+    echo "Jenkins service active."
     break
   fi
   sleep 1
 done
 systemctl is-active jenkins
-jenkins --version || true
+jenkins --version 2>/dev/null || true
+      `;
+
+      const scriptToRun = customInstall || defaultInstallScript;
+      const verifyBlock = customVerify ? `\necho "=== Running Verification Commands ==="\n${customVerify}\n` : '';
+
+      const installScript = `
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+${scriptToRun}
+${verifyBlock}
       `;
 
       const res = await executeSSH(server, installScript, 240000); // 4 minute timeout for package download
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(
-        server._id,
-        { jenkins: { ...probe.jenkins, lastSyncedAt: new Date() } }
-      );
+      const isDetected = probe.jenkins.detected;
+
+      try {
+        await DevopsToolConfig.updateOne(
+          { tool: 'jenkins' },
+          {
+            $set: {
+              lastExecutionAt: new Date(),
+              lastExecutionStatus: isDetected ? 'success' : 'failed',
+              lastExecutionServerName: server.name || hostIp,
+              lastExecutionServerHost: hostIp,
+              lastExecutionAction: 'install',
+              lastExecutionLog: (res.stdout + (res.stderr ? '\n' + res.stderr : '')).trim(),
+              lastExecutionExitCode: res.code,
+            },
+          },
+          { upsert: true }
+        );
+      } catch {}
+
+      await updateDevopsMetadata(server._id, {
+        jenkins: { ...probe.jenkins, lastSyncedAt: new Date() },
+      });
 
       return {
-        success: probe.jenkins.detected,
-        message: probe.jenkins.detected
-          ? `Jenkins successfully installed (v${probe.jenkins.version}) on port ${probe.jenkins.port}`
+        success: isDetected,
+        message: isDetected
+          ? `Jenkins successfully installed (v${probe.jenkins.version || 'installed'}) on port ${probe.jenkins.port}`
           : `Installation encountered an issue: ${res.stderr || res.stdout}`,
         output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
+        jenkins: probe.jenkins,
       };
     }
 
     case 'uninstall': {
       const preserve = options.preserveData !== false;
-      const uninstallScript = preserve
-        ? `
+      const customUninstall = options.customCommands?.trim() || toolConfig?.uninstallCommands?.trim();
+      const customVerify = options.verificationCommands?.trim() || toolConfig?.verificationCommands?.trim();
+
+      const defaultUninstallScript = `
+export DEBIAN_FRONTEND=noninteractive
+echo "Stopping and disabling Jenkins service..."
 sudo systemctl stop jenkins 2>/dev/null || true
 sudo systemctl disable jenkins 2>/dev/null || true
-sudo pkill -9 -f 'jenkins.war' 2>/dev/null || true
-sudo apt-get remove -y jenkins 2>/dev/null || true
-sudo rm -f /usr/share/java/jenkins.war /usr/bin/jenkins /etc/apt/sources.list.d/jenkins.list /etc/apt/keyrings/jenkins-keyring.asc /usr/share/keyrings/jenkins-keyring.asc
-sudo rm -rf /etc/systemd/system/jenkins.service.d
-echo "Jenkins removed. Configurations in /var/lib/jenkins preserved."
-        `
-        : `
-sudo systemctl stop jenkins 2>/dev/null || true
-sudo systemctl disable jenkins 2>/dev/null || true
-sudo pkill -9 -f 'jenkins.war' 2>/dev/null || true
+sudo pkill -9 -f 'jenkins' 2>/dev/null || true
+
+${APT_LOCK_WAIT_SCRIPT}
+wait_for_apt_lock
+
+echo "Purging Jenkins package..."
+sudo dpkg --purge --force-all jenkins 2>/dev/null || true
 sudo apt-get purge -y jenkins 2>/dev/null || true
-sudo rm -rf /var/lib/jenkins /etc/default/jenkins /usr/share/java/jenkins.war /usr/bin/jenkins /etc/apt/sources.list.d/jenkins.list /etc/apt/keyrings/jenkins-keyring.asc /usr/share/keyrings/jenkins-keyring.asc /etc/systemd/system/jenkins.service.d
-echo "Jenkins completely purged."
-        `;
+sudo apt-get autoremove -y 2>/dev/null || true
+
+echo "Removing Jenkins binary, war, and service configuration artifacts..."
+sudo rm -f /usr/share/java/jenkins.war /usr/bin/jenkins /etc/apt/sources.list.d/jenkins.list /etc/apt/keyrings/jenkins-keyring.asc /usr/share/keyrings/jenkins-keyring.asc
+sudo rm -rf /etc/systemd/system/jenkins.service.d /etc/systemd/system/jenkins.service /lib/systemd/system/jenkins.service /usr/lib/systemd/system/jenkins.service
+
+if command -v docker >/dev/null 2>&1; then
+  sudo docker stop jenkins 2>/dev/null || true
+  sudo docker rm jenkins 2>/dev/null || true
+fi
+
+${!preserve
+  ? `echo "Purging all persistent Jenkins configurations, jobs, and logs..."
+     sudo rm -rf /var/lib/jenkins /var/log/jenkins /etc/default/jenkins /run/jenkins`
+  : `echo "Persistent configuration in /var/lib/jenkins preserved."`
+}
+
+sudo systemctl daemon-reload
+sudo systemctl reset-failed jenkins 2>/dev/null || true
+echo "Jenkins uninstallation complete."
+      `;
+
+      const scriptToRun = customUninstall || defaultUninstallScript;
+      const verifyBlock = customVerify ? `\necho "=== Running Verification Commands ==="\n${customVerify}\n` : '';
+
+      const uninstallScript = `
+export DEBIAN_FRONTEND=noninteractive
+${scriptToRun}
+${verifyBlock}
+      `;
 
       const res = await executeSSH(server, uninstallScript, 60000);
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(
-        server._id,
-        {
-          jenkins: {
-            ...probe.jenkins,
-            lastSyncedAt: new Date(),
+      const isDetected = probe.jenkins.detected;
+
+      try {
+        await DevopsToolConfig.updateOne(
+          { tool: 'jenkins' },
+          {
+            $set: {
+              lastExecutionAt: new Date(),
+              lastExecutionStatus: !isDetected ? 'success' : 'failed',
+              lastExecutionServerName: server.name || hostIp,
+              lastExecutionServerHost: hostIp,
+              lastExecutionAction: 'uninstall',
+              lastExecutionLog: (res.stdout + (res.stderr ? '\n' + res.stderr : '')).trim(),
+              lastExecutionExitCode: res.code,
+            },
           },
-        }
-      );
+          { upsert: true }
+        );
+      } catch {}
+
+      const jenkinsState: IDevopsServerInfo['jenkins'] = {
+        detected: isDetected,
+        status: isDetected ? probe.jenkins.status : 'not_installed',
+        version: isDetected ? probe.jenkins.version : '',
+        port: isDetected ? probe.jenkins.port : 8080,
+        url: isDetected ? probe.jenkins.url : '',
+        serviceName: 'jenkins',
+        installDate: isDetected ? probe.jenkins.installDate : '',
+        lastSyncedAt: new Date().toISOString(),
+        lastError: null,
+      };
+
+      await updateDevopsMetadata(server._id, {
+        'jenkins.detected': isDetected,
+        'jenkins.status': jenkinsState.status,
+        'jenkins.version': jenkinsState.version,
+        'jenkins.port': jenkinsState.port,
+        'jenkins.url': jenkinsState.url,
+        'jenkins.installDate': jenkinsState.installDate,
+        'jenkins.lastSyncedAt': new Date(),
+        'jenkins.lastError': null,
+      });
 
       return {
-        success: !probe.jenkins.detected,
-        message: !probe.jenkins.detected
-          ? 'Jenkins successfully uninstalled'
-          : 'Warning: Jenkins components may still be detected',
+        success: !isDetected,
+        message: !isDetected
+          ? `Jenkins successfully uninstalled ${preserve ? '(data preserved)' : '(completely purged)'}`
+          : 'Warning: Jenkins components may still be detected on server',
         output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
+        jenkins: jenkinsState,
       };
     }
   }
@@ -922,8 +1083,14 @@ echo "Jenkins completely purged."
 export async function executeSonarQubeAction(
   server: any,
   action: 'start' | 'stop' | 'restart' | 'install' | 'uninstall' | 'detect',
-  options: { preserveData?: boolean; port?: number } = {}
-): Promise<{ success: boolean; message: string; output: string }> {
+  options: {
+    preserveData?: boolean;
+    port?: number;
+    customCommands?: string;
+    verificationCommands?: string;
+  } = {}
+): Promise<{ success: boolean; message: string; output: string; sonarqube?: IDevopsServerInfo['sonarqube'] }> {
+  const hostIp = server.publicIp || server.host || server.privateIp;
   const port = options.port || 9000;
 
   const sStatus = (server.status || '').toLowerCase();
@@ -936,19 +1103,26 @@ export async function executeSonarQubeAction(
     };
   }
 
+  let toolConfig: any = null;
+  try {
+    toolConfig = await DevopsToolConfig.findOne({ tool: 'sonarqube' }).lean();
+  } catch (err) {
+    console.warn('[executeSonarQubeAction] Warning loading DevopsToolConfig:', err);
+  }
+
   switch (action) {
     case 'detect': {
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } } }
-      );
+      await updateDevopsMetadata(server._id, {
+        sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() },
+      });
       return {
         success: true,
         message: probe.sonarqube.detected
           ? `SonarQube detected: ${probe.sonarqube.version || 'Community'} (${probe.sonarqube.status}) on port ${probe.sonarqube.port}`
           : 'SonarQube is not installed on this server',
         output: JSON.stringify(probe.sonarqube, null, 2),
+        sonarqube: probe.sonarqube,
       };
     }
 
@@ -965,14 +1139,16 @@ fi
       `;
       const res = await executeSSH(server, cmd, 20000);
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { 'sonarqube.status': probe.sonarqube.status, 'sonarqube.lastSyncedAt': new Date() } }
-      );
+      const updatedStatus = probe.sonarqube.status;
+      await updateDevopsMetadata(server._id, {
+        'sonarqube.status': updatedStatus,
+        'sonarqube.lastSyncedAt': new Date(),
+      });
       return {
-        success: probe.sonarqube.status === 'running',
-        message: probe.sonarqube.status === 'running' ? 'SonarQube started successfully' : 'Failed to start SonarQube',
+        success: updatedStatus === 'running',
+        message: updatedStatus === 'running' ? 'SonarQube started successfully' : 'Failed to start SonarQube',
         output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
+        sonarqube: probe.sonarqube,
       };
     }
 
@@ -985,11 +1161,20 @@ elif systemctl list-unit-files 2>/dev/null | grep -qE 'sonar(qube)?\\.service'; 
 fi
       `;
       const res = await executeSSH(server, cmd, 20000);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { 'sonarqube.status': 'stopped', 'sonarqube.lastSyncedAt': new Date() } }
-      );
-      return { success: true, message: 'SonarQube stopped successfully', output: res.stdout };
+      const probe = await probeDevopsTools(server);
+      await updateDevopsMetadata(server._id, {
+        'sonarqube.status': 'stopped',
+        'sonarqube.lastSyncedAt': new Date(),
+      });
+      return {
+        success: true,
+        message: 'SonarQube stopped successfully',
+        output: res.stdout,
+        sonarqube: {
+          ...probe.sonarqube,
+          status: 'stopped',
+        },
+      };
     }
 
     case 'restart': {
@@ -1002,31 +1187,24 @@ fi
       `;
       const res = await executeSSH(server, cmd, 25000);
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { 'sonarqube.status': probe.sonarqube.status, 'sonarqube.lastSyncedAt': new Date() } }
-      );
+      const updatedStatus = probe.sonarqube.status;
+      await updateDevopsMetadata(server._id, {
+        'sonarqube.status': updatedStatus,
+        'sonarqube.lastSyncedAt': new Date(),
+      });
       return {
-        success: probe.sonarqube.status === 'running',
-        message: probe.sonarqube.status === 'running' ? 'SonarQube restarted successfully' : 'Failed to restart SonarQube',
+        success: updatedStatus === 'running',
+        message: updatedStatus === 'running' ? 'SonarQube restarted successfully' : 'Failed to restart SonarQube',
         output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
+        sonarqube: probe.sonarqube,
       };
     }
 
     case 'install': {
-      // 1. Verify Docker is available
-      const checkDocker = await executeSSH(server, `command -v docker >/dev/null 2>&1 && echo "DOCKER_OK" || echo "NO_DOCKER"`);
-      if (!checkDocker.stdout.includes('DOCKER_OK')) {
-        return {
-          success: false,
-          message: 'Docker is required to install SonarQube. Please install Docker first from the Docker module.',
-          output: 'Docker binary not found on host',
-        };
-      }
+      const customInstall = options.customCommands?.trim() || toolConfig?.installCommands?.trim();
+      const customVerify = options.verificationCommands?.trim() || toolConfig?.verificationCommands?.trim();
 
-      // 2. Configure kernel sysctl for Elasticsearch and run official sonarqube container
-      const installScript = `
-set -e
+      const defaultInstallScript = `
 echo "Configuring kernel sysctl parameters for SonarQube Elasticsearch..."
 sudo sysctl -w vm.max_map_count=524288 || true
 sudo sysctl -w fs.file-max=131072 || true
@@ -1039,43 +1217,82 @@ if ! docker ps >/dev/null 2>&1 && sudo -n docker ps >/dev/null 2>&1; then
 fi
 
 if $DOCKER_CMD ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^sonarqube$'; then
-  echo "Existing SonarQube container found. Starting it..."
-  $DOCKER_CMD start sonarqube
-else
-  echo "Deploying SonarQube Community container on port ${port}..."
-  $DOCKER_CMD run -d \\
-    --name sonarqube \\
-    -p ${port}:9000 \\
-    --restart always \\
-    -v sonarqube_data:/opt/sonarqube/data \\
-    -v sonarqube_extensions:/opt/sonarqube/extensions \\
-    -v sonarqube_logs:/opt/sonarqube/logs \\
-    sonarqube:community
+  echo "Existing SonarQube container found. Removing existing container to recreate with port ${port}..."
+  $DOCKER_CMD rm -f sonarqube 2>/dev/null || true
 fi
 
-sleep 5
+echo "Deploying SonarQube Community container on port ${port}..."
+$DOCKER_CMD run -d \\
+  --name sonarqube \\
+  -p ${port}:9000 \\
+  --restart always \\
+  -v sonarqube_data:/opt/sonarqube/data \\
+  -v sonarqube_extensions:/opt/sonarqube/extensions \\
+  -v sonarqube_logs:/opt/sonarqube/logs \\
+  sonarqube:community
+
+echo "Verifying SonarQube container status..."
+for i in $(seq 1 15); do
+  if [ "$($DOCKER_CMD inspect -f '{{.State.Running}}' sonarqube 2>/dev/null)" = "true" ]; then
+    echo "SonarQube container is active and running."
+    break
+  fi
+  sleep 1
+done
 $DOCKER_CMD ps --filter "name=sonarqube"
       `;
 
-      const res = await executeSSH(server, installScript, 120000);
+      const scriptToRun = customInstall || defaultInstallScript;
+      const verifyBlock = customVerify ? `\necho "=== Running Verification Commands ==="\n${customVerify}\n` : '';
+
+      const installScript = `
+export DEBIAN_FRONTEND=noninteractive
+${scriptToRun}
+${verifyBlock}
+      `;
+
+      const res = await executeSSH(server, installScript, 180000);
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } } }
-      );
+      const isDetected = probe.sonarqube.detected;
+
+      try {
+        await DevopsToolConfig.updateOne(
+          { tool: 'sonarqube' },
+          {
+            $set: {
+              lastExecutionAt: new Date(),
+              lastExecutionStatus: isDetected ? 'success' : 'failed',
+              lastExecutionServerName: server.name || hostIp,
+              lastExecutionServerHost: hostIp,
+              lastExecutionAction: 'install',
+              lastExecutionLog: (res.stdout + (res.stderr ? '\n' + res.stderr : '')).trim(),
+              lastExecutionExitCode: res.code,
+            },
+          },
+          { upsert: true }
+        );
+      } catch {}
+
+      await updateDevopsMetadata(server._id, {
+        sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() },
+      });
 
       return {
-        success: probe.sonarqube.detected,
-        message: probe.sonarqube.detected
-          ? `SonarQube installed and starting on port ${probe.sonarqube.port}`
+        success: isDetected,
+        message: isDetected
+          ? `SonarQube container deployed and starting on port ${probe.sonarqube.port}`
           : `Installation encountered an issue: ${res.stderr || res.stdout}`,
         output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
+        sonarqube: probe.sonarqube,
       };
     }
 
     case 'uninstall': {
       const preserve = options.preserveData !== false;
-      const uninstallScript = `
+      const customUninstall = options.customCommands?.trim() || toolConfig?.uninstallCommands?.trim();
+      const customVerify = options.verificationCommands?.trim() || toolConfig?.verificationCommands?.trim();
+
+      const defaultUninstallScript = `
 DOCKER_CMD="docker"
 if ! docker ps >/dev/null 2>&1 && sudo -n docker ps >/dev/null 2>&1; then
   DOCKER_CMD="sudo -n docker"
@@ -1084,34 +1301,89 @@ fi
 if $DOCKER_CMD ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^sonarqube$'; then
   echo "Stopping and removing SonarQube container..."
   $DOCKER_CMD stop sonarqube 2>/dev/null || true
-  $DOCKER_CMD rm sonarqube 2>/dev/null || true
+  $DOCKER_CMD rm -f sonarqube 2>/dev/null || true
 fi
-
-${!preserve
-          ? `echo "Purging persistent Docker volumes..."
-       $DOCKER_CMD volume rm sonarqube_data sonarqube_extensions sonarqube_logs 2>/dev/null || true`
-          : `echo "Persistent volumes sonarqube_data preserved."`
-        }
 
 if systemctl list-unit-files 2>/dev/null | grep -qE 'sonar(qube)?\\.service'; then
   sudo systemctl stop sonar 2>/dev/null || sudo systemctl stop sonarqube 2>/dev/null || true
+  sudo systemctl disable sonar 2>/dev/null || sudo systemctl disable sonarqube 2>/dev/null || true
   sudo rm -f /etc/systemd/system/sonar.service /etc/systemd/system/sonarqube.service
+  sudo systemctl daemon-reload
 fi
+
+${!preserve
+  ? `echo "Purging persistent Docker volumes..."
+     $DOCKER_CMD volume rm sonarqube_data sonarqube_extensions sonarqube_logs 2>/dev/null || true
+     sudo rm -rf /opt/sonarqube 2>/dev/null || true`
+  : `echo "Persistent volumes sonarqube_data preserved."`
+}
+echo "SonarQube uninstallation complete."
+      `;
+
+      const scriptToRun = customUninstall || defaultUninstallScript;
+      const verifyBlock = customVerify ? `\necho "=== Running Verification Commands ==="\n${customVerify}\n` : '';
+
+      const uninstallScript = `
+export DEBIAN_FRONTEND=noninteractive
+${scriptToRun}
+${verifyBlock}
       `;
 
       const res = await executeSSH(server, uninstallScript, 60000);
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { sonarqube: { ...probe.sonarqube, lastSyncedAt: new Date() } } }
-      );
+      const isDetected = probe.sonarqube.detected;
+
+      try {
+        await DevopsToolConfig.updateOne(
+          { tool: 'sonarqube' },
+          {
+            $set: {
+              lastExecutionAt: new Date(),
+              lastExecutionStatus: !isDetected ? 'success' : 'failed',
+              lastExecutionServerName: server.name || hostIp,
+              lastExecutionServerHost: hostIp,
+              lastExecutionAction: 'uninstall',
+              lastExecutionLog: (res.stdout + (res.stderr ? '\n' + res.stderr : '')).trim(),
+              lastExecutionExitCode: res.code,
+            },
+          },
+          { upsert: true }
+        );
+      } catch {}
+
+      const sonarqubeState: IDevopsServerInfo['sonarqube'] = {
+        detected: isDetected,
+        status: isDetected ? probe.sonarqube.status : 'not_installed',
+        version: isDetected ? probe.sonarqube.version : '',
+        port: isDetected ? probe.sonarqube.port : 9000,
+        url: isDetected ? probe.sonarqube.url : '',
+        mode: isDetected ? probe.sonarqube.mode : 'unknown',
+        containerId: isDetected ? probe.sonarqube.containerId : '',
+        healthStatus: isDetected ? probe.sonarqube.healthStatus : 'UNKNOWN',
+        lastSyncedAt: new Date().toISOString(),
+        lastError: null,
+      };
+
+      await updateDevopsMetadata(server._id, {
+        'sonarqube.detected': isDetected,
+        'sonarqube.status': sonarqubeState.status,
+        'sonarqube.version': sonarqubeState.version,
+        'sonarqube.port': sonarqubeState.port,
+        'sonarqube.url': sonarqubeState.url,
+        'sonarqube.mode': sonarqubeState.mode,
+        'sonarqube.containerId': sonarqubeState.containerId,
+        'sonarqube.healthStatus': sonarqubeState.healthStatus,
+        'sonarqube.lastSyncedAt': new Date(),
+        'sonarqube.lastError': null,
+      });
 
       return {
-        success: !probe.sonarqube.detected,
-        message: !probe.sonarqube.detected
+        success: !isDetected,
+        message: !isDetected
           ? `SonarQube uninstalled successfully ${preserve ? '(data volumes preserved)' : '(data volumes purged)'}`
           : 'Warning: SonarQube components may still be active',
         output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
+        sonarqube: sonarqubeState,
       };
     }
   }
@@ -1123,8 +1395,14 @@ fi
 export async function executeTrivyAction(
   server: any,
   action: 'install' | 'uninstall' | 'scan_image' | 'scan_fs' | 'version' | 'detect',
-  options: { target?: string; severity?: string } = {}
-): Promise<{ success: boolean; message: string; output: string; scanResult?: any }> {
+  options: {
+    target?: string;
+    severity?: string;
+    customCommands?: string;
+    verificationCommands?: string;
+  } = {}
+): Promise<{ success: boolean; message: string; output: string; trivy?: IDevopsServerInfo['trivy']; scanResult?: any }> {
+  const hostIp = server.publicIp || server.host || server.privateIp;
   const sStatus = (server.status || '').toLowerCase();
   const isStopped = sStatus.includes('stop') || sStatus === 'offline';
   if (isStopped && action !== 'detect') {
@@ -1134,38 +1412,41 @@ export async function executeTrivyAction(
       output: `Server status is "${server.status}". Host must be running to execute Trivy via SSH.`,
     };
   }
+
+  let toolConfig: any = null;
+  try {
+    toolConfig = await DevopsToolConfig.findOne({ tool: 'trivy' }).lean();
+  } catch (err) {
+    console.warn('[executeTrivyAction] Warning loading DevopsToolConfig:', err);
+  }
   switch (action) {
     case 'detect':
     case 'version': {
       const probe = await probeDevopsTools(server);
-      await Server.updateOne(
-        { _id: server._id },
-        { $set: { trivy: { ...probe.trivy, lastSyncedAt: new Date() } } }
-      );
+      await updateDevopsMetadata(server._id, {
+        trivy: { ...probe.trivy, lastSyncedAt: new Date() },
+      });
       return {
         success: probe.trivy.detected,
         message: probe.trivy.detected
           ? `Trivy installed: ${probe.trivy.version} (${probe.trivy.installMethod})`
           : 'Trivy is not installed on this server',
         output: JSON.stringify(probe.trivy, null, 2),
+        trivy: probe.trivy,
       };
     }
 
     case 'install': {
-      // 1. Check if already installed
-      const check = await executeSSH(server, `(command -v trivy || [ -x /usr/local/bin/trivy ] || [ -x /usr/bin/trivy ]) >/dev/null 2>&1 && echo "ALREADY_INSTALLED" || echo "MISSING"`);
-      if (check.stdout.includes('ALREADY_INSTALLED')) {
-        return { success: true, message: 'Trivy is already installed on this server', output: check.stdout };
-      }
+      const customInstall = options.customCommands?.trim() || toolConfig?.installCommands?.trim();
+      const customVerify = options.verificationCommands?.trim() || toolConfig?.verificationCommands?.trim();
 
-      // 2. Install Trivy via official repository with dual automatic fallbacks
-      const installScript = `
-export DEBIAN_FRONTEND=noninteractive
-export NEEDRESTART_MODE=a
+      const defaultInstallScript = `
+${APT_LOCK_WAIT_SCRIPT}
+wait_for_apt_lock
 
 echo "Installing prerequisites..."
 sudo apt-get update -y || true
-sudo apt-get install -y wget apt-transport-https gnupg lsb-release curl
+sudo apt-get install -y wget apt-transport-https gnupg lsb-release curl ca-certificates
 
 INSTALLED=0
 
@@ -1176,6 +1457,7 @@ if wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --d
   sudo chmod 644 /etc/apt/keyrings/trivy.gpg
   CODENAME=$(lsb_release -sc 2>/dev/null || echo 'noble')
   echo "deb [signed-by=/etc/apt/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb \${CODENAME} main" | sudo tee /etc/apt/sources.list.d/trivy.list > /dev/null
+  wait_for_apt_lock
   if sudo apt-get update -y && sudo apt-get install -y trivy; then
     echo "Trivy installed successfully via apt repository."
     INSTALLED=1
@@ -1197,50 +1479,137 @@ if [ "$INSTALLED" -eq 0 ] && ! command -v trivy >/dev/null 2>&1; then
   echo "Apt repository failed, falling back to direct binary release installation..."
   ARCH=$(uname -m)
   [ "$ARCH" = "x86_64" ] && TRIVY_ARCH="64bit" || TRIVY_ARCH="ARM64"
-  wget -q https://github.com/aquasecurity/trivy/releases/download/v0.71.2/trivy_0.71.2_Linux-\${TRIVY_ARCH}.tar.gz -O /tmp/trivy.tar.gz || \
-  wget -q https://github.com/aquasecurity/trivy/releases/download/v0.59.1/trivy_0.59.1_Linux-\${TRIVY_ARCH}.tar.gz -O /tmp/trivy.tar.gz
-  sudo tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
-  sudo chmod +x /usr/local/bin/trivy
-  sudo ln -sf /usr/local/bin/trivy /usr/bin/trivy 2>/dev/null || true
-  rm -f /tmp/trivy.tar.gz
+  if wget -q https://github.com/aquasecurity/trivy/releases/download/v0.59.1/trivy_0.59.1_Linux-\${TRIVY_ARCH}.tar.gz -O /tmp/trivy.tar.gz || \\
+     wget -q https://github.com/aquasecurity/trivy/releases/download/v0.58.2/trivy_0.58.2_Linux-\${TRIVY_ARCH}.tar.gz -O /tmp/trivy.tar.gz; then
+    sudo tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+    sudo chmod +x /usr/local/bin/trivy
+    sudo ln -sf /usr/local/bin/trivy /usr/bin/trivy 2>/dev/null || true
+    rm -f /tmp/trivy.tar.gz
+    INSTALLED=1
+  fi
 fi
 
 which trivy || /usr/local/bin/trivy --version
       `;
 
+      const scriptToRun = customInstall || defaultInstallScript;
+      const verifyBlock = customVerify ? `\necho "=== Running Verification Commands ==="\n${customVerify}\n` : '';
+
+      const installScript = `
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+${scriptToRun}
+${verifyBlock}
+      `;
+
       const res = await executeSSH(server, installScript, 180000); // 3 minute timeout
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(
-        server._id,
-        { trivy: { ...probe.trivy, lastSyncedAt: new Date() } }
-      );
+      const isDetected = probe.trivy.detected;
+
+      try {
+        await DevopsToolConfig.updateOne(
+          { tool: 'trivy' },
+          {
+            $set: {
+              lastExecutionAt: new Date(),
+              lastExecutionStatus: isDetected ? 'success' : 'failed',
+              lastExecutionServerName: server.name || hostIp,
+              lastExecutionServerHost: hostIp,
+              lastExecutionAction: 'install',
+              lastExecutionLog: (res.stdout + (res.stderr ? '\n' + res.stderr : '')).trim(),
+              lastExecutionExitCode: res.code,
+            },
+          },
+          { upsert: true }
+        );
+      } catch {}
+
+      await updateDevopsMetadata(server._id, {
+        trivy: { ...probe.trivy, lastSyncedAt: new Date() },
+      });
 
       return {
-        success: probe.trivy.detected,
-        message: probe.trivy.detected
-          ? `Trivy installed successfully (${probe.trivy.version})`
+        success: isDetected,
+        message: isDetected
+          ? `Trivy installed successfully (${probe.trivy.version || 'installed'})`
           : `Installation failed: ${res.stderr || res.stdout}`,
         output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
+        trivy: probe.trivy,
       };
     }
 
     case 'uninstall': {
-      const uninstallScript = `
-sudo apt-get remove -y trivy 2>/dev/null || true
+      const customUninstall = options.customCommands?.trim() || toolConfig?.uninstallCommands?.trim();
+      const customVerify = options.verificationCommands?.trim() || toolConfig?.verificationCommands?.trim();
+
+      const defaultUninstallScript = `
+${APT_LOCK_WAIT_SCRIPT}
+wait_for_apt_lock
+
+echo "Purging Trivy packages and binaries..."
+sudo apt-get purge -y trivy 2>/dev/null || sudo dpkg --purge --force-all trivy 2>/dev/null || true
 sudo rm -f /usr/local/bin/trivy /usr/bin/trivy /etc/apt/sources.list.d/trivy.list /etc/apt/keyrings/trivy.gpg /usr/share/keyrings/trivy.gpg
+sudo rm -rf /root/.cache/trivy /home/*/.cache/trivy /tmp/trivy* 2>/dev/null || true
 echo "Trivy CLI removed successfully."
       `;
-      const res = await executeSSH(server, uninstallScript, 30000);
+
+      const scriptToRun = customUninstall || defaultUninstallScript;
+      const verifyBlock = customVerify ? `\necho "=== Running Verification Commands ==="\n${customVerify}\n` : '';
+
+      const uninstallScript = `
+export DEBIAN_FRONTEND=noninteractive
+${scriptToRun}
+${verifyBlock}
+      `;
+
+      const res = await executeSSH(server, uninstallScript, 45000);
       const probe = await probeDevopsTools(server);
-      await updateDevopsMetadata(
-        server._id,
-        { trivy: { ...probe.trivy, lastSyncedAt: new Date() } }
-      );
+      const isDetected = probe.trivy.detected;
+
+      try {
+        await DevopsToolConfig.updateOne(
+          { tool: 'trivy' },
+          {
+            $set: {
+              lastExecutionAt: new Date(),
+              lastExecutionStatus: !isDetected ? 'success' : 'failed',
+              lastExecutionServerName: server.name || hostIp,
+              lastExecutionServerHost: hostIp,
+              lastExecutionAction: 'uninstall',
+              lastExecutionLog: (res.stdout + (res.stderr ? '\n' + res.stderr : '')).trim(),
+              lastExecutionExitCode: res.code,
+            },
+          },
+          { upsert: true }
+        );
+      } catch {}
+
+      const trivyState: IDevopsServerInfo['trivy'] = {
+        detected: isDetected,
+        status: isDetected ? probe.trivy.status : 'not_installed',
+        version: isDetected ? probe.trivy.version : '',
+        installMethod: isDetected ? probe.trivy.installMethod : 'unknown',
+        lastScanAt: isDetected ? probe.trivy.lastScanAt : undefined,
+        lastScanTarget: isDetected ? probe.trivy.lastScanTarget : undefined,
+        lastScanSummary: isDetected ? probe.trivy.lastScanSummary : undefined,
+        lastSyncedAt: new Date().toISOString(),
+        lastError: null,
+      };
+
+      await updateDevopsMetadata(server._id, {
+        'trivy.detected': isDetected,
+        'trivy.status': trivyState.status,
+        'trivy.version': trivyState.version,
+        'trivy.installMethod': trivyState.installMethod,
+        'trivy.lastSyncedAt': new Date(),
+        'trivy.lastError': null,
+      });
 
       return {
-        success: !probe.trivy.detected,
-        message: !probe.trivy.detected ? 'Trivy uninstalled successfully' : 'Warning: Trivy binary still exists',
-        output: res.stdout,
+        success: !isDetected,
+        message: !isDetected ? 'Trivy uninstalled successfully' : 'Warning: Trivy binary still exists',
+        output: res.stdout + (res.stderr ? '\n' + res.stderr : ''),
+        trivy: trivyState,
       };
     }
 
