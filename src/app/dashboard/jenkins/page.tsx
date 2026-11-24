@@ -2667,83 +2667,6 @@ function JenkinsContent() {
               </div>
             )}
 
-            {/* Test Commands Action & Server Selector */}
-            <div className="p-3 rounded-xl bg-[#070C18] border border-[#1E293B] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-xs font-semibold text-slate-300 shrink-0">Test On Server:</span>
-                <select
-                  value={editorTargetServer}
-                  onChange={(e) => setEditorTargetServer(e.target.value)}
-                  className="bg-[#111A2E] border border-[#1E293B] text-slate-200 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-cyan-500/50 max-w-xs"
-                >
-                  {servers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.publicIp || s.host})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                type="button"
-                disabled={testingCommand || !editorTargetServer}
-                onClick={handleTestCommands}
-                className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold bg-[#111A2E] hover:bg-[#18233C] text-amber-300 hover:text-amber-200 border border-amber-500/30 hover:border-amber-500/60 rounded-xl transition cursor-pointer shrink-0"
-              >
-                {testingCommand ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <TerminalIcon className="w-3.5 h-3.5 text-amber-400" />
-                )}
-                <span>Test Commands On Server</span>
-              </button>
-            </div>
-
-            {/* Test Execution Output Drawer */}
-            {testOutput && (
-              <div className="space-y-2 p-3 rounded-xl bg-[#070C18] border border-[#1E293B] animate-in fade-in">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
-                        testOutput.exitCode === 0
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                      }`}
-                    >
-                      Exit Code: {testOutput.exitCode ?? 'N/A'} (
-                      {testOutput.exitCode === 0 ? 'SUCCESS' : 'NON-ZERO / FAILED'})
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      Target: {testOutput.serverName} ({testOutput.serverHost})
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setTestOutput(null)}
-                    className="text-[11px] text-slate-500 hover:text-slate-300"
-                  >
-                    Clear Output
-                  </button>
-                </div>
-
-                <div className="bg-[#040810] border border-slate-800 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-xs text-slate-300 whitespace-pre-wrap">
-                  {testOutput.stdout && (
-                    <div className="text-emerald-300/90">{testOutput.stdout}</div>
-                  )}
-                  {testOutput.stderr && (
-                    <div className="text-rose-400 mt-1">{testOutput.stderr}</div>
-                  )}
-                  {!testOutput.stdout && !testOutput.stderr && (
-                    <div className="text-slate-500 italic">No output produced by test command.</div>
-                  )}
-                </div>
-                <p className="text-[10px] text-slate-500 italic">
-                  Note: Testing does not alter the server installation state in the database.
-                </p>
-              </div>
-            )}
-
             {/* Save Success Notice */}
             {saveSuccessNotice && (
               <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold animate-in fade-in">
@@ -2753,11 +2676,11 @@ function JenkinsContent() {
             )}
 
             {/* Modal Bottom Actions: Save, Cancel */}
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#1E293B]">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#1E293B]">
               <button
                 type="button"
                 onClick={() => setEditCommandsModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-300 rounded-xl transition"
+                className="px-4 py-2 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-300 rounded-xl transition cursor-pointer"
               >
                 Cancel
               </button>
