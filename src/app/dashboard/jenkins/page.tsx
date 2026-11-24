@@ -613,7 +613,7 @@ function JenkinsContent() {
           {/* Top Banner & Header */}
           <div
             data-module-id={activeTab}
-            className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-6 shadow-xl relative overflow-hidden transition-all"
+            className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-6 shadow-xl relative z-20 transition-all"
           >
             <div className="flex items-center gap-4 module-header">
               <div
@@ -656,7 +656,7 @@ function JenkinsContent() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap relative z-30">
               <ModuleCustomizeButton
                 moduleId={activeTab}
                 moduleName={
@@ -950,7 +950,7 @@ function JenkinsContent() {
               </div>
 
               {/* The 3 Actions: Install, Uninstall, Edit Commands */}
-              <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+              <div className="flex items-center gap-2.5 shrink-0 flex-wrap relative z-30">
                 {/* 1. Install Button */}
                 <button
                   type="button"

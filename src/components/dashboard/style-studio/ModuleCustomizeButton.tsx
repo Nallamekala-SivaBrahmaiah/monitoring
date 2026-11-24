@@ -62,7 +62,7 @@ export function ModuleCustomizeButton({
 
   if (variant === 'dropdown') {
     return (
-      <div className="relative inline-block" ref={dropdownRef}>
+      <div className="relative inline-block z-30" ref={dropdownRef}>
         <button
           type="button"
           onClick={(e) => {
