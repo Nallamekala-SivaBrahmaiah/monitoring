@@ -433,6 +433,7 @@ export async function POST(request: NextRequest) {
       username,
       authMethod = 'privateKey',
       authSecret,
+      passphrase,
       cloudProvider = 'other',
       region = 'global',
       tags = [],
@@ -544,6 +545,7 @@ export async function POST(request: NextRequest) {
         username: username.trim(),
         authMethod,
         authSecret: secretToUse,
+        passphrase: passphrase ? String(passphrase).trim() : undefined,
         timeoutMs: 12000,
       });
     } catch (sshErr: any) {

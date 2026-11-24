@@ -24,6 +24,7 @@ import { RunningServices } from '@/components/dashboard/RunningServices';
 import { RecentAlerts } from '@/components/dashboard/RecentAlerts';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { SSHTerminalModal, SSHTerminalTarget } from '@/components/dashboard/SSHTerminalModal';
+import { ConnectSSHModal, ConnectSSHTarget } from '@/components/dashboard/ConnectSSHModal';
 import { useMonitoring } from '@/context/MonitoringContext';
 
 export default function DashboardPage() {
@@ -40,6 +41,8 @@ export default function DashboardPage() {
   const [activeAllViewTab, setActiveAllViewTab] = useState<'all' | 'azure' | 'ec2'>('all');
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
+  const [sshModalOpen, setSshModalOpen] = useState(false);
+  const [sshModalTarget, setSshModalTarget] = useState<ConnectSSHTarget | null>(null);
 
   const hasConnectedAws = awsAccounts.some((a) => a.status === 'Connected');
   const hasConnectedAzure = azureSubscriptions.some((s) => s.status === 'Connected');
@@ -361,6 +364,48 @@ export default function DashboardPage() {
             onClose={() => {
               setTerminalOpen(false);
               setTerminalTarget(null);
+            }}
+            onConfigureSSH={(tgt) => {
+              setTerminalOpen(false);
+              setTerminalTarget(null);
+              setSshModalTarget({
+                id: tgt.id || tgt.sshServerId || tgt.vmId,
+                name: tgt.name,
+                host: tgt.host && tgt.host !== '-' ? tgt.host : '',
+                port: tgt.port || 22,
+                username: tgt.username || (tgt.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
+                authMethod: 'password',
+                cloudProvider: (tgt.cloudProvider as any) || 'other',
+                region: tgt.region,
+              });
+              setSshModalOpen(true);
+            }}
+          />
+        )}
+
+        {/* SSH Connection / Authentication Modal */}
+        {sshModalOpen && sshModalTarget && (
+          <ConnectSSHModal
+            isOpen={sshModalOpen}
+            onClose={() => {
+              setSshModalOpen(false);
+              setSshModalTarget(null);
+            }}
+            target={sshModalTarget}
+            onSuccess={(savedData) => {
+              if (sshModalTarget) {
+                setTerminalTarget({
+                  id: savedData?._id || sshModalTarget.id,
+                  sshServerId: savedData?._id || sshModalTarget.id,
+                  name: sshModalTarget.name,
+                  host: sshModalTarget.host,
+                  port: sshModalTarget.port || 22,
+                  username: sshModalTarget.username,
+                  cloudProvider: sshModalTarget.cloudProvider,
+                  isSSHConnected: true,
+                });
+                setTerminalOpen(true);
+              }
             }}
           />
         )}

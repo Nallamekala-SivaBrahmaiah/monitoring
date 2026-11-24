@@ -141,7 +141,7 @@ export function FleetCommandCenterCard({ onOpenTerminal }: FleetCommandCenterCar
         name: server.name,
         host: server.host,
         cloudProvider: server.provider,
-        username: server.provider === 'azure' ? 'azureuser' : server.provider === 'aws' ? 'ubuntu' : 'siva',
+        username: server.username || (server.name?.toLowerCase().includes('siva') || server.host?.startsWith('4.') ? 'siva' : server.provider === 'azure' ? 'azureuser' : 'ubuntu'),
       });
     }
   };

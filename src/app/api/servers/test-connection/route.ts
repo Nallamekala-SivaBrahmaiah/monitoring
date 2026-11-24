@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       username,
       authMethod = 'privateKey',
       authSecret,
+      passphrase,
       serverId,
       instanceId,
       name,
@@ -120,6 +121,7 @@ export async function POST(request: NextRequest) {
       username: userToUse.trim(),
       authMethod: methodStr as any,
       authSecret: secretToUse,
+      passphrase: passphrase ? String(passphrase).trim() : undefined,
       timeoutMs: 12000,
     });
 
