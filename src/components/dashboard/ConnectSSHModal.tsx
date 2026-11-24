@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   KeyRound,
@@ -46,6 +47,12 @@ export function ConnectSSHModal({
   target,
   onSuccess,
 }: ConnectSSHModalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [name, setName] = useState('');
   const [host, setHost] = useState('');
   const [port, setPort] = useState(22);
@@ -97,7 +104,7 @@ export function ConnectSSHModal({
     }
   }, [target]);
 
-  if (!isOpen || !target) return null;
+  if (!isOpen || !target || !mounted) return null;
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -198,8 +205,8 @@ export function ConnectSSHModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+  return createPortal(
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
       <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col">
         {/* Modal Header */}
         <div className="p-5 border-b border-[#1E293B] flex items-center justify-between sticky top-0 bg-[#111A2E] z-10">
@@ -458,6 +465,7 @@ export function ConnectSSHModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

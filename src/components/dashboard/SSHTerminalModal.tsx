@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Copy, Check } from 'lucide-react';
 
 /**
@@ -102,10 +103,15 @@ export function SSHTerminalModal({
   const [isUnconfigured, setIsUnconfigured] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(true);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
+  const [mounted, setMounted] = useState<boolean>(false);
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
   const [hasActiveSelection, setHasActiveSelection] = useState<boolean>(false);
   const [activeSelectionText, setActiveSelectionText] = useState<string>('');
   const copyTimeoutRef = useRef<any>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const showCopyBadge = useCallback(() => {
     setCopiedNotification(true);
@@ -467,13 +473,18 @@ export function SSHTerminalModal({
 
   // Handle open/close lifecycle
   useEffect(() => {
+    if (!mounted || !isOpen || !target) return;
+
     isClosingRef.current = false;
-    if (isOpen && target) {
-      setIsMinimized(false);
+    setIsMinimized(false);
+
+    // Give browser paint a tick to size the portalled DOM node
+    const timer = setTimeout(() => {
       initTerminal();
-    }
+    }, 40);
 
     return () => {
+      clearTimeout(timer);
       isClosingRef.current = true;
       if (streamAbortControllerRef.current) {
         streamAbortControllerRef.current.abort();
@@ -492,7 +503,7 @@ export function SSHTerminalModal({
         xtermInstanceRef.current = null;
       }
     };
-  }, [isOpen, target, initTerminal]);
+  }, [isOpen, target, mounted, initTerminal]);
 
   // Handle container resize & session persistence
   useEffect(() => {
@@ -535,7 +546,7 @@ export function SSHTerminalModal({
     };
   }, [isOpen, isFullscreen, isMinimized, sendResize]);
 
-  if (!isOpen || !target) return null;
+  if (!isOpen || !target || !mounted) return null;
 
   // PuTTY Right-click: Copy if text selected, Paste if no selection
   const handleContextMenu = async (e: React.MouseEvent) => {
@@ -579,27 +590,27 @@ export function SSHTerminalModal({
   // Title bar text: purely "PuTTY" or "PuTTY (inactive)"
   const titleText = status === 'disconnected' ? 'PuTTY (inactive)' : 'PuTTY';
 
-  return (
+  return createPortal(
     <>
       {/* Minimized Taskbar Pill */}
       {isMinimized && (
         <div
           onClick={() => setIsMinimized(false)}
-          className="fixed bottom-3 right-3 z-50 flex items-center gap-2 px-3 py-1.5 bg-[#1F1F1F] border border-[#3A3A3A] shadow-2xl text-slate-200 text-xs font-sans hover:bg-[#2A2A2A] cursor-pointer select-none transition-all"
+          className="fixed bottom-3 right-3 z-[999999] flex items-center gap-2 px-3 py-1.5 bg-[#1F1F1F] border border-[#3A3A3A] shadow-2xl text-slate-200 text-xs font-sans hover:bg-[#2A2A2A] cursor-pointer select-none transition-all rounded shadow-black/80"
           title="Restore PuTTY Terminal"
         >
           <PuttyIcon className="w-4 h-4" />
-          <span className="font-medium text-[#D4D4D4]">{titleText}</span>
+          <span className="font-medium text-[#D4D4D4]">{titleText} ({target.name || target.host})</span>
         </div>
       )}
 
       {/* Main PuTTY Window Container */}
       {!isMinimized && (
         <div
-          className={`fixed z-50 flex flex-col bg-[#000000] select-none transition-all ${
+          className={`fixed z-[999999] flex flex-col bg-[#000000] select-none transition-all ${
             isFullscreen
               ? 'inset-0 w-screen h-screen rounded-none'
-              : 'inset-3 sm:inset-6 md:inset-8 shadow-2xl border border-[#3A3A3A] rounded-none'
+              : 'inset-3 sm:inset-6 md:inset-8 shadow-2xl border-2 border-[#555555] rounded-none shadow-black/90'
           }`}
           onClick={handleWindowClick}
           onContextMenu={handleContextMenu}
@@ -846,6 +857,7 @@ export function SSHTerminalModal({
           background-color: #000000;
         }
       `}</style>
-    </>
+    </>,
+    document.body
   );
 }
