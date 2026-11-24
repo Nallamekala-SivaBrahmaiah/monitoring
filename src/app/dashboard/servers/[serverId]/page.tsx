@@ -527,9 +527,9 @@ function ServerDetailContent({ params }: ServerDetailProps) {
                     <div className="px-5 py-3.5 border-b border-[#1E293B] flex items-center justify-between">
                       <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                         <DockerIcon className="w-4 h-4" />
-                        <span>Discovered Docker Containers ({server.docker.containers?.length || 0})</span>
+                        <span>Discovered Docker Containers ({server.docker?.containers?.length || 0})</span>
                       </h3>
-                      <span className="text-xs font-mono text-slate-400">{server.docker.version}</span>
+                      <span className="text-xs font-mono text-slate-400">{server.docker?.version || ''}</span>
                     </div>
 
                     <div className="overflow-x-auto">
@@ -545,7 +545,7 @@ function ServerDetailContent({ params }: ServerDetailProps) {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#1E293B]">
-                          {(server.docker.containers || []).map((c: any) => (
+                          {(server.docker?.containers || []).map((c: any) => (
                             <tr key={c.id} className="hover:bg-[#15203A]">
                               <td className="py-2.5 px-4 font-mono text-slate-400">{c.id.slice(0, 12)}</td>
                               <td className="py-2.5 px-4 font-semibold text-white">{c.name}</td>
@@ -565,7 +565,7 @@ function ServerDetailContent({ params }: ServerDetailProps) {
                               <td className="py-2.5 px-4 font-mono text-[11px] text-slate-400">{c.ports || '-'}</td>
                             </tr>
                           ))}
-                          {(!server.docker.containers || server.docker.containers.length === 0) && (
+                          {(!server.docker?.containers || server.docker.containers.length === 0) && (
                             <tr>
                               <td colSpan={6} className="py-8 text-center text-slate-500">
                                 Docker is active, but zero containers are currently running on this host.
@@ -581,7 +581,7 @@ function ServerDetailContent({ params }: ServerDetailProps) {
                   <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl overflow-hidden shadow-sm">
                     <div className="px-5 py-3 border-b border-[#1E293B]">
                       <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                        Docker Images on Host ({server.docker.images?.length || 0})
+                        Docker Images on Host ({server.docker?.images?.length || 0})
                       </h4>
                     </div>
                     <div className="overflow-x-auto">
@@ -595,7 +595,7 @@ function ServerDetailContent({ params }: ServerDetailProps) {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#1E293B]">
-                          {(server.docker.images || []).map((img: any, idx: number) => (
+                          {(server.docker?.images || []).map((img: any, idx: number) => (
                             <tr key={idx} className="hover:bg-[#15203A]">
                               <td className="py-2 px-4 font-mono text-slate-400">{img.id?.slice(0, 12)}</td>
                               <td className="py-2 px-4 text-white font-semibold">{img.repository}</td>
@@ -630,7 +630,7 @@ function ServerDetailContent({ params }: ServerDetailProps) {
                       <KubernetesIcon className="w-4 h-4" />
                       <span>Kubernetes Pods & Workloads</span>
                     </h3>
-                    <span className="text-xs font-mono text-slate-400">{server.kubernetes.version}</span>
+                    <span className="text-xs font-mono text-slate-400">{server.kubernetes?.version || ''}</span>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -645,7 +645,7 @@ function ServerDetailContent({ params }: ServerDetailProps) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#1E293B]">
-                        {(server.kubernetes.pods || []).map((p: any) => (
+                        {(server.kubernetes?.pods || []).map((p: any) => (
                           <tr key={p.uid} className="hover:bg-[#15203A]">
                             <td className="py-2.5 px-4 font-mono text-slate-400">{p.uid?.slice(0, 12)}</td>
                             <td className="py-2.5 px-4 font-semibold text-white">{p.name}</td>

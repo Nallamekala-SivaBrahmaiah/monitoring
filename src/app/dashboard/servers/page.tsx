@@ -148,13 +148,23 @@ export default function ServersPage() {
   const [terminalTarget, setTerminalTarget] = useState<SSHTerminalTarget | null>(null);
 
   const handleOpenTerminal = (server: RegisteredServer) => {
+    const hasCredentials = Boolean(
+      (server as any).hasSavedKey ||
+      server.authMethod ||
+      server.status === 'Online'
+    );
+    if (!hasCredentials) {
+      handleOpenSSHModal(server);
+      return;
+    }
+
     setTerminalTarget({
       id: server._id,
       sshServerId: server._id,
       name: server.name,
       host: server.host,
       port: server.port || 22,
-      username: server.username || 'ubuntu',
+      username: server.username || (server.cloudProvider === 'azure' ? 'siva' : 'ubuntu'),
       cloudProvider: server.cloudProvider,
       isSSHConnected: true,
     });
