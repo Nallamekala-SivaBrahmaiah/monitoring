@@ -890,7 +890,7 @@ if ! curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo 
 fi
 sudo chmod 644 /etc/apt/keyrings/jenkins-keyring.asc
 
-echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+echo "deb [trusted=yes signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
 
 wait_for_apt_lock
 echo "Updating package index with Jenkins repo..."
