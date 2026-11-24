@@ -63,22 +63,38 @@ sudo systemctl reset-failed jenkins 2>/dev/null || true`,
   },
   sonarqube: {
     installCommands: `# SonarQube Community Container Deployment via Docker
-sudo sysctl -w vm.max_map_count=262144
-sudo sysctl -w fs.file-max=65536
+sudo sysctl -w vm.max_map_count=262144 || true
+sudo sysctl -w fs.file-max=65536 || true
+echo "vm.max_map_count=262144" | sudo tee /etc/sysctl.d/99-sonarqube.conf >/dev/null
+echo "fs.file-max=65536" | sudo tee -a /etc/sysctl.d/99-sonarqube.conf >/dev/null
+
+# Ensure Docker is installed and active
 if ! command -v docker >/dev/null 2>&1; then
-  sudo apt-get update
+  sudo apt-get update -y
   sudo apt-get install -y docker.io
-  sudo systemctl enable --now docker
-  sudo usermod -aG docker $USER || true
 fi
-sudo docker pull sonarqube:community || sudo docker pull sonarqube:lts-community
+sudo systemctl enable --now docker 2>/dev/null || sudo service docker start 2>/dev/null || true
+sudo usermod -aG docker $USER 2>/dev/null || true
+
+# Clean previous instance and start new SonarQube container
 sudo docker stop sonarqube 2>/dev/null || true
-sudo docker rm sonarqube 2>/dev/null || true
-sudo docker run -d --name sonarqube --restart unless-stopped -p 9000:9000 sonarqube:community`,
-    uninstallCommands: `# SonarQube Container Removal & Cleanup
+sudo docker rm -f sonarqube 2>/dev/null || true
+sudo docker run -d --name sonarqube --restart unless-stopped -p 9000:9000 -v sonarqube_data:/opt/sonarqube/data -v sonarqube_extensions:/opt/sonarqube/extensions -v sonarqube_logs:/opt/sonarqube/logs sonarqube:community
+
+# Verification
+sleep 3
+sudo docker ps --filter "name=sonarqube" --format "{{.Names}} - {{.Status}}"`,
+    uninstallCommands: `# SonarQube Container Complete Removal & Purge
+sudo systemctl start docker 2>/dev/null || true
 sudo docker stop sonarqube 2>/dev/null || true
-sudo docker rm sonarqube 2>/dev/null || true
-sudo docker rmi sonarqube:community 2>/dev/null || true`,
+sudo docker rm -f sonarqube 2>/dev/null || true
+sudo docker volume rm sonarqube_data sonarqube_extensions sonarqube_logs 2>/dev/null || true
+sudo docker rmi -f sonarqube:community 2>/dev/null || true
+sudo systemctl stop sonar 2>/dev/null || sudo systemctl stop sonarqube 2>/dev/null || true
+sudo systemctl disable sonar 2>/dev/null || sudo systemctl disable sonarqube 2>/dev/null || true
+sudo rm -f /etc/systemd/system/sonar.service /etc/systemd/system/sonarqube.service
+sudo rm -rf /opt/sonarqube /var/log/sonarqube /etc/sysctl.d/99-sonarqube.conf 2>/dev/null || true
+echo "SonarQube uninstallation complete."`,
     verificationCommands: `sudo docker ps --filter "name=sonarqube" --format "{{.Names}} - {{.Status}}"`,
     serviceName: 'sonarqube',
     port: 9000,

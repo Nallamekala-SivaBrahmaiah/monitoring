@@ -408,7 +408,7 @@ if command -v docker >/dev/null 2>&1; then
 fi
 
 if [ "$SONAR_INSTALLED" -eq 0 ]; then
-  if [ -d /opt/sonarqube ] || systemctl list-unit-files 2>/dev/null | grep -qE 'sonar(qube)?\\.service' || [ -f /etc/systemd/system/sonar.service ] || [ -f /etc/systemd/system/sonarqube.service ]; then
+  if [ -x /opt/sonarqube/bin/linux-x86-64/sonar.sh ] || [ -f /opt/sonarqube/bin/sonar.sh ] || systemctl list-unit-files 2>/dev/null | grep -qE 'sonar(qube)?\\.service' || [ -f /etc/systemd/system/sonar.service ] || [ -f /etc/systemd/system/sonarqube.service ]; then
     SONAR_INSTALLED=1
     SONAR_MODE="service"
     if systemctl is-active sonar >/dev/null 2>&1 || systemctl is-active sonarqube >/dev/null 2>&1 || pgrep -f 'sonar' >/dev/null 2>&1; then
@@ -1211,6 +1211,8 @@ sudo sysctl -w fs.file-max=131072 || true
 echo "vm.max_map_count=524288" | sudo tee /etc/sysctl.d/99-sonarqube.conf > /dev/null
 echo "fs.file-max=131072" | sudo tee -a /etc/sysctl.d/99-sonarqube.conf > /dev/null
 
+sudo systemctl enable --now docker 2>/dev/null || sudo service docker start 2>/dev/null || true
+
 DOCKER_CMD="docker"
 if ! docker ps >/dev/null 2>&1 && sudo -n docker ps >/dev/null 2>&1; then
   DOCKER_CMD="sudo -n docker"
@@ -1293,6 +1295,8 @@ ${verifyBlock}
       const customVerify = options.verificationCommands?.trim() || toolConfig?.verificationCommands?.trim();
 
       const defaultUninstallScript = `
+sudo systemctl enable --now docker 2>/dev/null || sudo service docker start 2>/dev/null || true
+
 DOCKER_CMD="docker"
 if ! docker ps >/dev/null 2>&1 && sudo -n docker ps >/dev/null 2>&1; then
   DOCKER_CMD="sudo -n docker"
@@ -1394,14 +1398,14 @@ ${verifyBlock}
  */
 export async function executeTrivyAction(
   server: any,
-  action: 'install' | 'uninstall' | 'scan_image' | 'scan_fs' | 'version' | 'detect',
+  action: 'install' | 'uninstall' | 'scan_image' | 'scan_fs' | 'version' | 'detect' | 'list_images',
   options: {
     target?: string;
     severity?: string;
     customCommands?: string;
     verificationCommands?: string;
   } = {}
-): Promise<{ success: boolean; message: string; output: string; trivy?: IDevopsServerInfo['trivy']; scanResult?: any }> {
+): Promise<{ success: boolean; message: string; output: string; trivy?: IDevopsServerInfo['trivy']; scanResult?: any; images?: any[] }> {
   const hostIp = server.publicIp || server.host || server.privateIp;
   const sStatus = (server.status || '').toLowerCase();
   const isStopped = sStatus.includes('stop') || sStatus === 'offline';
@@ -1773,6 +1777,41 @@ ${verifyBlock}
         message: `Scanned path "${targetPath}": Found ${summary.total} vulnerabilities (${summary.critical} Critical, ${summary.high} High)`,
         output: res.stdout,
         scanResult: scanDoc,
+      };
+    }
+
+    case 'list_images': {
+      const cmd = `
+if command -v docker >/dev/null 2>&1; then
+  DOCKER_CMD="docker"
+  if ! docker ps >/dev/null 2>&1 && sudo -n docker ps >/dev/null 2>&1; then
+    DOCKER_CMD="sudo -n docker"
+  fi
+  $DOCKER_CMD images --no-trunc --format '{{.Repository}}:{{.Tag}};;;{{.ID}};;;{{.Size}};;;{{.CreatedAt}}' 2>/dev/null
+fi
+      `;
+      const res = await executeSSH(server, cmd, 15000);
+      const lines = (res.stdout || '').split('\n').map((l) => l.trim()).filter(Boolean);
+      const images = lines
+        .map((line) => {
+          const [fullTag, id, size, createdAt] = line.split(';;;');
+          const [repo, tag] = (fullTag || '').split(':');
+          return {
+            fullTag: fullTag || '',
+            repository: repo || '',
+            tag: tag || 'latest',
+            id: (id || '').slice(0, 12),
+            size: size || '',
+            createdAt: createdAt || '',
+          };
+        })
+        .filter((img) => img.fullTag && !img.fullTag.includes('<none>'));
+
+      return {
+        success: true,
+        message: `Found ${images.length} container images on ${server.name}`,
+        output: res.stdout,
+        images,
       };
     }
   }

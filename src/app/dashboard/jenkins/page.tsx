@@ -172,6 +172,12 @@ function JenkinsContent() {
   const [recentScans, setRecentScans] = useState<ITrivyScanRecord[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
+  // Trivy host server images
+  const [serverImages, setServerImages] = useState<
+    Record<string, Array<{ fullTag: string; repository: string; tag: string; size: string; id: string }>>
+  >({});
+  const [loadingImagesServer, setLoadingImagesServer] = useState<string | null>(null);
+
   // Uninstall confirm modal
   const [uninstallTarget, setUninstallTarget] = useState<{
     server: IServerPipeline;
@@ -333,17 +339,55 @@ function JenkinsContent() {
     }
   }, [servers]);
 
+  const fetchServerImages = useCallback(async (serverId: string) => {
+    if (!serverId) return;
+    setLoadingImagesServer(serverId);
+    try {
+      const res = await fetch(`/api/trivy/servers/${serverId}/images`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.images)) {
+        setServerImages((prev) => ({ ...prev, [serverId]: data.images }));
+        if (data.images.length > 0) {
+          setTrivyTarget((current) => {
+            if (current === 'nginx:alpine' || !current) {
+              return data.images[0].fullTag;
+            }
+            return current;
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch server images:', err);
+    } finally {
+      setLoadingImagesServer(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (trivyScanOpen && trivyScanServer) {
+      fetchServerImages(trivyScanServer);
+    }
+  }, [trivyScanOpen, trivyScanServer, fetchServerImages]);
+
+  useEffect(() => {
+    if (activeTab === 'trivy') {
+      const targetId = tabTargetServer.trivy || servers[0]?.id;
+      if (targetId && !serverImages[targetId]) {
+        fetchServerImages(targetId);
+      }
+    }
+  }, [activeTab, tabTargetServer.trivy, servers, serverImages, fetchServerImages]);
+
   const openEditCommands = (tool: PipelineTab) => {
     setEditTool(tool);
     const cfg = toolConfigs[tool];
-    if (cfg) {
-      setEditorInstallCmds(cfg.installCommands || '');
-      setEditorUninstallCmds(cfg.uninstallCommands || '');
-      setEditorVerifyCmds(cfg.verificationCommands || '');
-      setEditorServiceName(cfg.serviceName || '');
-      setEditorPort(cfg.port || (tool === 'jenkins' ? 8080 : tool === 'sonarqube' ? 9000 : 0));
-      setEditorHealthCheck(cfg.healthCheckCommand || '');
-    }
+    const def = DEFAULT_DEVOPS_COMMANDS[tool];
+    setEditorInstallCmds(cfg?.installCommands || def?.installCommands || '');
+    setEditorUninstallCmds(cfg?.uninstallCommands || def?.uninstallCommands || '');
+    setEditorVerifyCmds(cfg?.verificationCommands || def?.verificationCommands || '');
+    setEditorServiceName(cfg?.serviceName || def?.serviceName || '');
+    setEditorPort(cfg?.port || def?.port || (tool === 'jenkins' ? 8080 : tool === 'sonarqube' ? 9000 : 0));
+    setEditorHealthCheck(cfg?.healthCheckCommand || def?.healthCheckCommand || '');
     const defaultServer = tabTargetServer[tool] || servers[0]?.id || '';
     setEditorTargetServer(defaultServer);
     setTestOutput(null);
@@ -1695,6 +1739,16 @@ function JenkinsContent() {
                                 • Last Target: <span className="text-slate-300 font-mono">{t.lastScanTarget}</span>
                               </span>
                             )}
+                            {serverImages[server.id] && serverImages[server.id].length > 0 && (
+                              <span className="text-slate-400 flex items-center gap-1 font-mono text-[10px]">
+                                • <Box className="w-3 h-3 text-teal-400 shrink-0" />
+                                <span className="text-teal-300 font-semibold">{serverImages[server.id].length} Local Image{serverImages[server.id].length === 1 ? '' : 's'}:</span>
+                                <span className="text-slate-300">
+                                  {serverImages[server.id].map((i) => i.fullTag).slice(0, 2).join(', ')}
+                                  {serverImages[server.id].length > 2 ? ` +${serverImages[server.id].length - 2} more` : ''}
+                                </span>
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1749,7 +1803,7 @@ function JenkinsContent() {
                               onClick={() => {
                                 setTrivyScanServer(server.id);
                                 setTrivyScanType('image');
-                                setTrivyTarget('nginx:alpine');
+                                fetchServerImages(server.id);
                                 setTrivyScanOpen(true);
                               }}
                               className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold border rounded-xl transition-all shadow-sm ${isServerStopped
@@ -2085,7 +2139,9 @@ function JenkinsContent() {
                     type="button"
                     onClick={() => {
                       setTrivyScanType('image');
-                      setTrivyTarget('nginx:alpine');
+                      const imgs = serverImages[trivyScanServer] || [];
+                      if (imgs.length > 0) setTrivyTarget(imgs[0].fullTag);
+                      else setTrivyTarget('nginx:alpine');
                     }}
                     className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${trivyScanType === 'image'
                       ? 'bg-teal-500/20 border-teal-500 text-teal-300 shadow-sm'
@@ -2111,9 +2167,94 @@ function JenkinsContent() {
                 </div>
               </div>
 
+              {/* Images Found Inside Target Server */}
+              {trivyScanType === 'image' && (
+                <div className="space-y-2.5 p-3 rounded-xl bg-[#070D1F] border border-teal-500/30">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Box className="w-3.5 h-3.5 text-teal-400" />
+                      <span className="text-xs font-bold text-teal-300">Images Found Inside Target Server</span>
+                      {loadingImagesServer === trivyScanServer ? (
+                        <Loader2 className="w-3 h-3 text-teal-400 animate-spin" />
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                          {(serverImages[trivyScanServer] || []).length} Detected
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={loadingImagesServer === trivyScanServer}
+                      onClick={() => fetchServerImages(trivyScanServer)}
+                      className="flex items-center gap-1.5 text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer disabled:opacity-50"
+                      title="Query Docker images inside target server via SSH"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${loadingImagesServer === trivyScanServer ? 'animate-spin' : ''}`} />
+                      <span>Fetch Server Images</span>
+                    </button>
+                  </div>
+
+                  {loadingImagesServer === trivyScanServer ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-slate-400">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-400" />
+                      <span>Connecting via SSH and querying local Docker images...</span>
+                    </div>
+                  ) : (serverImages[trivyScanServer] || []).length > 0 ? (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-slate-400">
+                        Select an image from this server to scan its packages and layers:
+                      </p>
+                      <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pt-1">
+                        {(serverImages[trivyScanServer] || []).map((img) => {
+                          const isSelected = trivyTarget === img.fullTag;
+                          return (
+                            <button
+                              key={img.fullTag + img.id}
+                              type="button"
+                              onClick={() => setTrivyTarget(img.fullTag)}
+                              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-teal-500/30 border-teal-400 text-teal-200 shadow-sm shadow-teal-500/20'
+                                  : 'bg-[#111A2E] hover:bg-[#18233C] border-slate-700 text-slate-300 hover:text-white'
+                              }`}
+                            >
+                              <Box className="w-3 h-3 text-teal-400 shrink-0" />
+                              <span className="font-semibold text-white">{img.fullTag}</span>
+                              {img.size && (
+                                <span className="text-[10px] font-normal text-slate-400 bg-slate-800/80 px-1.5 py-0.2 rounded">
+                                  {img.size}
+                                </span>
+                              )}
+                              {isSelected && <span className="text-teal-400 text-[11px] font-bold">✓ Selected</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-400 py-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span>No container images detected inside this server yet.</span>
+                      <div className="flex items-center gap-1.5 text-slate-500">
+                        <span>Presets:</span>
+                        {['nginx:alpine', 'alpine:latest', 'redis:alpine'].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setTrivyTarget(preset)}
+                            className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[10px] cursor-pointer"
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  {trivyScanType === 'image' ? 'Image Name & Tag' : 'Path'}
+                  {trivyScanType === 'image' ? 'Image Name & Tag (Custom or Selected)' : 'Path'}
                 </label>
                 <input
                   type="text"

@@ -10,7 +10,7 @@ export async function POST(
     const body = await request.json();
     const { action, target, severity, customCommands, verificationCommands } = body;
 
-    if (!action || !['install', 'uninstall', 'scan_image', 'scan_fs', 'version', 'detect'].includes(action)) {
+    if (!action || !['install', 'uninstall', 'scan_image', 'scan_fs', 'version', 'detect', 'list_images'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action provided' }, { status: 400 });
     }
 
