@@ -93,66 +93,114 @@ export function DockerHostInventory({
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumbs & Header Strip matching Azure VM style */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-            <Link href="/" className="hover:text-blue-400 flex items-center gap-1">
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Dashboard</span>
-            </Link>
-            <span>/</span>
-            <span className="text-white">Docker Containers</span>
+      {/* Master Control Bar Box (Terraform Style) */}
+      <div className="bg-[#090F1E]/90 border border-cyan-500/30 rounded-2xl p-5 shadow-2xl shadow-cyan-950/30 backdrop-blur-md">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-xs text-slate-400 mb-1.5">
+              <Link href="/" className="hover:text-blue-400 flex items-center gap-1">
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Dashboard</span>
+              </Link>
+              <span>/</span>
+              <span className="text-white">Docker Containers</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500/20 via-cyan-500/20 to-teal-500/20 border border-cyan-500/40 flex items-center justify-center shadow-lg shadow-cyan-950/40 shrink-0">
+                <DockerIcon className="w-7 h-7 text-[#0089D6]" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                    Docker Host Infrastructure
+                  </h1>
+                  <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                    Container Engine
+                  </span>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    v24+ Daemon Active
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Multi-cloud container host fleet, image registry, volume orchestration & daemon lifecycle
+                </p>
+              </div>
+            </div>
           </div>
-          <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2.5">
-            <DockerIcon className="w-6 h-6 text-[#0089D6]" />
-            <span>Docker Host Infrastructure</span>
-          </h2>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <ModuleCustomizeButton
+              moduleId="docker"
+              moduleName="Docker Module"
+              variant="pill"
+            />
+            <button
+              onClick={() => {
+                setModalAction('install');
+                setIsInstallModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-colors cursor-pointer shadow-sm shadow-emerald-600/30"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Install Docker on Server</span>
+            </button>
+            <button
+              onClick={() => {
+                setModalAction('uninstall');
+                setIsInstallModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-xl transition-colors cursor-pointer shadow-sm shadow-rose-600/30"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Uninstall Docker on Server</span>
+            </button>
+
+            <div className="flex items-center gap-2 text-xs bg-[#0D1526] border border-[#1E293B] px-3 py-1.5 rounded-xl font-mono">
+              <span className="text-emerald-400 font-bold">{runningHosts}</span>
+              <span className="text-slate-400">Online</span>
+              <span className="text-slate-600">|</span>
+              <span className="text-slate-400 font-bold">{stoppedHosts}</span>
+              <span className="text-slate-400">Offline</span>
+            </div>
+
+            <button
+              onClick={() => onRefresh(true)}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#0D1526] hover:bg-gray-800 text-slate-200 border border-gray-800 rounded-xl transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+              title="Sync Docker Hosts via SSH"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Sync Docker Hosts</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <ModuleCustomizeButton
-            moduleId="docker"
-            moduleName="Docker Module"
-            variant="pill"
-          />
-          <button
-            onClick={() => {
-              setModalAction('install');
-              setIsInstallModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-emerald-600/30"
-          >
-            <Zap className="w-3.5 h-3.5" />
-            <span>Install Docker on Server</span>
-          </button>
-          <button
-            onClick={() => {
-              setModalAction('uninstall');
-              setIsInstallModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-rose-600/30"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Uninstall Docker on Server</span>
-          </button>
-
-          <div className="flex items-center gap-2 text-xs bg-[#111A2E] border border-[#1E293B] px-3 py-1.5 rounded-lg">
-            <span className="text-emerald-400 font-bold">{runningHosts}</span>
-            <span className="text-slate-400">Online</span>
-            <span className="text-slate-600">|</span>
-            <span className="text-slate-400 font-bold">{stoppedHosts}</span>
-            <span className="text-slate-400">Offline</span>
+        {/* Sub-bar: Active Runtime Details */}
+        <div className="mt-4 pt-3 border-t border-gray-800/80 flex items-center justify-between flex-wrap gap-2 text-xs">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-gray-400 font-mono">
+              Total Hosts: <strong className="text-white font-bold">{totalHosts}</strong>
+            </span>
+            <span className="text-gray-600">•</span>
+            <span className="text-gray-400 font-mono">
+              Total Containers: <strong className="text-cyan-400 font-bold">{totalContainers}</strong> ({runningContainers} running)
+            </span>
+            <span className="text-gray-600">•</span>
+            <span className="text-gray-400 font-mono">
+              Images: <strong className="text-purple-400 font-bold">{totalImages}</strong>
+            </span>
+            <span className="text-gray-600">•</span>
+            <span className="text-gray-400 font-mono">
+              Fleet Health: <strong className="text-emerald-400 font-bold">{healthPercent}%</strong>
+            </span>
           </div>
 
-          <button
-            onClick={() => onRefresh(true)}
-            disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors cursor-pointer shadow-sm disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Sync Docker Hosts</span>
-          </button>
+          <div className="flex items-center gap-2 text-gray-500 text-[11px] font-mono">
+            <span>Daemon Monitoring: Real-time</span>
+            <span>•</span>
+            <span className="text-cyan-400">Socket: unix:///var/run/docker.sock</span>
+          </div>
         </div>
       </div>
 

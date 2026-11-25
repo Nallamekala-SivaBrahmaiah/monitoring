@@ -8,12 +8,14 @@ import {
   X,
   Check,
   Server,
-  Palette,
   Sparkles,
+  Wrench,
+  Activity,
 } from 'lucide-react';
 import {
   MultiCloudBrandLogo,
   MavenLogo,
+  TerraformLogo,
   AnsibleLogo,
   NginxLogo,
   DockerLogo,
@@ -107,12 +109,14 @@ export function Sidebar({
     { label: 'Azure Virtual Machines', href: '/dashboard/azure-vms', icon: AzureVmLogo },
     { label: 'On-Premises', href: '/dashboard/on-premises', icon: Server },
     { label: 'Server Scheduling', href: '/dashboard/schedules', icon: SchedulingIcon },
+    { label: 'Server Setup & Automation', href: '/dashboard/server-automation', icon: Wrench },
     { label: 'Maven', href: '/dashboard/maven', icon: MavenLogo },
+    { label: 'Terraform', href: '/dashboard/terraform', icon: TerraformLogo },
     { label: 'Ansible', href: '/dashboard/ansible', icon: AnsibleLogo },
     { label: 'Nginx', href: '/dashboard/nginx', icon: NginxLogo },
     { label: 'Docker Containers', href: '/dashboard/docker', icon: DockerLogo },
     { label: 'Kubernetes', href: '/dashboard/kubernetes', icon: KubernetesLogo },
-    { label: 'Jenkins', href: '/dashboard/jenkins', icon: JenkinsLogo },
+    { label: 'DevSecops CI/CD Pipeline', href: '/dashboard/jenkins', icon: JenkinsLogo },
     { label: 'Metrics Explorer', href: '/dashboard/metrics', icon: MetricsExplorerIcon },
     {
       label: 'Alerts',
@@ -126,7 +130,6 @@ export function Sidebar({
       icon: NotificationChannelsIcon,
       badge: unreadNotifCount,
     },
-    { label: 'Appearance & Themes', href: '/dashboard/theme', icon: Palette },
     { label: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
   ];
 

@@ -45,6 +45,7 @@ export const ALL_APPLICATION_MODULES: ModuleDefinition[] = [
   { id: 'on-premises', name: 'On-Premises Servers', category: 'Compute & Servers', defaultIcon: '🏢', description: 'Bare metal and private datacenter hosts' },
 
   // DevOps & Tooling
+  { id: 'integrated', name: 'DevSecops CI/CD Pipeline', category: 'DevOps & Tooling', defaultIcon: '✨', description: 'Unified DevOps Suite combining Jenkins CI/CD, SonarQube Quality Gate, and Aqua Trivy Security' },
   { id: 'jenkins', name: 'Jenkins CI/CD Module', category: 'DevOps & Tooling', defaultIcon: '👨‍✈️', description: 'Pipeline automation and build management' },
   { id: 'sonarqube', name: 'SonarQube Quality Module', category: 'DevOps & Tooling', defaultIcon: '🔍', description: 'Code quality gates and security analysis' },
   { id: 'trivy', name: 'Trivy Security Module', category: 'DevOps & Tooling', defaultIcon: '🛡️', description: 'Container and filesystem vulnerability scanner' },

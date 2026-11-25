@@ -745,104 +745,122 @@ export default function NginxDashboardPage() {
           )}
 
           {/* ========================================================================= */}
-          {/* 1. TOP HEADER & ACTION BAR (Single-Deck Standard - Matches Docker & K8s)  */}
+          {/* 1. MASTER CONTROL BAR BOX (Terraform Style)                                */}
           {/* ========================================================================= */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-                <Link href="/" className="hover:text-blue-400 flex items-center gap-1 transition-colors">
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Dashboard</span>
-                </Link>
-                <span>/</span>
+          <div className="bg-[#090F1E]/90 border border-emerald-500/30 rounded-2xl p-5 shadow-2xl shadow-emerald-950/30 backdrop-blur-md">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs text-slate-400 mb-1.5">
+                  <Link href="/" className="hover:text-blue-400 flex items-center gap-1 transition-colors">
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Dashboard</span>
+                  </Link>
+                  <span>/</span>
+                  {!activeServer ? (
+                    <span className="text-white font-medium">Nginx Reverse Proxy</span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setActiveServer(null)}
+                        className="text-slate-300 hover:text-white transition-colors"
+                      >
+                        Nginx
+                      </button>
+                      <span>/</span>
+                      <span className="text-emerald-400 font-mono font-bold">{activeServer.name}</span>
+                      <span>/</span>
+                      <span className="text-slate-300 capitalize font-medium">{activeWorkspaceTab}</span>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/20 via-teal-500/20 to-blue-500/20 border border-emerald-500/40 flex items-center justify-center shadow-lg shadow-emerald-950/40 shrink-0">
+                    <NginxLogo className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                        {!activeServer ? 'Nginx Management & Application Fleet' : `Server: ${activeServer.name}`}
+                      </h1>
+                      {!activeServer ? (
+                        <>
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+                            {servers.length} Connected
+                          </span>
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Reverse Proxy Active
+                          </span>
+                        </>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          {activeServer.connectionStatus}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Production reverse proxy routing, SSL certificates, upstream load balancing & virtual hosts
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Action Suite (Single Row - Zero Wrapping) */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <ModuleCustomizeButton
+                  moduleId="nginx"
+                  moduleName="Nginx Module"
+                  variant="pill"
+                />
                 {!activeServer ? (
-                  <span className="text-white font-medium">Nginx Reverse Proxy</span>
-                ) : (
                   <>
                     <button
                       type="button"
-                      onClick={() => setActiveServer(null)}
-                      className="text-slate-300 hover:text-white transition-colors"
+                      onClick={() => {
+                        setModalAction('install');
+                        setIsInstallModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-colors cursor-pointer shadow-sm shadow-emerald-600/30 whitespace-nowrap"
                     >
-                      Nginx
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>Install Nginx on Server</span>
                     </button>
-                    <span>/</span>
-                    <span className="text-emerald-400 font-mono font-bold">{activeServer.name}</span>
-                    <span>/</span>
-                    <span className="text-slate-300 capitalize font-medium">{activeWorkspaceTab}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalAction('uninstall');
+                        setIsInstallModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-xl transition-colors cursor-pointer shadow-sm shadow-rose-600/30 whitespace-nowrap"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Uninstall Nginx on Server</span>
+                    </button>
+
+                    <div className="flex items-center gap-2 text-xs bg-[#0D1526] border border-[#1E293B] px-3 py-1.5 rounded-xl whitespace-nowrap font-mono">
+                      <span className="text-emerald-400 font-bold">{onlineCount}</span>
+                      <span className="text-slate-400">Online</span>
+                      <span className="text-slate-600">|</span>
+                      <span className="text-slate-400 font-bold">{Math.max(0, servers.length - onlineCount)}</span>
+                      <span className="text-slate-400">Offline</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        fetchServers();
+                        showToast('success', 'Server fleet metrics refreshed.');
+                      }}
+                      disabled={isLoadingServers}
+                      title="Refresh Fleet Telemetry"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#0D1526] hover:bg-gray-800 text-slate-200 border border-gray-800 rounded-xl transition-colors cursor-pointer shadow-sm disabled:opacity-50 whitespace-nowrap"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isLoadingServers ? 'animate-spin' : ''}`} />
+                      <span>Sync Fleet</span>
+                    </button>
                   </>
-                )}
-              </div>
-              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2.5">
-                <NginxLogo className="w-6 h-6" />
-                <span>{!activeServer ? 'Nginx Management & Application Fleet' : `Server: ${activeServer.name}`}</span>
-                {!activeServer ? (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
-                    {servers.length} Connected
-                  </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    {activeServer.connectionStatus}
-                  </span>
-                )}
-              </h2>
-            </div>
-
-            {/* Right Action Suite (Single Row - Zero Wrapping) */}
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <ModuleCustomizeButton
-                moduleId="nginx"
-                moduleName="Nginx Module"
-                variant="pill"
-              />
-              {!activeServer ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModalAction('install');
-                      setIsInstallModalOpen(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-emerald-600/30 whitespace-nowrap"
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>Install Nginx on Server</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModalAction('uninstall');
-                      setIsInstallModalOpen(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-rose-600/30 whitespace-nowrap"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Uninstall Nginx on Server</span>
-                  </button>
-
-                  <div className="flex items-center gap-2 text-xs bg-[#111A2E] border border-[#1E293B] px-3 py-1.5 rounded-lg whitespace-nowrap font-mono">
-                    <span className="text-emerald-400 font-bold">{onlineCount}</span>
-                    <span className="text-slate-400">Online</span>
-                    <span className="text-slate-600">|</span>
-                    <span className="text-slate-400 font-bold">{Math.max(0, servers.length - onlineCount)}</span>
-                    <span className="text-slate-400">Offline</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      fetchServers();
-                      showToast('success', 'Server fleet metrics refreshed.');
-                    }}
-                    disabled={isLoadingServers}
-                    title="Refresh Fleet Telemetry"
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors cursor-pointer shadow-sm disabled:opacity-50 whitespace-nowrap"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isLoadingServers ? 'animate-spin' : ''}`} />
-                    <span>Sync Fleet</span>
-                  </button>
-                </>
-              ) : (
                 <>
                   <button
                     type="button"
@@ -869,6 +887,30 @@ export default function NginxDashboardPage() {
               )}
             </div>
           </div>
+
+          {/* Sub-bar: Active Runtime Details */}
+          <div className="mt-4 pt-3 border-t border-gray-800/80 flex items-center justify-between flex-wrap gap-2 text-xs">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-gray-400 font-mono">
+                Connected Hosts: <strong className="text-white font-bold">{servers.length}</strong>
+              </span>
+              <span className="text-gray-600">•</span>
+              <span className="text-gray-400 font-mono">
+                Online: <strong className="text-emerald-400 font-bold">{onlineCount}</strong>
+              </span>
+              <span className="text-gray-600">•</span>
+              <span className="text-gray-400 font-mono">
+                Offline: <strong className="text-slate-400 font-bold">{Math.max(0, servers.length - onlineCount)}</strong>
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-gray-500 text-[11px] font-mono">
+              <span>Nginx Daemon: Active</span>
+              <span>•</span>
+              <span className="text-emerald-400">Reverse Proxy Engine: Ready</span>
+            </div>
+          </div>
+        </div>
 
           {/* ========================================================================= */}
           {/* 2. SUMMARY METRICS ROW (Actual Connected Server Data Only) */}

@@ -450,44 +450,68 @@ export default function AnsiblePage() {
             </div>
           )}
 
-          {/* Top Page Title & Documentation Button */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-xl shadow-indigo-600/30 font-bold text-2xl tracking-tighter">
-                A
+          {/* Master Control Bar Box (Terraform Style) */}
+          <div className="bg-[#090F1E]/90 border border-indigo-500/30 rounded-2xl p-5 shadow-2xl shadow-indigo-950/30 backdrop-blur-md">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+              {/* Brand Title */}
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-xl shadow-indigo-600/30 font-bold text-2xl tracking-tighter shrink-0 border border-indigo-500/40">
+                  A
+                </div>
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                      Ansible
+                    </h1>
+                    <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                      Configuration Automation
+                    </span>
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Controller Ready
+                    </span>
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                      CLI v2.16
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Automate deployment and configuration on your cloud servers using Ansible
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                  <span>Ansible</span>
-                </h1>
-                <p className="text-xs text-slate-400">
-                  Automate deployment and configuration on your cloud servers using Ansible
-                </p>
+
+              {/* Quick Actions & Controls */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <ModuleCustomizeButton
+                  moduleId="ansible"
+                  moduleName="Ansible Module"
+                  variant="pill"
+                />
+                <a
+                  href="https://docs.ansible.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600/30 via-indigo-600/30 to-purple-600/30 hover:from-blue-600/50 hover:to-purple-600/50 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-semibold shadow-lg shadow-indigo-950/40 flex items-center gap-1.5 transition"
+                >
+                  <span>Ansible Documentation</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-center">
-              <ModuleCustomizeButton
-                moduleId="ansible"
-                moduleName="Ansible Module"
-                variant="pill"
-              />
-              <a
-                href="https://docs.ansible.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600/30 via-indigo-600/30 to-purple-600/30 hover:from-blue-600/50 hover:to-purple-600/50 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-semibold shadow-lg shadow-indigo-950/40 flex items-center gap-1.5 transition"
-              >
-                <span>Ansible Documentation</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            </div>
-          </div>
+            {/* Sub-bar: Active Runtime Metrics */}
+            <div className="mt-4 pt-3 border-t border-gray-800/80 flex items-center justify-between flex-wrap gap-2 text-xs">
+              <div className="flex items-center gap-2 text-emerald-400 font-medium">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Ansible is ready! Managing controllers, independent worker nodes, and playbooks.</span>
+              </div>
 
-          {/* Status Alert Banner */}
-          <div className="p-3 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2 text-xs font-semibold text-emerald-400 shadow-sm">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Ansible is ready! Managing controllers, independent worker nodes, and playbooks.</span>
+              <div className="flex items-center gap-2 text-gray-500 text-[11px] font-mono">
+                <span>Playbook Engine: Active</span>
+                <span>•</span>
+                <span className="text-indigo-400">Inventory Sync: Online</span>
+              </div>
+            </div>
           </div>
 
           {/* Dedicated Controller Switcher Bar */}

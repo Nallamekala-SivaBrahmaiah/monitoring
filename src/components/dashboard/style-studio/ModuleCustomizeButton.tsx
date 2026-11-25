@@ -12,6 +12,7 @@ export interface ModuleCustomizeButtonProps {
   title?: string;
   size?: 'sm' | 'md';
   label?: string;
+  onOpenModelPicker?: () => void;
 }
 
 export function ModuleCustomizeButton({
@@ -22,9 +23,11 @@ export function ModuleCustomizeButton({
   title,
   size = 'sm',
   label,
+  onOpenModelPicker,
 }: ModuleCustomizeButtonProps) {
-  const { openModuleCustomizer, getModuleStyle } = useTheme();
+  const { openModuleCustomizer, getModuleStyle, updateModuleStyle } = useTheme();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [syncToast, setSyncToast] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,6 +54,20 @@ export function ModuleCustomizeButton({
     currentStyle.textColor
   );
 
+  const isDevopsModule = ['jenkins', 'sonarqube', 'trivy', 'integrated'].includes(moduleId);
+
+  const handleSyncAllDevops = () => {
+    const styleToSync = { ...currentStyle };
+    updateModuleStyle('jenkins', styleToSync);
+    updateModuleStyle('sonarqube', styleToSync);
+    updateModuleStyle('trivy', styleToSync);
+    setSyncToast(true);
+    setTimeout(() => {
+      setSyncToast(false);
+      setIsDropdownOpen(false);
+    }, 1500);
+  };
+
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -62,7 +79,7 @@ export function ModuleCustomizeButton({
 
   if (variant === 'dropdown') {
     return (
-      <div className="relative inline-block z-30" ref={dropdownRef}>
+      <div className="relative inline-block z-50" ref={dropdownRef}>
         <button
           type="button"
           onClick={(e) => {
@@ -71,24 +88,45 @@ export function ModuleCustomizeButton({
             setIsDropdownOpen(!isDropdownOpen);
           }}
           title={computedTitle}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm ${
+          className={`flex items-center justify-center p-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm ${
             hasCustomizations
               ? 'bg-gradient-to-r from-purple-600/30 via-cyan-600/30 to-blue-600/30 text-cyan-200 border border-cyan-400/50 hover:border-cyan-300'
               : 'bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] hover:border-cyan-500/50'
           } ${className}`}
         >
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          <span>{label || '3D Anime, Design & Layer'}</span>
-          <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+          <Sparkles className="w-4 h-4 text-cyan-400 group-hover:rotate-12 transition-transform duration-300" />
         </button>
 
         {isDropdownOpen && (
-          <div className="absolute right-0 top-full mt-2 w-72 bg-[#0B1120] border-2 border-cyan-500/50 rounded-2xl shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95 backdrop-blur-xl">
-            <div className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-cyan-400 border-b border-slate-800 mb-1 flex items-center justify-between">
+          <div className="absolute right-0 top-full mt-2 w-80 bg-[#0B1120] border-2 border-cyan-500/50 rounded-2xl shadow-2xl p-3 z-[9999] animate-in fade-in zoom-in-95 backdrop-blur-2xl">
+            <div className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-cyan-400 border-b border-slate-800 mb-2 flex items-center justify-between">
               <span>{moduleName || 'Module'} Studio</span>
-              <span className="text-[9px] text-slate-500 font-mono">Select Option</span>
+              <span className="text-[9px] text-slate-400 font-mono">Options</span>
             </div>
-            <div className="space-y-1">
+
+            <div className="space-y-1.5">
+              {onOpenModelPicker && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDropdownOpen(false);
+                    onOpenModelPicker();
+                  }}
+                  className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-gradient-to-r from-cyan-600/25 via-blue-600/25 to-purple-600/25 hover:from-cyan-600/35 hover:to-purple-600/35 border border-cyan-400/40 text-left transition group cursor-pointer shadow-sm"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-cyan-500/30 text-cyan-200 flex items-center justify-center shrink-0 border border-cyan-400/40">
+                    <Layers className="w-4 h-4 text-cyan-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white group-hover:text-cyan-200 flex items-center gap-1.5">
+                      <span>📐 Switch Model (1-6)</span>
+                      <span className="text-[9px] font-mono px-1 rounded bg-cyan-500/20 text-cyan-300">Live</span>
+                    </div>
+                    <div className="text-[10px] text-cyan-300/80 truncate">Pipeline Rail, 3D Stack, Matrix, Cockpit...</div>
+                  </div>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
@@ -157,7 +195,29 @@ export function ModuleCustomizeButton({
                 </div>
               </button>
 
-              <div className="pt-1 border-t border-slate-800">
+              {/* Special DevOps Multi-Module Sync Action */}
+              {isDevopsModule && (
+                <div className="pt-2 border-t border-slate-800/80">
+                  <button
+                    type="button"
+                    onClick={handleSyncAllDevops}
+                    className="w-full flex items-center justify-between p-2 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-200 text-xs font-bold transition group cursor-pointer"
+                    title="Apply current module design & layers to Jenkins, SonarQube, and Trivy simultaneously"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+                      <span className="truncate">
+                        {syncToast ? 'Synced to All 3 Tools ✓' : 'Sync to Jenkins, Sonar & Trivy'}
+                      </span>
+                    </div>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-200">
+                      Tri-Sync
+                    </span>
+                  </button>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => {
@@ -183,14 +243,13 @@ export function ModuleCustomizeButton({
         type="button"
         onClick={handleClick}
         title={computedTitle}
-        className={`group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all duration-200 cursor-pointer ${
+        className={`group inline-flex items-center justify-center p-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
           hasCustomizations
             ? 'bg-gradient-to-r from-purple-500/25 to-cyan-500/25 hover:from-purple-500/40 hover:to-cyan-500/40 text-cyan-200 border border-cyan-400/50 shadow-sm shadow-cyan-500/20'
-            : 'bg-[#0E1628]/90 hover:bg-[#162238] text-slate-300 hover:text-white border border-[#1E293B] hover:border-cyan-500/40 shadow-xs'
+            : 'bg-[#111A2E] hover:bg-[#18233C] text-slate-300 hover:text-white border border-[#1E293B] hover:border-cyan-500/40 shadow-xs'
         } ${className}`}
       >
-        <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300" />
-        <span>Customize</span>
+        <Sparkles className="w-4 h-4 text-cyan-400 group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300" />
         {hasCustomizations && (
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse ml-0.5" />
         )}
@@ -204,14 +263,13 @@ export function ModuleCustomizeButton({
         type="button"
         onClick={handleClick}
         title={computedTitle}
-        className={`group inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
+        className={`group inline-flex items-center justify-center p-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
           hasCustomizations
             ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md shadow-cyan-600/25 border border-cyan-400/40'
             : 'bg-[#111A2E] hover:bg-[#1A2642] text-slate-200 hover:text-white border border-[#1E293B] hover:border-cyan-500/50 shadow-xs'
         } ${className}`}
       >
-        <Palette className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
-        <span>Customize Appearance</span>
+        <Sparkles className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
       </button>
     );
   }

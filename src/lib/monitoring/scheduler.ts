@@ -82,6 +82,25 @@ export async function runMonitoringCycle(): Promise<{
       console.warn('[Scheduler] Server scheduling cycle note:', schedErr.message);
     }
 
+    // Step 4: Auto-sync active infrastructure alerts into DevOps Activity Center Incidents
+    try {
+      const { syncActiveAlertsToIncidents } = await import('@/lib/activityCenter/intelligentTroubleshooting');
+      const syncedCount = await syncActiveAlertsToIncidents();
+      if (syncedCount > 0) {
+        console.log(`[Scheduler] 🚨 Synced ${syncedCount} active server alert(s) to DevOps Incidents.`);
+      }
+    } catch (incErr: any) {
+      console.warn('[Scheduler] Incident sync note:', incErr.message);
+    }
+
+    // Step 5: Check autonomous daily report dispatch schedule
+    try {
+      const { checkAndDispatchDailyReportIfDue } = await import('@/lib/activityCenter/dailyReportCompiler');
+      await checkAndDispatchDailyReportIfDue();
+    } catch (repErr: any) {
+      console.warn('[Scheduler] Daily report check note:', repErr.message);
+    }
+
     global.__monitoringSchedulerLastRun = new Date();
     const durationMs = Date.now() - cycleStart.getTime();
 

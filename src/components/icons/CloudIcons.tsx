@@ -835,3 +835,15 @@ export function TrivyLogo({ className = 'w-5 h-5' }: { className?: string }) {
     </svg>
   );
 }
+
+export function TerraformLogo({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      {/* Official HashiCorp Terraform 4-Tile Geometric Logo */}
+      <path d="M2 3.5L9 7.6V15.6L2 11.5V3.5Z" fill="#5C4EE5" />
+      <path d="M10 8.1L17 12.2V20.2L10 16.1V8.1Z" fill="#7B42BC" />
+      <path d="M18 12.7L25 16.8V24.8L18 20.7V12.7Z" fill="#844FBA" />
+      <path d="M18 4.3L25 8.4V16.4L18 12.3V4.3Z" fill="#9B65D4" />
+    </svg>
+  );
+}

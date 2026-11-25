@@ -325,11 +325,11 @@ export default function HeaderThemeSwitcher() {
           <div className="pt-2 border-t border-[#1E293B] flex items-center justify-between">
             <span className="text-[10px] text-slate-500">Auto-saved to your browser</span>
             <Link
-              href="/dashboard/theme"
+              href="/dashboard/style-studio?tab=appearance"
               onClick={() => setIsOpen(false)}
               className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition inline-flex items-center gap-1 group"
             >
-              <span>Full Appearance Module</span>
+              <span>Full Appearance & Themes Studio</span>
               <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition" />
             </Link>
           </div>

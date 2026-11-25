@@ -364,7 +364,7 @@ export function UnifiedServerTable({
       )}
 
       {/* Card Header */}
-      <div className={`px-5 py-3.5 border-b border-[#1E293B] ${headerBg} flex flex-col lg:flex-row lg:items-center justify-between gap-3`}>
+      <div className={`px-5 py-3.5 border-b border-[#1E293B] ${headerBg} flex flex-col xl:flex-row xl:items-center justify-between gap-3.5`}>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-[#0D1526]/90 border border-[#1E293B] flex items-center justify-center shrink-0">
             {icon || defaultIcon}
@@ -379,16 +379,16 @@ export function UnifiedServerTable({
                 {onlineCount} Online
               </span>
             </h3>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-400 mt-0.5">
               {subtitle || defaultSubtitle}
             </p>
           </div>
         </div>
 
         {/* Toolbar: Search, Filters & Action buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5">
           {showToolbar && (
-            <>
+            <div className="flex flex-wrap items-center gap-2">
               {/* Search */}
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -397,7 +397,7 @@ export function UnifiedServerTable({
                   placeholder={isAzure ? 'Search Azure VM...' : isAws ? 'Search EC2 instance...' : isOnPrem ? 'Search on-premises server...' : 'Search servers...'}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 text-xs bg-[#0D1526] border border-[#1E293B] rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-36 sm:w-48"
+                  className="pl-8 pr-3 py-1.5 text-xs bg-[#0D1526] border border-[#1E293B] rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-28 sm:w-36 md:w-44"
                 />
               </div>
 
@@ -427,43 +427,45 @@ export function UnifiedServerTable({
                 <option value="running">Online / Running</option>
                 <option value="stopped">Offline / Stopped</option>
               </select>
-            </>
+            </div>
           )}
 
-          {/* Add Server Button */}
-          {addLabel && (
-            <button
-              type="button"
-              onClick={onAddClick}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer shadow-sm ${
-                isOnPrem
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
-                  : 'bg-[#0D1526] hover:bg-[#15203A] text-slate-200 border border-[#1E293B]'
-              }`}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{addLabel}</span>
-            </button>
-          )}
+          {/* Action Buttons: Add Server/VM followed by View All on the right side */}
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
+            {addLabel && (
+              <button
+                type="button"
+                onClick={onAddClick}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer shadow-sm shrink-0 whitespace-nowrap ${
+                  isOnPrem
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
+                    : 'bg-[#0D1526] hover:bg-[#15203A] text-slate-200 border border-[#1E293B]'
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{addLabel}</span>
+              </button>
+            )}
 
-          {/* View All Button */}
-          {showViewAllButton && viewAllHref && (
-            <Link
-              href={viewAllHref}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-colors shadow-sm ${
-                isAzure
-                  ? 'bg-[#0089D6] hover:bg-[#0078D4]'
-                  : isAws
-                  ? 'bg-[#FF9900] hover:bg-[#E68A00] text-black font-bold'
-                  : isOnPrem
-                  ? 'bg-emerald-600 hover:bg-emerald-500'
-                  : 'bg-blue-600 hover:bg-blue-500'
-              }`}
-            >
-              <span>View All</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
-          )}
+            {/* View All Button on the right side of Add Server / VM */}
+            {showViewAllButton && viewAllHref && (
+              <Link
+                href={viewAllHref}
+                className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-colors shadow-sm shrink-0 whitespace-nowrap ${
+                  isAzure
+                    ? 'bg-[#0089D6] hover:bg-[#0078D4]'
+                    : isAws
+                    ? 'bg-[#FF9900] hover:bg-[#E68A00] text-black font-bold'
+                    : isOnPrem
+                    ? 'bg-emerald-600 hover:bg-emerald-500'
+                    : 'bg-blue-600 hover:bg-blue-500'
+                }`}
+              >
+                <span>View All</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 

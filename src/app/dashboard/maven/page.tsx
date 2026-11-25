@@ -252,47 +252,92 @@ export default function MavenPage() {
         <Header onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
 
         <main className="p-4 lg:p-7 space-y-6 w-full">
-          {/* Page Title & Controls */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-rose-500/20 via-amber-500/20 to-blue-500/20 border border-slate-700/60 flex items-center justify-center shadow-lg shadow-indigo-950/40">
-                <MavenLogo className="w-6 h-6" />
+          {/* Master Control Bar Box (Terraform Style) */}
+          <div className="bg-[#090F1E]/90 border border-blue-500/30 rounded-2xl p-5 shadow-2xl shadow-blue-950/30 backdrop-blur-md">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+              {/* Brand Title */}
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500/20 via-amber-500/20 to-blue-500/20 border border-blue-500/40 flex items-center justify-center shadow-lg shadow-blue-950/40 shrink-0">
+                  <MavenLogo className="w-7 h-7" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                      Maven
+                    </h1>
+                    <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                      Java Cloud Engine
+                    </span>
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                      OpenJDK 21 / 17 LTS
+                    </span>
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/30">
+                      CLI v3.9.6
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Build Java projects and autonomously run executable applications with browser access
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                  <span>Maven</span>
-                </h1>
-                <p className="text-xs text-slate-400">
-                  Build Java projects and autonomously run executable applications with browser access
-                </p>
+
+              {/* Quick Actions & Controls */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <ModuleCustomizeButton
+                  moduleId="maven"
+                  moduleName="Maven Module"
+                  variant="pill"
+                />
+                <button
+                  onClick={() => {
+                    fetchProjectsAndSummary();
+                    fetchApps();
+                  }}
+                  disabled={loading}
+                  title="Refresh projects and metrics"
+                  className="p-2 rounded-xl bg-[#0D1526] hover:bg-gray-800 border border-gray-800 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-400' : ''}`} />
+                </button>
+
+                <button
+                  onClick={handleCreate}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold text-xs transition-all shadow-lg shadow-blue-950/40 flex items-center gap-1.5 cursor-pointer active:scale-[0.98]"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Maven Project</span>
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <ModuleCustomizeButton
-                moduleId="maven"
-                moduleName="Maven Module"
-                variant="pill"
-              />
-              <button
-                onClick={() => {
-                  fetchProjectsAndSummary();
-                  fetchApps();
-                }}
-                disabled={loading}
-                title="Refresh projects and metrics"
-                className="p-2 rounded-xl bg-[#111A2E] hover:bg-[#18233C] border border-[#1E293B] text-slate-300 transition-colors"
-              >
-                <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : ''}`} />
-              </button>
+            {/* Sub-bar: Active Runtime Metrics */}
+            <div className="mt-4 pt-3 border-t border-gray-800/80 flex items-center justify-between flex-wrap gap-2 text-xs">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-gray-400 font-mono flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span>Configured Projects:</span>
+                  <strong className="text-white font-bold">{summary.totalProjects}</strong>
+                </span>
+                <span className="text-gray-600">•</span>
+                <span className="text-gray-400 font-mono">
+                  Running Apps: <strong className="text-emerald-400 font-bold">{runningAppsCount}</strong>
+                </span>
+                <span className="text-gray-600">•</span>
+                <span className="text-gray-400 font-mono">
+                  Build Passes: <strong className="text-cyan-400 font-bold">{summary.successfulBuilds}</strong>
+                </span>
+                <span className="text-gray-600">•</span>
+                <span className="text-gray-400 font-mono">
+                  Artifacts: <strong className="text-purple-400 font-bold">{summary.totalArtifacts}</strong>
+                </span>
+              </div>
 
-              <button
-                onClick={handleCreate}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all shadow-lg shadow-blue-600/30 active:scale-[0.98]"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Maven Project</span>
-              </button>
+              <div className="flex items-center gap-2 text-gray-500 text-[11px] font-mono">
+                <span>Autonomous Runtime: Ready</span>
+                <span>•</span>
+                <span className="text-emerald-400">Live Port Detection: Active</span>
+              </div>
             </div>
           </div>
 

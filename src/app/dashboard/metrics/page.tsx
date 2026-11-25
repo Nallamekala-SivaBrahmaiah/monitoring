@@ -203,56 +203,65 @@ export default function MetricsPage() {
         <Header />
 
         <main className="p-4 lg:p-7 space-y-6">
-          {/* Top Title & Customization Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-                <Link href="/" className="hover:text-blue-400 flex items-center gap-1 transition-colors">
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Dashboard</span>
-                </Link>
-                <span>/</span>
-                <span className="text-white font-medium">Metrics Explorer</span>
-              </div>
-              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-400">
-                  <Activity className="w-5 h-5" />
+          {/* Master Control Bar Box (Terraform Style) */}
+          <div className="bg-[#090F1E]/90 border border-teal-500/30 rounded-2xl p-5 shadow-2xl shadow-teal-950/30 backdrop-blur-md">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs text-slate-400 mb-1.5">
+                  <Link href="/" className="hover:text-blue-400 flex items-center gap-1 transition-colors">
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Dashboard</span>
+                  </Link>
+                  <span>/</span>
+                  <span className="text-white font-medium">Metrics Explorer</span>
                 </div>
-                <span>
-                  {cloudProvider === 'aws'
-                    ? 'AWS CloudWatch Metrics Explorer'
-                    : cloudProvider === 'azure'
-                    ? 'Azure Monitor Telemetry Explorer'
-                    : 'Cross-Cloud Metrics Explorer'}
-                </span>
-                {activeServer && (
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                    <span>{activeServer.name}</span>
-                  </span>
-                )}
-              </h2>
-              <p className="text-xs text-slate-400 mt-1">
-                Real-time multi-cloud telemetry, CPU, memory, and disk observability across all infrastructure servers.
-              </p>
-            </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-500/20 via-cyan-500/20 to-blue-500/20 border border-teal-500/40 flex items-center justify-center shadow-lg shadow-teal-950/40 shrink-0">
+                    <Activity className="w-7 h-7 text-teal-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                        {cloudProvider === 'aws'
+                          ? 'AWS CloudWatch Metrics Explorer'
+                          : cloudProvider === 'azure'
+                          ? 'Azure Monitor Telemetry Explorer'
+                          : 'Cross-Cloud Metrics Explorer'}
+                      </h1>
+                      {activeServer && (
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold flex items-center gap-1.5 font-mono">
+                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                          <span>{activeServer.name}</span>
+                        </span>
+                      )}
+                      <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/30">
+                        Real-Time Telemetry
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Real-time multi-cloud telemetry, CPU, memory, and disk observability across all infrastructure servers
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={() => triggerRefresh()}
-                disabled={isRefreshing}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                title="Sync Live Metrics"
-              >
-                <RotateCw className={`w-3.5 h-3.5 text-sky-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-                <span>Sync Metrics</span>
-              </button>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  onClick={() => triggerRefresh()}
+                  disabled={isRefreshing}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-[#0D1526] hover:bg-gray-800 text-slate-200 border border-gray-800 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                  title="Sync Live Metrics"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 text-teal-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <span>Sync Metrics</span>
+                </button>
 
-              <ModuleCustomizeButton
-                moduleId="metrics-explorer"
-                moduleName="Metrics Explorer"
-                variant="pill"
-              />
+                <ModuleCustomizeButton
+                  moduleId="metrics-explorer"
+                  moduleName="Metrics Explorer"
+                  variant="pill"
+                />
+              </div>
             </div>
           </div>
 

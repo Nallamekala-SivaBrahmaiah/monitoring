@@ -34,6 +34,7 @@ import {
   Code2,
   Sparkles,
   Palette,
+  ChevronDown,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -49,7 +50,76 @@ import { DEFAULT_DEVOPS_COMMANDS } from '@/lib/devops/devopsDefaults';
 import { useTheme } from '@/context/ThemeContext';
 import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
 
-export type PipelineTab = 'jenkins' | 'sonarqube' | 'trivy';
+export type PipelineTab = 'integrated' | 'jenkins' | 'sonarqube' | 'trivy';
+
+export type DevopsModelId = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface IDevopsModelMeta {
+  id: DevopsModelId;
+  name: string;
+  tagline: string;
+  archetype: string;
+  accentColor: string;
+  badge: string;
+  layers: string[];
+}
+
+export const DEVOPS_MODELS: Record<DevopsModelId, IDevopsModelMeta> = {
+  1: {
+    id: 1,
+    name: 'Pipeline Stage Rail',
+    tagline: 'Sequential DevSecOps Flow with checkgates',
+    archetype: 'Linear Rail & Checkgate',
+    accentColor: '#06B6D4',
+    badge: 'MODEL 01',
+    layers: ['Layer 1: CI/CD Build Engine', 'Layer 2: Sonar Quality Gate', 'Layer 3: Security CVE Shield'],
+  },
+  2: {
+    id: 2,
+    name: '3D Layer Stack & Deck',
+    tagline: 'Isometric stacked planes with depth tilt',
+    archetype: '3D Exploded Depth Deck',
+    accentColor: '#A855F7',
+    badge: 'MODEL 02',
+    layers: ['Layer 01: Orchestration (Base)', 'Layer 02: Quality Gate (Middle)', 'Layer 03: Security Shield (Top)'],
+  },
+  3: {
+    id: 3,
+    name: 'DevOps Fleet Matrix',
+    tagline: 'Dual-axis server grid & cross-tool table',
+    archetype: 'Multi-Cloud Operational Matrix',
+    accentColor: '#10B981',
+    badge: 'MODEL 03',
+    layers: ['Server Fleet Y-Axis', 'Cross-Tool Telemetry X-Axis', 'Direct Terminal & Pipeline Trigger Layer'],
+  },
+  4: {
+    id: 4,
+    name: 'Cyberpunk Cockpit',
+    tagline: 'Tri-Circular Radar HUD & real-time telemetry',
+    archetype: 'Autonomous Cyber Telemetry',
+    accentColor: '#F43F5E',
+    badge: 'MODEL 04',
+    layers: ['Tri-Circular Metric Radar', 'Live SSH Console Stream', 'Vulnerability & Quality Smells Audit'],
+  },
+  5: {
+    id: 5,
+    name: 'Glassmorphic Bento Grid',
+    tagline: 'Apple-inspired modular interconnected cards',
+    archetype: 'Modular Glass Bento',
+    accentColor: '#3B82F6',
+    badge: 'MODEL 05',
+    layers: ['Hero DevSecOps Telemetry', 'Target Server Selector', 'Tri-Tool Command Control Tiles'],
+  },
+  6: {
+    id: 6,
+    name: 'Radial Security Wheel',
+    tagline: 'Orbital 120° pillars around central cloud core',
+    archetype: 'Orbital Tri-Pillar Hub',
+    accentColor: '#14B8A6',
+    badge: 'MODEL 06',
+    layers: ['Central Host Fleet Core', 'Tri-Orbital Tool Pillars', 'Cross-Pillar Synced Security Rims'],
+  },
+};
 
 interface IServerPipeline {
   id: string;
@@ -137,11 +207,18 @@ interface ITrivyScanRecord {
 function JenkinsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTab = (searchParams.get('tab') as PipelineTab) || 'jenkins';
-  const { openModuleCustomizer, getModuleStyle } = useTheme();
+  const initialTab = (searchParams.get('tab') as PipelineTab) || 'integrated';
+  const { openModuleCustomizer, getModuleStyle, updateModuleStyle } = useTheme();
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PipelineTab>(initialTab);
+  const [selectedModel, setSelectedModel] = useState<DevopsModelId>(1);
+  const [showModelPickerModal, setShowModelPickerModal] = useState<boolean>(false);
+  const [modelPickerTab, setModelPickerTab] = useState<'models' | 'layers'>('models');
+  const [modelPickerToast, setModelPickerToast] = useState<string | null>(null);
+  const [previewDepth, setPreviewDepth] = useState<number>(25);
+  const [previewTilt, setPreviewTilt] = useState<number>(10);
+  const [previewGlow, setPreviewGlow] = useState<string>('#06B6D4');
   const [servers, setServers] = useState<IServerPipeline[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -196,6 +273,7 @@ function JenkinsContent() {
 
   // Custom Commands & Action Editor State
   const [toolConfigs, setToolConfigs] = useState<Record<PipelineTab, any>>({
+    integrated: null,
     jenkins: null,
     sonarqube: null,
     trivy: null,
@@ -225,6 +303,7 @@ function JenkinsContent() {
 
   // Tab-level Target Server Selection
   const [tabTargetServer, setTabTargetServer] = useState<Record<PipelineTab, string>>({
+    integrated: '',
     jenkins: '',
     sonarqube: '',
     trivy: '',
@@ -237,6 +316,15 @@ function JenkinsContent() {
     params.set('tab', tab);
     router.replace(`/dashboard/jenkins?${params.toString()}`);
   };
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab') as PipelineTab;
+    if (tabParam && ['integrated', 'jenkins', 'sonarqube', 'trivy'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    } else if (!tabParam) {
+      setActiveTab('integrated');
+    }
+  }, [searchParams]);
 
   const fetchServers = useCallback(async (sync = false) => {
     if (sync) setIsSyncing(true);
@@ -330,7 +418,7 @@ function JenkinsContent() {
     if (servers.length > 0) {
       setTabTargetServer((prev) => {
         const next = { ...prev };
-        (['jenkins', 'sonarqube', 'trivy'] as PipelineTab[]).forEach((t) => {
+        (['integrated', 'jenkins', 'sonarqube', 'trivy'] as PipelineTab[]).forEach((t) => {
           if (!next[t] || !servers.some((s) => s.id === next[t])) {
             const preferred = servers.find((s) => {
               const st = (s.status || '').toLowerCase();
@@ -384,16 +472,17 @@ function JenkinsContent() {
   }, [activeTab, tabTargetServer.trivy, servers, serverImages, fetchServerImages]);
 
   const openEditCommands = (tool: PipelineTab) => {
-    setEditTool(tool);
-    const cfg = toolConfigs[tool];
-    const def = DEFAULT_DEVOPS_COMMANDS[tool];
+    const validTool = tool === 'integrated' ? 'jenkins' : tool;
+    setEditTool(validTool);
+    const cfg = toolConfigs[validTool];
+    const def = DEFAULT_DEVOPS_COMMANDS[validTool];
     setEditorInstallCmds(cfg?.installCommands || def?.installCommands || '');
     setEditorUninstallCmds(cfg?.uninstallCommands || def?.uninstallCommands || '');
     setEditorVerifyCmds(cfg?.verificationCommands || def?.verificationCommands || '');
     setEditorServiceName(cfg?.serviceName || def?.serviceName || '');
-    setEditorPort(cfg?.port || def?.port || (tool === 'jenkins' ? 8080 : tool === 'sonarqube' ? 9000 : 0));
+    setEditorPort(cfg?.port || def?.port || (validTool === 'jenkins' ? 8080 : validTool === 'sonarqube' ? 9000 : 0));
     setEditorHealthCheck(cfg?.healthCheckCommand || def?.healthCheckCommand || '');
-    const defaultServer = tabTargetServer[tool] || servers[0]?.id || '';
+    const defaultServer = tabTargetServer[validTool] || servers[0]?.id || '';
     setEditorTargetServer(defaultServer);
     setTestOutput(null);
     setSaveSuccessNotice(null);
@@ -613,17 +702,21 @@ function JenkinsContent() {
           {/* Top Banner & Header */}
           <div
             data-module-id={activeTab}
-            className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-6 shadow-xl relative z-20 transition-all"
+            className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-6 shadow-xl relative z-50 overflow-visible transition-all"
           >
             <div className="flex items-center gap-4 module-header">
               <div
-                className={`w-14 h-14 rounded-2xl border flex items-center justify-center shrink-0 shadow-inner transition-all module-icon ${activeTab === 'jenkins'
-                  ? 'bg-gradient-to-br from-red-500/20 via-rose-500/10 to-red-600/20 border-red-500/40'
-                  : activeTab === 'sonarqube'
+                className={`w-14 h-14 rounded-2xl border flex items-center justify-center shrink-0 shadow-inner transition-all module-icon ${
+                  activeTab === 'integrated'
+                    ? 'bg-gradient-to-br from-blue-500/25 via-indigo-500/20 to-cyan-500/25 border-cyan-500/50 shadow-cyan-500/20'
+                    : activeTab === 'jenkins'
+                    ? 'bg-gradient-to-br from-red-500/20 via-rose-500/10 to-red-600/20 border-red-500/40'
+                    : activeTab === 'sonarqube'
                     ? 'bg-gradient-to-br from-blue-500/20 via-cyan-500/10 to-cyan-600/20 border-cyan-500/40'
                     : 'bg-gradient-to-br from-teal-500/20 via-emerald-500/10 to-teal-600/20 border-teal-500/40'
-                  }`}
+                }`}
               >
+                {activeTab === 'integrated' && <Sparkles className="w-8 h-8 text-cyan-300 animate-pulse" />}
                 {activeTab === 'jenkins' && <JenkinsLogo className="w-8 h-8" />}
                 {activeTab === 'sonarqube' && <SonarQubeLogo className="w-8 h-8" />}
                 {activeTab === 'trivy' && <TrivyLogo className="w-8 h-8" />}
@@ -631,36 +724,31 @@ function JenkinsContent() {
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h1 className="text-xl font-bold text-white tracking-tight module-heading">
-                    {activeTab === 'jenkins' && 'Jenkins CI/CD & DevOps Suite'}
-                    {activeTab === 'sonarqube' && 'SonarQube Code Quality & Security'}
-                    {activeTab === 'trivy' && 'Aqua Trivy Security & Vulnerability Scanner'}
+                    DevSecops CI/CD Pipeline (Jenkins + SonarQube + Trivy)
                   </h1>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 uppercase tracking-wider">
-                    Pipeline Automation
+                    CI/CD Automation
                   </span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 uppercase tracking-wider">
-                    SonarQube Analysis
+                    SonarQube Quality
                   </span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30 uppercase tracking-wider">
-                    Trivy Security
+                    Aqua Trivy Security
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  {activeTab === 'jenkins' &&
-                    'Unified DevOps orchestration: Automatic discovery, port detection, and live SSH management for Jenkins CI/CD pipelines.'}
-                  {activeTab === 'sonarqube' &&
-                    'Automated static code analysis, security vulnerability detection, and code smell tracking for multi-cloud repositories.'}
-                  {activeTab === 'trivy' &&
-                    'Comprehensive security scanner for container images, filesystems, and software supply-chain vulnerabilities.'}
+                  <span className="font-bold text-cyan-300 font-mono">{DEVOPS_MODELS[selectedModel]?.badge}: {DEVOPS_MODELS[selectedModel]?.name}</span> &bull; {DEVOPS_MODELS[selectedModel]?.tagline}. Unified DevOps orchestration for Jenkins CI/CD, SonarQube quality gates, and Aqua Trivy security.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0 flex-wrap relative z-30">
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap relative z-50">
               <ModuleCustomizeButton
                 moduleId={activeTab}
                 moduleName={
-                  activeTab === 'jenkins'
+                  activeTab === 'integrated'
+                    ? 'DevSecops CI/CD Pipeline'
+                    : activeTab === 'jenkins'
                     ? 'Jenkins CI/CD Module'
                     : activeTab === 'sonarqube'
                     ? 'SonarQube Quality Module'
@@ -668,6 +756,7 @@ function JenkinsContent() {
                 }
                 variant="dropdown"
                 label="3D Anime, Design & Layer"
+                onOpenModelPicker={() => setShowModelPickerModal(true)}
               />
 
               <button
@@ -693,83 +782,985 @@ function JenkinsContent() {
             </div>
           </div>
 
-          {/* DevOps Pipeline Integrated Tool Switcher Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-2.5 shadow-sm overflow-x-auto">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => switchTab('jenkins')}
-                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${activeTab === 'jenkins'
-                  ? 'bg-red-500/20 text-white border border-red-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-[#111A2E] border border-transparent'
-                  }`}
-              >
-                <JenkinsLogo className="w-4 h-4" />
-                <span>Jenkins CI/CD</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                  {jenkinsInstalledCount} Inst • {jenkinsRunningCount} Run
+          {/* DevSecOps 3-in-1 Combined Suite Control Bar with Model Switcher */}
+          <div className="flex flex-col gap-3 bg-[#0D1526] border border-[#1E293B] rounded-2xl p-3 shadow-lg relative z-20">
+            {/* Row 1: Model Switcher & Architecture Selector */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-2.5 border-b border-slate-800/80">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-cyan-400 font-bold shrink-0 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                  Select Model:
                 </span>
-              </button>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {([1, 2, 3, 4, 5, 6] as DevopsModelId[]).map((mId) => {
+                    const m = DEVOPS_MODELS[mId];
+                    const isCur = selectedModel === mId;
+                    return (
+                      <button
+                        key={mId}
+                        type="button"
+                        onClick={() => setSelectedModel(mId)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer ${
+                          isCur
+                            ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-600/30 border border-cyan-400 ring-2 ring-cyan-400/30'
+                            : 'bg-[#111A2E] text-slate-300 hover:text-white hover:bg-[#18233C] border border-slate-800'
+                        }`}
+                        title={`${m.name} - ${m.tagline}`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${isCur ? 'bg-cyan-300 animate-ping' : 'bg-slate-600'}`} />
+                        <span>M0{mId}: {m.name}</span>
+                        {isCur && <span className="text-[9px] bg-white/20 px-1 rounded text-white font-sans">Active</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-              <button
-                type="button"
-                onClick={() => switchTab('sonarqube')}
-                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${activeTab === 'sonarqube'
-                  ? 'bg-cyan-500/20 text-white border border-cyan-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-[#111A2E] border border-transparent'
-                  }`}
-              >
-                <SonarQubeLogo className="w-4 h-4" />
-                <span>SonarQube Analysis</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                  {sonarInstalledCount} Inst • {sonarRunningCount} Run
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => switchTab('trivy')}
-                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${activeTab === 'trivy'
-                  ? 'bg-teal-500/20 text-white border border-teal-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-[#111A2E] border border-transparent'
-                  }`}
-              >
-                <TrivyLogo className="w-4 h-4" />
-                <span>Trivy Security</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                  {trivyInstalledCount} Installed
-                </span>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowModelPickerModal(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600/40 via-cyan-600/40 to-blue-600/40 hover:from-purple-600/60 hover:to-blue-600/60 text-white border border-cyan-400/50 text-xs font-bold transition shadow-lg shadow-cyan-500/20 cursor-pointer"
+                  title="Open 6-Model & 3D Layer Architecture Visual Showcase"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+                  <span>📐 Models, Design & Layers Studio</span>
+                </button>
+              </div>
             </div>
 
-            {/* Quick 1-Click Studio Trigger for Active Tool */}
-            <div className="flex items-center gap-2 px-2 self-start sm:self-center">
-              <button
-                type="button"
-                onClick={() =>
-                  openModuleCustomizer(
-                    activeTab,
-                    activeTab === 'jenkins'
-                      ? 'Jenkins CI/CD Module'
-                      : activeTab === 'sonarqube'
-                      ? 'SonarQube Quality Module'
-                      : 'Trivy Security Module'
-                  )
-                }
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-semibold transition cursor-pointer"
-                title={`Customize ${activeTab.toUpperCase()} styling & 3D layers`}
-              >
-                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                <span>Customize {activeTab.toUpperCase()}</span>
-              </button>
+            {/* Row 2: Active Model Summary & Tri-Tool Status */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-[#070B14] border border-cyan-500/30 text-xs">
+                  <span className="text-[10px] font-mono text-cyan-400 font-bold uppercase">Active Design:</span>
+                  <span className="text-white font-bold">{DEVOPS_MODELS[selectedModel].name}</span>
+                  <span className="text-[10px] font-mono text-cyan-300">({DEVOPS_MODELS[selectedModel].archetype})</span>
+                </div>
+
+                {/* Combined Tri-Tool Status Badges */}
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#111A2E] border border-red-500/30">
+                    <JenkinsLogo className="w-3.5 h-3.5" />
+                    <span className="text-[11px] font-mono text-red-300 font-bold">
+                      {jenkinsInstalledCount} Inst • {jenkinsRunningCount} Run
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#111A2E] border border-cyan-500/30">
+                    <SonarQubeLogo className="w-3.5 h-3.5" />
+                    <span className="text-[11px] font-mono text-cyan-300 font-bold">
+                      {sonarInstalledCount} Inst • {sonarRunningCount} Run
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#111A2E] border border-teal-500/30">
+                    <TrivyLogo className="w-3.5 h-3.5" />
+                    <span className="text-[11px] font-mono text-teal-300 font-bold">
+                      {trivyInstalledCount} Installed
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Customize DevSecops CI/CD Pipeline Button */}
+              <div className="flex items-center gap-2 self-start sm:self-center">
+                <button
+                  type="button"
+                  onClick={() =>
+                    openModuleCustomizer(
+                      'integrated',
+                      'DevSecops CI/CD Pipeline'
+                    )
+                  }
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 text-xs font-semibold transition cursor-pointer"
+                  title="Customize DevSecops CI/CD Pipeline styling & 3D layers"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Customize 3D Style & Layers</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Tool Control & Custom Command Action Hub */}
-          <div
-            data-module-id={activeTab}
-            className="bg-[#0D1526] border border-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-lg space-y-4 transition-all"
-          >
+          {/* ========================================================= */}
+          {/* DYNAMIC MODEL RENDERER (MODELS 1 THROUGH 6)               */}
+          {/* ========================================================= */}
+          {activeTab === 'integrated' && (
+            <div className="space-y-6 relative z-10">
+              {/* ======================================================= */}
+              {/* MODEL 1: PIPELINE STAGE PROGRESSION RAIL                */}
+              {/* ======================================================= */}
+              {selectedModel === 1 && (
+                <div className="bg-[#0B1120] border-2 border-cyan-500/40 rounded-2xl p-6 shadow-2xl relative overflow-hidden space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-300 font-black text-sm flex items-center justify-center border border-cyan-500/30">
+                        01
+                      </span>
+                      <div>
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                          <span>Model 1: Unified DevSecOps Pipeline Stage Rail</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                            Sequential Flow
+                          </span>
+                        </h2>
+                        <p className="text-xs text-slate-400">
+                          Automated multi-stage delivery pipeline: Build & Test &rarr; Quality Gate &rarr; Security CVE Shield with live checkgates.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openTerminal(servers.find((s) => s.id === tabTargetServer.integrated) || servers[0])}
+                        className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <TerminalIcon className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>SSH Terminal</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Stage Rail Canvas */}
+                  <div className="bg-[#070C18] border border-slate-800/80 rounded-2xl p-6 relative">
+                    {/* Connecting Flow Line */}
+                    <div className="hidden md:block absolute top-1/2 left-16 right-16 h-1 bg-gradient-to-r from-red-500 via-cyan-500 to-teal-400 -translate-y-6 opacity-30 z-0" />
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
+                      {/* Stage 1: Jenkins */}
+                      <div
+                        data-module-id="jenkins"
+                        className="bg-[#0D1526]/90 border border-red-500/40 rounded-2xl p-5 shadow-xl space-y-3 relative group hover:border-red-400 transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center font-bold text-lg">
+                              👨‍✈️
+                            </div>
+                            <div>
+                              <h3 className="text-xs font-bold text-white">STAGE 1: BUILD & TEST</h3>
+                              <div className="text-[10px] text-red-400 font-mono font-semibold">Jenkins CI/CD Engine</div>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                            {jenkinsRunningCount > 0 ? 'ACTIVE' : 'CHECKGATE'}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 text-[11px] font-mono bg-[#070B14] p-3 rounded-xl border border-slate-800">
+                          <div className="flex justify-between text-slate-300">
+                            <span>Service Port:</span>
+                            <span className="text-cyan-400 font-bold">8080 (Listening)</span>
+                          </div>
+                          <div className="flex justify-between text-slate-300">
+                            <span>Active Nodes:</span>
+                            <span className="text-white font-bold">{jenkinsInstalledCount} Installed ({jenkinsRunningCount} Run)</span>
+                          </div>
+                          <div className="flex justify-between text-slate-300">
+                            <span>Unit Tests:</span>
+                            <span className="text-emerald-400 font-bold">100% Passed</span>
+                          </div>
+                          <div className="flex justify-between text-slate-300">
+                            <span>Target Node:</span>
+                            <span className="text-slate-200">{servers.find((s) => s.id === tabTargetServer.integrated)?.name || 'azure'}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800">
+                          <span className="text-slate-400">Duration: 1m 24s</span>
+                          <button
+                            type="button"
+                            onClick={() => openEditCommands('jenkins')}
+                            className="text-red-400 font-bold hover:underline cursor-pointer"
+                          >
+                            Edit Commands &rarr;
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Stage 2: SonarQube */}
+                      <div
+                        data-module-id="sonarqube"
+                        className="bg-[#0D1526]/90 border border-cyan-500/40 rounded-2xl p-5 shadow-xl space-y-3 relative group hover:border-cyan-400 transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 flex items-center justify-center font-bold text-lg">
+                              🔍
+                            </div>
+                            <div>
+                              <h3 className="text-xs font-bold text-white">STAGE 2: QUALITY GATE</h3>
+                              <div className="text-[10px] text-cyan-400 font-mono font-semibold">SonarQube Static Analysis</div>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                            PASSED (A)
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 text-[11px] font-mono bg-[#070B14] p-3 rounded-xl border border-slate-800">
+                          <div className="flex justify-between text-slate-300">
+                            <span>Code Coverage:</span>
+                            <span className="text-cyan-400 font-bold">89.4%</span>
+                          </div>
+                          <div className="flex justify-between text-slate-300">
+                            <span>Bugs & Smells:</span>
+                            <span className="text-emerald-400">0 Bugs • 2 Minor</span>
+                          </div>
+                          <div className="flex justify-between text-slate-300">
+                            <span>Security Rating:</span>
+                            <span className="text-emerald-300 font-bold">Grade A (0 Hotspots)</span>
+                          </div>
+                          <div className="flex justify-between text-slate-300">
+                            <span>Service Port:</span>
+                            <span className="text-cyan-400">9000 (Community)</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800">
+                          <span className="text-slate-400">Tech Debt: 15 mins</span>
+                          <button
+                            type="button"
+                            onClick={() => openEditCommands('sonarqube')}
+                            className="text-cyan-400 font-bold hover:underline cursor-pointer"
+                          >
+                            Edit Commands &rarr;
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Stage 3: Trivy */}
+                      <div
+                        data-module-id="trivy"
+                        className="bg-[#0D1526]/90 border border-teal-500/40 rounded-2xl p-5 shadow-xl space-y-3 relative group hover:border-teal-400 transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-400 flex items-center justify-center font-bold text-lg">
+                              🛡️
+                            </div>
+                            <div>
+                              <h3 className="text-xs font-bold text-white">STAGE 3: SECURITY SHIELD</h3>
+                              <div className="text-[10px] text-teal-400 font-mono font-semibold">Trivy Vulnerability Engine</div>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-500/15 text-teal-300 border border-teal-500/30">
+                            SECURE
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 text-[11px] font-mono bg-[#070B14] p-3 rounded-xl border border-slate-800">
+                          <div className="flex justify-between text-slate-300">
+                            <span>Target Image:</span>
+                            <span className="text-teal-300 font-bold">{trivyTarget || 'nginx:alpine'}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-300">
+                            <span>Critical CVEs:</span>
+                            <span className="text-emerald-400 font-bold">0 Found (Clean)</span>
+                          </div>
+                          <div className="flex justify-between text-slate-300">
+                            <span>High / Medium:</span>
+                            <span className="text-amber-300 font-bold">0 High • 1 Med</span>
+                          </div>
+                          <div className="flex justify-between text-slate-300">
+                            <span>Host Scanner:</span>
+                            <span className="text-slate-300">{trivyInstalledCount > 0 ? 'Active' : 'Ready'}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800">
+                          <span className="text-slate-400">Scanned recently</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const curId = tabTargetServer.integrated || servers[0]?.id;
+                              if (curId) setTrivyScanServer(curId);
+                              setTrivyScanOpen(true);
+                            }}
+                            className="text-teal-400 font-bold hover:underline cursor-pointer"
+                          >
+                            Run Scan &rarr;
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Operational Node Bar */}
+                    <div className="mt-6 pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="text-slate-300 font-semibold">Active Fleet Target:</span>
+                        <select
+                          value={tabTargetServer.integrated || ''}
+                          onChange={(e) =>
+                            setTabTargetServer((prev) => ({ ...prev, integrated: e.target.value }))
+                          }
+                          className="bg-[#111A2E] border border-slate-700 font-mono text-cyan-300 text-xs rounded-lg px-2.5 py-1 focus:outline-none"
+                        >
+                          {servers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} ({s.publicIp || s.host})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const curId = tabTargetServer.integrated || servers[0]?.id;
+                            if (curId) setJenkinsInstallServer(curId);
+                            setJenkinsInstallOpen(true);
+                          }}
+                          className="px-3.5 py-1.5 rounded-lg bg-[#111A2E] hover:bg-[#18233C] text-slate-300 border border-slate-700 transition cursor-pointer"
+                        >
+                          Deploy Pipeline
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fetchServers(true)}
+                          className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold transition shadow-md shadow-cyan-600/20 cursor-pointer"
+                        >
+                          Sync & Trigger All 3 Stages
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3-Layer Breakdown Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                    <div className="bg-[#070C18] p-4 rounded-xl border border-red-500/30 space-y-1">
+                      <div className="font-bold text-red-400 font-mono">LAYER 1: AUTOMATION ENGINE</div>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        Continuous Integration runner managing Git webhooks, artifact compilation, and SSH worker daemon on port 8080.
+                      </p>
+                    </div>
+                    <div className="bg-[#070C18] p-4 rounded-xl border border-cyan-500/30 space-y-1">
+                      <div className="font-bold text-cyan-400 font-mono">LAYER 2: CODE QUALITY GATE</div>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        Static code analysis, code smell detection, and security rating enforcement before packaging on port 9000.
+                      </p>
+                    </div>
+                    <div className="bg-[#070C18] p-4 rounded-xl border border-teal-500/30 space-y-1">
+                      <div className="font-bold text-teal-400 font-mono">LAYER 3: SECURITY & CVE SHIELD</div>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        Comprehensive vulnerability scanner analyzing container images and host filesystems against official CVE databases.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ======================================================= */}
+              {/* MODEL 2: 3D EXPLODED LAYER STACK & DECK                 */}
+              {/* ======================================================= */}
+              {selectedModel === 2 && (
+                <div className="bg-[#0B1120] border-2 border-purple-500/40 rounded-2xl p-6 shadow-2xl relative overflow-hidden space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-300 font-black text-sm flex items-center justify-center border border-purple-500/30">
+                        02
+                      </span>
+                      <div>
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                          <span>Model 2: 3D Exploded Layer Stack & Deck</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            Isometric Depth
+                          </span>
+                        </h2>
+                        <p className="text-xs text-slate-400">
+                          Vertical isometric stacked planes with layer depth control, tilt physics, and isolated operational scoping.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#070C18] border border-slate-800/80 rounded-2xl p-8 relative flex flex-col items-center justify-center min-h-[380px]">
+                    <div className="w-full max-w-2xl space-y-4">
+                      {/* Top Plane: Trivy Security Shield */}
+                      <div
+                        data-module-id="trivy"
+                        className="bg-[#0D1526]/90 border border-teal-500/50 p-4 rounded-xl shadow-xl transform hover:-translate-y-2 transition-all duration-300 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/40">
+                              LAYER 03 • TOP SHIELD
+                            </span>
+                            <span className="text-xs font-bold text-white">Aqua Trivy Container Security Shield</span>
+                          </div>
+                          <span className="text-xs font-mono text-teal-400 font-bold">0 Critical CVEs</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                          <span>CVE Database: Synced • Inspecting local container images</span>
+                          <span className="text-teal-300 font-mono font-semibold">Depth: +40px (Top)</span>
+                        </div>
+                      </div>
+
+                      {/* Middle Plane: SonarQube Quality Gate */}
+                      <div
+                        data-module-id="sonarqube"
+                        className="bg-[#0D1526]/90 border border-cyan-500/50 p-4 rounded-xl shadow-xl transform hover:-translate-y-2 transition-all duration-300 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                              LAYER 02 • MIDDLE GATE
+                            </span>
+                            <span className="text-xs font-bold text-white">SonarQube Static Analysis & Quality Gate</span>
+                          </div>
+                          <span className="text-xs font-mono text-cyan-400 font-bold">Grade A (Passed)</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                          <span>Coverage 89% • 0 Security Hotspots • Port 9000 Community</span>
+                          <span className="text-cyan-300 font-mono font-semibold">Depth: +20px (Middle)</span>
+                        </div>
+                      </div>
+
+                      {/* Base Plane: Jenkins Automation Hub */}
+                      <div
+                        data-module-id="jenkins"
+                        className="bg-[#0D1526]/90 border border-red-500/50 p-4 rounded-xl shadow-xl transform hover:-translate-y-2 transition-all duration-300 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-red-500/20 text-red-300 border border-red-500/40">
+                              LAYER 01 • BASE ORCHESTRATION
+                            </span>
+                            <span className="text-xs font-bold text-white">Jenkins CI/CD Automation & Build Nodes</span>
+                          </div>
+                          <span className="text-xs font-mono text-red-400 font-bold">Port 8080 Active</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                          <span>Pipeline triggers on push • Live SSH node execution</span>
+                          <span className="text-red-300 font-mono font-semibold">Depth: 0px (Base Platform)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ======================================================= */}
+              {/* MODEL 3: MULTI-CLOUD DEVOPS FLEET MATRIX                */}
+              {/* ======================================================= */}
+              {selectedModel === 3 && (
+                <div className="bg-[#0B1120] border-2 border-emerald-500/40 rounded-2xl p-6 shadow-2xl relative overflow-hidden space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-300 font-black text-sm flex items-center justify-center border border-emerald-500/30">
+                        03
+                      </span>
+                      <div>
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                          <span>Model 3: Multi-Cloud DevOps Fleet Matrix</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            Dual-Axis Table
+                          </span>
+                        </h2>
+                        <p className="text-xs text-slate-400">
+                          Dual-axis operational grid: Monitored Servers on Y-Axis &times; DevOps Suite Tools on X-Axis.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#070C18] border border-slate-800/80 rounded-2xl overflow-x-auto">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-[#0B1222] border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
+                        <tr>
+                          <th className="p-3.5">Host Server</th>
+                          <th className="p-3.5">Power</th>
+                          <th className="p-3.5 text-red-400">Jenkins CI/CD</th>
+                          <th className="p-3.5 text-cyan-400">SonarQube</th>
+                          <th className="p-3.5 text-teal-400">Trivy Security</th>
+                          <th className="p-3.5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {servers.map((s) => {
+                          const isRun = (s.status || '').toLowerCase().includes('run') || (s.status || '').toLowerCase() === 'online';
+                          return (
+                            <tr key={s.id} className="hover:bg-[#0D1526] transition">
+                              <td className="p-3.5 font-bold text-white flex items-center gap-2">
+                                <span className={`w-2.5 h-2.5 rounded-full ${isRun ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+                                <span>{s.name}</span>
+                                <span className="text-slate-400 text-[10px] font-normal font-mono">{s.publicIp || s.host}</span>
+                              </td>
+                              <td className="p-3.5">
+                                <span className={`font-bold ${isRun ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {isRun ? 'Online' : 'Stopped'}
+                                </span>
+                              </td>
+                              <td className="p-3.5">
+                                {s.jenkins?.detected ? (
+                                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                    Running :8080
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400">Not Installed</span>
+                                )}
+                              </td>
+                              <td className="p-3.5">
+                                {s.sonarqube?.detected ? (
+                                  <span className="px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                    Active :9000
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400">Not Installed</span>
+                                )}
+                              </td>
+                              <td className="p-3.5">
+                                {s.trivy?.detected ? (
+                                  <span className="px-2 py-0.5 rounded bg-teal-500/15 text-teal-300 border border-teal-500/30">
+                                    Installed (Clean)
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400">Not Installed</span>
+                                )}
+                              </td>
+                              <td className="p-3.5 text-right space-x-2">
+                                <button
+                                  type="button"
+                                  onClick={() => openTerminal(s)}
+                                  className="px-2.5 py-1 rounded bg-[#111A2E] hover:bg-[#18233C] text-slate-300 border border-slate-700 hover:text-white transition cursor-pointer"
+                                >
+                                  SSH
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ======================================================= */}
+              {/* MODEL 4: CYBERPUNK AUTONOMOUS COCKPIT                   */}
+              {/* ======================================================= */}
+              {selectedModel === 4 && (
+                <div className="bg-[#0B1120] border-2 border-rose-500/40 rounded-2xl p-6 shadow-2xl relative overflow-hidden space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-300 font-black text-sm flex items-center justify-center border border-rose-500/30">
+                        04
+                      </span>
+                      <div>
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                          <span>Model 4: Cyberpunk Autonomous Cockpit</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                            HUD Telemetry
+                          </span>
+                        </h2>
+                        <p className="text-xs text-slate-400">
+                          Tri-Circular Radar HUD, live streaming SSH logs, and real-time security telemetry.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Left: Console Stream */}
+                    <div className="bg-[#070C18] border border-slate-800 rounded-xl p-4 font-mono text-[11px] space-y-2">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span className="text-slate-400 font-bold">STREAM: DEVOPS SUITE</span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      </div>
+                      <div className="text-emerald-400 space-y-1 h-44 overflow-y-auto">
+                        <div>[jenkins@azure ~]$ systemctl status jenkins</div>
+                        <div className="text-slate-400">● jenkins.service - Continuous Integration</div>
+                        <div className="text-cyan-300">   Active: active (running) :8080</div>
+                        <div>[trivy@azure ~]$ trivy image --severity CRITICAL nginx:alpine</div>
+                        <div className="text-teal-300">Total: 0 (CRITICAL: 0, HIGH: 0)</div>
+                        <div className="text-emerald-300">&gt; SUCCESS: DevSecOps threshold passed.</div>
+                      </div>
+                    </div>
+
+                    {/* Center: Tri-Circular Gauge */}
+                    <div className="bg-[#070C18] border border-cyan-500/30 rounded-xl p-4 flex flex-col items-center justify-center space-y-3">
+                      <div className="text-xs font-bold text-slate-300">TRI-METRIC COMPOSITE RADAR</div>
+                      <div className="relative w-36 h-36 flex items-center justify-center">
+                        <svg className="w-full h-full transform -rotate-90">
+                          <circle cx="72" cy="72" r="54" stroke="#1E293B" strokeWidth="8" fill="none" />
+                          <circle cx="72" cy="72" r="54" stroke="#06B6D4" strokeWidth="8" strokeDasharray="339" strokeDashoffset="35" fill="none" strokeLinecap="round" />
+                          <circle cx="72" cy="72" r="40" stroke="#10B981" strokeWidth="6" strokeDasharray="251" strokeDashoffset="15" fill="none" strokeLinecap="round" />
+                          <circle cx="72" cy="72" r="28" stroke="#F43F5E" strokeWidth="5" strokeDasharray="175" strokeDashoffset="20" fill="none" strokeLinecap="round" />
+                        </svg>
+                        <div className="absolute text-center">
+                          <div className="text-xl font-black text-white">98%</div>
+                          <div className="text-[9px] font-mono text-cyan-400">COMPOSITE</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 text-[10px] font-mono">
+                        <span className="text-red-400">● Build: 92%</span>
+                        <span className="text-cyan-400">● Quality: 96%</span>
+                        <span className="text-emerald-400">● Sec: 100%</span>
+                      </div>
+                    </div>
+
+                    {/* Right: Security Audit */}
+                    <div className="bg-[#070C18] border border-slate-800 rounded-xl p-4 space-y-3 text-xs">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span className="font-bold text-slate-300">SECURITY & QUALITY AUDIT</span>
+                        <span className="text-teal-400 font-mono text-[10px]">Trivy + Sonar</span>
+                      </div>
+                      <div className="space-y-2 font-mono">
+                        <div className="flex justify-between items-center p-2 rounded bg-[#0D1526]">
+                          <span className="text-slate-400">Critical CVEs:</span>
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">0 Clean</span>
+                        </div>
+                        <div className="flex justify-between items-center p-2 rounded bg-[#0D1526]">
+                          <span className="text-slate-400">Code Coverage:</span>
+                          <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">89.4%</span>
+                        </div>
+                        <div className="flex justify-between items-center p-2 rounded bg-[#0D1526]">
+                          <span className="text-slate-400">Code Smells:</span>
+                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">2 Minor</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ======================================================= */}
+              {/* MODEL 5: GLASSMORRHIC MODULAR BENTO GRID                */}
+              {/* ======================================================= */}
+              {selectedModel === 5 && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                  {/* Hero Bento Tile (8 cols) */}
+                  <div className="lg:col-span-8 bg-[#0D1526]/85 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+                        <span className="text-xs font-mono uppercase tracking-wider text-cyan-300 font-bold">
+                          Model 5: DevSecOps Unified Orchestration
+                        </span>
+                      </div>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        TRI-TOOL HEALTHY
+                      </span>
+                    </div>
+
+                    <div>
+                      <h2 className="text-lg font-bold text-white tracking-tight">
+                        Jenkins CI/CD • SonarQube Gate • Aqua Trivy Security
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Automated pipeline delivery, static code quality scanning, and container CVE vulnerability detection linked across your multi-cloud server fleet.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                      <div
+                        data-module-id="jenkins"
+                        className="p-3 rounded-xl bg-[#070B14]/70 border border-red-500/30 space-y-1"
+                      >
+                        <div className="text-[11px] font-bold text-red-400 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5"><JenkinsLogo className="w-3.5 h-3.5" /> Jenkins CI/CD</span>
+                          <span className="font-mono text-[10px] text-slate-400">Port 8080</span>
+                        </div>
+                        <div className="text-sm font-black text-white font-mono">
+                          {jenkinsRunningCount} Running / {jenkinsInstalledCount} Inst
+                        </div>
+                      </div>
+
+                      <div
+                        data-module-id="sonarqube"
+                        className="p-3 rounded-xl bg-[#070B14]/70 border border-cyan-500/30 space-y-1"
+                      >
+                        <div className="text-[11px] font-bold text-cyan-400 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5"><SonarQubeLogo className="w-3.5 h-3.5" /> SonarQube</span>
+                          <span className="font-mono text-[10px] text-slate-400">Port 9000</span>
+                        </div>
+                        <div className="text-sm font-black text-white font-mono">
+                          {sonarRunningCount} Running / {sonarInstalledCount} Inst
+                        </div>
+                      </div>
+
+                      <div
+                        data-module-id="trivy"
+                        className="p-3 rounded-xl bg-[#070B14]/70 border border-teal-500/30 space-y-1"
+                      >
+                        <div className="text-[11px] font-bold text-teal-400 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5"><TrivyLogo className="w-3.5 h-3.5" /> Trivy Shield</span>
+                          <span className="font-mono text-[10px] text-slate-400">CVE Engine</span>
+                        </div>
+                        <div className="text-sm font-black text-white font-mono">
+                          {trivyInstalledCount} Installed Nodes
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Target Server Selector & SSH Bento Tile (4 cols) */}
+                  <div className="lg:col-span-4 bg-[#0D1526]/85 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-2xl flex flex-col justify-between space-y-3">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold">
+                          Active Target Server Node
+                        </span>
+                        {(() => {
+                          const curS = servers.find((s) => s.id === tabTargetServer.integrated);
+                          if (!curS) return null;
+                          const isSt = (curS.status || '').toLowerCase().includes('stop');
+                          return (
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                isSt
+                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              }`}
+                            >
+                              {isSt ? 'STOPPED' : 'RUNNING'}
+                            </span>
+                          );
+                        })()}
+                      </div>
+
+                      <select
+                        value={tabTargetServer.integrated || ''}
+                        onChange={(e) =>
+                          setTabTargetServer((prev) => ({ ...prev, integrated: e.target.value }))
+                        }
+                        className="w-full bg-[#111A2E] border border-[#1E293B] text-slate-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-cyan-500/50 cursor-pointer"
+                      >
+                        {servers.map((s) => {
+                          const st = (s.status || '').toLowerCase();
+                          const state = st.includes('stop') ? ' [STOPPED]' : ' [RUNNING]';
+                          return (
+                            <option key={s.id} value={s.id}>
+                              {s.name} ({s.publicIp || s.host}){state}
+                            </option>
+                          );
+                        })}
+                      </select>
+
+                      {(() => {
+                        const curS = servers.find((s) => s.id === tabTargetServer.integrated);
+                        if (!curS) return null;
+                        return (
+                          <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between pt-1">
+                            <span>Host: <strong className="text-cyan-300">{curS.publicIp || curS.host}</strong></span>
+                            <span className="uppercase">{curS.cloudProvider} • {curS.region}</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curS = servers.find((s) => s.id === tabTargetServer.integrated);
+                          if (curS) openTerminal(curS);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold transition shadow-lg shadow-cyan-600/20 cursor-pointer"
+                      >
+                        <TerminalIcon className="w-3.5 h-3.5" />
+                        <span>Open Remote SSH Terminal</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 3 Quick Tool Command Hub Bento Tiles (12 cols, 4-4-4) */}
+                  <div
+                    data-module-id="jenkins"
+                    className="lg:col-span-4 bg-[#0D1526]/85 backdrop-blur-xl border border-red-500/30 rounded-2xl p-4 shadow-xl space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <JenkinsLogo className="w-5 h-5" />
+                        <span className="text-xs font-bold text-white">Jenkins CI/CD Automation</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-red-500/20 text-red-300 border border-red-500/30">
+                        Port 8080
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Manage CI/CD build scripts, automated execution & pipeline nodes.
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curId = tabTargetServer.integrated || servers[0]?.id;
+                          if (curId) setJenkinsInstallServer(curId);
+                          setJenkinsInstallOpen(true);
+                        }}
+                        className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 transition text-center cursor-pointer"
+                      >
+                        Install / Setup
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditCommands('jenkins')}
+                        className="py-1.5 px-3 rounded-lg text-xs font-bold bg-[#111A2E] hover:bg-[#18233C] text-slate-300 border border-slate-700 transition cursor-pointer"
+                      >
+                        Commands
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    data-module-id="sonarqube"
+                    className="lg:col-span-4 bg-[#0D1526]/85 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-4 shadow-xl space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <SonarQubeLogo className="w-5 h-5" />
+                        <span className="text-xs font-bold text-white">SonarQube Analysis Hub</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        Port 9000
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Enforce code quality standards, detect security hotspots & smells.
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curId = tabTargetServer.integrated || servers[0]?.id;
+                          if (curId) setSonarInstallServer(curId);
+                          setSonarInstallOpen(true);
+                        }}
+                        className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 transition text-center cursor-pointer"
+                      >
+                        Install / Setup
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditCommands('sonarqube')}
+                        className="py-1.5 px-3 rounded-lg text-xs font-bold bg-[#111A2E] hover:bg-[#18233C] text-slate-300 border border-slate-700 transition cursor-pointer"
+                      >
+                        Commands
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    data-module-id="trivy"
+                    className="lg:col-span-4 bg-[#0D1526]/85 backdrop-blur-xl border border-teal-500/30 rounded-2xl p-4 shadow-xl space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <TrivyLogo className="w-5 h-5" />
+                        <span className="text-xs font-bold text-white">Trivy Vulnerability Scanner</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                        Host Images
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Scan Docker container images & filesystems for known CVE vulnerabilities.
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curId = tabTargetServer.integrated || servers[0]?.id;
+                          if (curId) setTrivyScanServer(curId);
+                          setTrivyScanOpen(true);
+                        }}
+                        className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 transition text-center cursor-pointer"
+                      >
+                        Scan Image
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditCommands('trivy')}
+                        className="py-1.5 px-3 rounded-lg text-xs font-bold bg-[#111A2E] hover:bg-[#18233C] text-slate-300 border border-slate-700 transition cursor-pointer"
+                      >
+                        Commands
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ======================================================= */}
+              {/* MODEL 6: RADIAL DEVOPS SECURITY WHEEL                   */}
+              {/* ======================================================= */}
+              {selectedModel === 6 && (
+                <div className="bg-[#0B1120] border-2 border-teal-500/40 rounded-2xl p-6 shadow-2xl relative overflow-hidden space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-300 font-black text-sm flex items-center justify-center border border-teal-500/30">
+                        06
+                      </span>
+                      <div>
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                          <span>Model 6: Radial DevOps Security Wheel</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                            Orbital Pillars
+                          </span>
+                        </h2>
+                        <p className="text-xs text-slate-400">
+                          Central cloud fleet core with three 120-degree orbital operational pillars for CI/CD, Quality, and Security.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#070C18] border border-slate-800 rounded-2xl p-8 flex flex-col items-center justify-center relative min-h-[380px]">
+                    <div className="relative w-80 h-80 flex items-center justify-center">
+                      {/* Central Fleet Core */}
+                      <div className="w-32 h-32 rounded-full bg-gradient-to-br from-[#0E172E] to-[#070C18] border-2 border-cyan-400 flex flex-col items-center justify-center text-center shadow-2xl z-20">
+                        <span className="text-[10px] text-slate-400 font-mono">HOST CORE</span>
+                        <span className="text-sm font-bold text-white font-mono">
+                          {servers.find((s) => s.id === tabTargetServer.integrated)?.name || 'azure'}
+                        </span>
+                        <span className="text-[9px] text-emerald-400 font-bold uppercase">100% ONLINE</span>
+                      </div>
+
+                      {/* Orbit 1: Jenkins Sector (Top) */}
+                      <div className="absolute -top-3 w-48 text-center bg-[#0D1526]/90 border border-red-500/40 p-2.5 rounded-xl shadow-xl z-10">
+                        <div className="text-[11px] font-bold text-red-400 flex items-center justify-center gap-1.5">
+                          <JenkinsLogo className="w-3 h-3" />
+                          <span>JENKINS CI/CD</span>
+                        </div>
+                        <div className="text-[10px] text-slate-300 font-mono">Port 8080 • {jenkinsRunningCount} Running</div>
+                      </div>
+
+                      {/* Orbit 2: SonarQube Sector (Bottom Right) */}
+                      <div className="absolute -bottom-3 right-0 w-48 text-center bg-[#0D1526]/90 border border-cyan-500/40 p-2.5 rounded-xl shadow-xl z-10">
+                        <div className="text-[11px] font-bold text-cyan-400 flex items-center justify-center gap-1.5">
+                          <SonarQubeLogo className="w-3 h-3" />
+                          <span>SONARQUBE GATE</span>
+                        </div>
+                        <div className="text-[10px] text-slate-300 font-mono">Port 9000 • Grade A</div>
+                      </div>
+
+                      {/* Orbit 3: Trivy Sector (Bottom Left) */}
+                      <div className="absolute -bottom-3 left-0 w-48 text-center bg-[#0D1526]/90 border border-teal-500/40 p-2.5 rounded-xl shadow-xl z-10">
+                        <div className="text-[11px] font-bold text-teal-400 flex items-center justify-center gap-1.5">
+                          <TrivyLogo className="w-3 h-3" />
+                          <span>TRIVY SCANNER</span>
+                        </div>
+                        <div className="text-[10px] text-slate-300 font-mono">0 Critical • Clean</div>
+                      </div>
+
+                      {/* Rotating Orbit Rings */}
+                      <div className="absolute inset-0 rounded-full border border-dashed border-cyan-500/20 animate-spin" style={{ animationDuration: '40s' }} />
+                      <div className="absolute inset-4 rounded-full border border-dashed border-purple-500/20 animate-spin" style={{ animationDuration: '25s', animationDirection: 'reverse' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tool Control & Custom Command Action Hub (Single Tool Views) */}
+          {activeTab !== 'integrated' && toolConfigs[activeTab] && (
+            <div
+              data-module-id={activeTab}
+              className="bg-[#0D1526] border border-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-lg space-y-4 transition-all relative z-10"
+            >
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 module-header">
               {/* Tool Identity & Commands Summary */}
               <div className="flex items-center gap-3.5">
@@ -1085,6 +2076,7 @@ function JenkinsContent() {
               </div>
             </div>
           </div>
+        )}
 
           {/* Fleet Compute Health & Server Power Status Indicator */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0D1526] border border-[#1E293B] rounded-2xl px-5 py-3 shadow-sm">
@@ -1218,6 +2210,332 @@ function JenkinsContent() {
             <div className="space-y-4">
               {filteredServers.map((server) => {
                 const hostIp = server.publicIp || server.host;
+
+                // ==========================================
+                // 0. INTEGRATED DEVOPS SUITE (MODEL 5 BENTO VIEW)
+                // ==========================================
+                if (activeTab === 'integrated') {
+                  const sStatusLower = (server.status || '').toLowerCase();
+                  const isServerRunning = sStatusLower === 'online' || sStatusLower === 'running';
+                  const isServerStopped = sStatusLower.includes('stop');
+
+                  const j = server.jenkins;
+                  const isJenkinsInstalled = j.detected;
+                  const isJenkinsRunning = j.status === 'running';
+                  const jenkinsPort = j.port || 8080;
+                  const jenkinsUrl = j.url || `http://${hostIp}:${jenkinsPort}`;
+
+                  const sq = server.sonarqube;
+                  const isSonarInstalled = sq.detected;
+                  const isSonarRunning = sq.status === 'running';
+                  const sonarPort = sq.port || 9000;
+                  const sonarUrl = sq.url || `http://${hostIp}:${sonarPort}`;
+
+                  const tr = server.trivy;
+                  const isTrivyInstalled = tr.detected;
+                  const images = serverImages[server.id] || [];
+
+                  return (
+                    <div
+                      key={server.id}
+                      className={`bg-[#0D1526]/90 backdrop-blur-xl border rounded-2xl p-5 shadow-xl transition-all space-y-4 ${
+                        isServerStopped
+                          ? 'border-rose-900/40 bg-gradient-to-b from-[#0D1526] to-rose-950/10'
+                          : isServerRunning
+                          ? 'border-cyan-500/30 hover:border-cyan-500/60'
+                          : 'border-amber-900/40'
+                      }`}
+                    >
+                      {/* Server Node Header Banner */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-[#111A2E] border border-[#1E293B] flex items-center justify-center shrink-0">
+                            {server.cloudProvider?.toLowerCase() === 'azure' ? (
+                              <AzureLogo className="w-5 h-5" />
+                            ) : server.cloudProvider?.toLowerCase() === 'aws' ? (
+                              <AwsLogo className="w-5 h-5" />
+                            ) : (
+                              <Server className="w-5 h-5 text-slate-400" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-bold text-white font-mono">{server.name}</span>
+                              <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
+                                {hostIp}
+                              </span>
+                              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-800/60 px-2 py-0.5 rounded">
+                                {server.cloudProvider?.toUpperCase()} • {server.region}
+                              </span>
+                              {isServerRunning ? (
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  Running
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  Stopped
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">
+                              Platform OS: <span className="text-slate-300 font-medium">{server.osName}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openTerminal(server)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-xl transition cursor-pointer"
+                          >
+                            <TerminalIcon className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Terminal</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 3-Column Glassmorphic Bento Grid on this Server */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                        {/* 1. Jenkins Bento Tile */}
+                        <div
+                          data-module-id="jenkins"
+                          className="bg-[#070C18]/80 border border-red-500/30 rounded-xl p-3.5 flex flex-col justify-between space-y-3"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <JenkinsLogo className="w-4 h-4" />
+                                <span className="text-xs font-bold text-white">Jenkins CI/CD</span>
+                              </div>
+                              {isJenkinsRunning ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  RUNNING
+                                </span>
+                              ) : isJenkinsInstalled ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                  STOPPED
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400">
+                                  NOT INSTALLED
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-1 text-[11px] font-mono text-slate-400 bg-[#0B1120] p-2.5 rounded-lg border border-slate-800/80">
+                              <div className="flex justify-between">
+                                <span>Port:</span>
+                                <span className="text-cyan-300 font-bold">{jenkinsPort}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Version:</span>
+                                <span className="text-slate-200">{j.version ? `v${j.version}` : '—'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Service:</span>
+                                <span className="text-slate-300">{j.serviceName || 'jenkins'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+                            {isJenkinsInstalled ? (
+                              <>
+                                <a
+                                  href={jenkinsUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex-1 py-1.5 px-2.5 rounded-lg text-xs font-semibold bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/40 text-center transition flex items-center justify-center gap-1.5"
+                                >
+                                  <span>Web UI</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                                <button
+                                  type="button"
+                                  disabled={Boolean(actionLoading) || isServerStopped}
+                                  onClick={() => setUninstallTarget({ server, tool: 'jenkins' })}
+                                  className="py-1.5 px-2.5 rounded-lg text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition cursor-pointer"
+                                  title="Uninstall Jenkins"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={Boolean(actionLoading) || isServerStopped}
+                                onClick={() => {
+                                  setJenkinsInstallServer(server.id);
+                                  setJenkinsInstallOpen(true);
+                                }}
+                                className="w-full py-1.5 px-3 rounded-lg text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition text-center shadow-sm cursor-pointer"
+                              >
+                                {isServerStopped ? 'Server Stopped' : 'Install Jenkins'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 2. SonarQube Bento Tile */}
+                        <div
+                          data-module-id="sonarqube"
+                          className="bg-[#070C18]/80 border border-cyan-500/30 rounded-xl p-3.5 flex flex-col justify-between space-y-3"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <SonarQubeLogo className="w-4 h-4" />
+                                <span className="text-xs font-bold text-white">SonarQube Gate</span>
+                              </div>
+                              {isSonarRunning ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  RUNNING
+                                </span>
+                              ) : isSonarInstalled ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                  STOPPED
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400">
+                                  NOT INSTALLED
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-1 text-[11px] font-mono text-slate-400 bg-[#0B1120] p-2.5 rounded-lg border border-slate-800/80">
+                              <div className="flex justify-between">
+                                <span>Port:</span>
+                                <span className="text-cyan-300 font-bold">{sonarPort}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Version:</span>
+                                <span className="text-slate-200">{sq.version ? `v${sq.version}` : 'Community'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Mode:</span>
+                                <span className="text-slate-300">{sq.mode || 'docker'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+                            {isSonarInstalled ? (
+                              <>
+                                <a
+                                  href={sonarUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex-1 py-1.5 px-2.5 rounded-lg text-xs font-semibold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-500/40 text-center transition flex items-center justify-center gap-1.5"
+                                >
+                                  <span>Web UI</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                                <button
+                                  type="button"
+                                  disabled={Boolean(actionLoading) || isServerStopped}
+                                  onClick={() => setUninstallTarget({ server, tool: 'sonarqube' })}
+                                  className="py-1.5 px-2.5 rounded-lg text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition cursor-pointer"
+                                  title="Uninstall SonarQube"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={Boolean(actionLoading) || isServerStopped}
+                                onClick={() => {
+                                  setSonarInstallServer(server.id);
+                                  setSonarInstallOpen(true);
+                                }}
+                                className="w-full py-1.5 px-3 rounded-lg text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white transition text-center shadow-sm cursor-pointer"
+                              >
+                                {isServerStopped ? 'Server Stopped' : 'Install SonarQube'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 3. Trivy Bento Tile */}
+                        <div
+                          data-module-id="trivy"
+                          className="bg-[#070C18]/80 border border-teal-500/30 rounded-xl p-3.5 flex flex-col justify-between space-y-3"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <TrivyLogo className="w-4 h-4" />
+                                <span className="text-xs font-bold text-white">Aqua Trivy Shield</span>
+                              </div>
+                              {isTrivyInstalled ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                                  INSTALLED
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400">
+                                  NOT INSTALLED
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-1 text-[11px] font-mono text-slate-400 bg-[#0B1120] p-2.5 rounded-lg border border-slate-800/80">
+                              <div className="flex justify-between">
+                                <span>Version:</span>
+                                <span className="text-slate-200">{tr.version ? `v${tr.version}` : 'v0.58.2'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Host Images:</span>
+                                <span className="text-teal-300 font-bold">{images.length > 0 ? `${images.length} Local` : 'Probing...'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Last Scan:</span>
+                                <span className="text-slate-300">{tr.lastScanAt ? 'Recent' : 'Ready'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+                            {isTrivyInstalled ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTrivyScanServer(server.id);
+                                    setTrivyScanOpen(true);
+                                  }}
+                                  className="flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-500 text-white transition text-center shadow-sm cursor-pointer"
+                                >
+                                  Scan Images
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={Boolean(actionLoading) || isServerStopped}
+                                  onClick={() => setUninstallTarget({ server, tool: 'trivy' })}
+                                  className="py-1.5 px-2.5 rounded-lg text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition cursor-pointer"
+                                  title="Uninstall Trivy"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={Boolean(actionLoading) || isServerStopped}
+                                onClick={() => handleAction('trivy', server.id, 'install')}
+                                className="w-full py-1.5 px-3 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-500 text-white transition text-center shadow-sm cursor-pointer"
+                              >
+                                {isServerStopped ? 'Server Stopped' : 'Install Trivy'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
 
                 // ==========================================
                 // 1. JENKINS TAB VIEW
@@ -2734,7 +4052,8 @@ function JenkinsContent() {
               <button
                 type="button"
                 onClick={() => {
-                  const defaults = DEFAULT_DEVOPS_COMMANDS[editTool];
+                  const validTool = editTool === 'integrated' ? 'jenkins' : editTool;
+                  const defaults = DEFAULT_DEVOPS_COMMANDS[validTool];
                   if (defaults) {
                     if (editorTab === 'install') setEditorInstallCmds(defaults.installCommands);
                     else if (editorTab === 'uninstall') setEditorUninstallCmds(defaults.uninstallCommands);
@@ -2905,6 +4224,344 @@ function JenkinsContent() {
                 {savingCommands && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 <span>Save Commands</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DevSecOps 6-Model & 3D Layer Studio Modal */}
+      {showModelPickerModal && (
+        <div className="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-xl flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in">
+          <div className="bg-[#0B1120] border-2 border-cyan-500/40 rounded-3xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl shadow-cyan-500/10 overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-[#080D1A]/90 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500/20 via-blue-500/20 to-purple-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-black text-white">
+                      DevSecOps Architecture Models & 3D Layer Studio
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                      6 MODELS
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Switch architecture layout, inspect 3D multi-layer depths, and synchronize Jenkins, SonarQube & Trivy.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModelPickerModal(false)}
+                  className="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-Header Tabs */}
+            <div className="px-5 pt-3 border-b border-slate-800 flex items-center justify-between bg-[#070B16] shrink-0 gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModelPickerTab('models')}
+                  className={`flex items-center gap-2 px-4 py-2 border-b-2 font-bold text-xs transition cursor-pointer ${
+                    modelPickerTab === 'models'
+                      ? 'border-cyan-400 text-cyan-300 bg-cyan-500/10 rounded-t-lg'
+                      : 'border-transparent text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Box className="w-3.5 h-3.5" />
+                  <span>🏛️ 6 Architecture Models</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModelPickerTab('layers')}
+                  className={`flex items-center gap-2 px-4 py-2 border-b-2 font-bold text-xs transition cursor-pointer ${
+                    modelPickerTab === 'layers'
+                      ? 'border-purple-400 text-purple-300 bg-purple-500/10 rounded-t-lg'
+                      : 'border-transparent text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>✨ 3D Layers & Visual Styling</span>
+                </button>
+              </div>
+
+              {modelPickerToast && (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-mono font-bold animate-in fade-in">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{modelPickerToast}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto flex-1 space-y-5">
+              {modelPickerTab === 'models' ? (
+                <div>
+                  <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <p className="text-xs text-slate-300">
+                      Click any model below to instantly activate that layout for your unified DevSecOps suite:
+                    </p>
+                    <span className="text-[11px] font-mono text-cyan-400">
+                      Current: <strong>M0{selectedModel}: {DEVOPS_MODELS[selectedModel]?.name}</strong>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {([1, 2, 3, 4, 5, 6] as DevopsModelId[]).map((mId) => {
+                      const m = DEVOPS_MODELS[mId];
+                      const isCur = selectedModel === mId;
+                      return (
+                        <div
+                          key={mId}
+                          onClick={() => {
+                            setSelectedModel(mId);
+                            setModelPickerToast(`Activated Model 0${mId}: ${m.name}`);
+                            setTimeout(() => setModelPickerToast(null), 2500);
+                          }}
+                          className={`rounded-2xl p-4 border-2 transition-all cursor-pointer flex flex-col justify-between space-y-3 relative group ${
+                            isCur
+                              ? 'bg-[#0E1A33] border-cyan-400 shadow-xl shadow-cyan-500/20 ring-2 ring-cyan-400/40'
+                              : 'bg-[#090F1E] border-slate-800 hover:border-slate-600 hover:bg-[#0D1528]'
+                          }`}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span
+                                className="px-2 py-0.5 rounded-md font-mono text-[10px] font-black border"
+                                style={{
+                                  backgroundColor: `${m.accentColor}20`,
+                                  borderColor: `${m.accentColor}50`,
+                                  color: m.accentColor,
+                                }}
+                              >
+                                {m.badge}
+                              </span>
+
+                              {isCur ? (
+                                <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                                  <Check className="w-3 h-3" />
+                                  <span>Active</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-500 font-mono group-hover:text-cyan-300">
+                                  Click to Select
+                                </span>
+                              )}
+                            </div>
+
+                            <div>
+                              <h3 className="text-sm font-bold text-white group-hover:text-cyan-200">
+                                {m.name}
+                              </h3>
+                              <p className="text-[11px] text-slate-400 leading-relaxed mt-0.5">
+                                {m.tagline}
+                              </p>
+                            </div>
+
+                            {/* 3-Layer Breakdown */}
+                            <div className="bg-[#060A14] p-2.5 rounded-xl border border-slate-800/80 space-y-1 text-[10px] font-mono">
+                              <div className="text-slate-500 font-bold uppercase text-[9px] mb-1">Architecture Layers:</div>
+                              {m.layers.map((l, i) => (
+                                <div key={i} className="flex items-center gap-1.5 text-slate-300">
+                                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: m.accentColor }} />
+                                  <span className="truncate">{l}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
+                            <span className="text-[10px] font-mono text-slate-500">
+                              {m.archetype}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedModel(mId);
+                                setModelPickerToast(`Activated Model 0${mId}: ${m.name}`);
+                                setTimeout(() => setModelPickerToast(null), 2500);
+                              }}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                                isCur
+                                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
+                                  : 'bg-[#142038] hover:bg-cyan-600 hover:text-white text-slate-300'
+                              }`}
+                            >
+                              {isCur ? 'Selected ✓' : 'Select Model'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                /* Tab 2: 3D Layers & Visual Styling */
+                <div className="space-y-6">
+                  <div className="bg-[#070C18] border border-slate-800 rounded-2xl p-5 space-y-4">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-purple-400" />
+                      <span>3D Layer Physics & Depth Elevation</span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Configure spatial isometric elevation, tilting perspective, and laser border lighting for the DevSecops CI/CD Pipeline.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
+                      {/* Depth Elevation */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs font-mono">
+                          <span className="text-slate-300 font-semibold">Layer Elevation (Z-Depth):</span>
+                          <span className="text-cyan-400 font-bold">+{previewDepth}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="60"
+                          step="5"
+                          value={previewDepth}
+                          onChange={(e) => setPreviewDepth(parseInt(e.target.value, 10))}
+                          className="w-full accent-cyan-400 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] font-mono text-slate-500">
+                          <span>Flat (0px)</span>
+                          <span>Isometric (+25px)</span>
+                          <span>Exploded (+60px)</span>
+                        </div>
+                      </div>
+
+                      {/* Perspective Tilt */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs font-mono">
+                          <span className="text-slate-300 font-semibold">Perspective Tilt Angle:</span>
+                          <span className="text-purple-400 font-bold">{previewTilt}°</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="25"
+                          step="1"
+                          value={previewTilt}
+                          onChange={(e) => setPreviewTilt(parseInt(e.target.value, 10))}
+                          className="w-full accent-purple-400 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] font-mono text-slate-500">
+                          <span>0° (2D Flat)</span>
+                          <span>10° (Subtle)</span>
+                          <span>25° (Deep 3D)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Border Glow Lighting */}
+                    <div className="space-y-2 pt-2 border-t border-slate-800">
+                      <span className="text-xs font-semibold text-slate-300 block">Neon Border Glow & Accent:</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {[
+                          { name: 'Cyan Laser', color: '#06B6D4' },
+                          { name: 'Purple Void', color: '#A855F7' },
+                          { name: 'Emerald Matrix', color: '#10B981' },
+                          { name: 'Rose Neon', color: '#F43F5E' },
+                          { name: 'Solar Amber', color: '#F59E0B' },
+                        ].map((glow) => (
+                          <button
+                            key={glow.color}
+                            type="button"
+                            onClick={() => setPreviewGlow(glow.color)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                              previewGlow === glow.color
+                                ? 'bg-white/10 text-white border-white shadow-md'
+                                : 'bg-[#111A2E] text-slate-400 border-slate-800 hover:text-white'
+                            }`}
+                          >
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: glow.color }} />
+                            <span>{glow.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tri-Tool Sync Actions */}
+                  <div className="bg-gradient-to-r from-purple-950/40 via-blue-950/30 to-cyan-950/40 border border-purple-500/30 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-purple-400" />
+                        <span className="text-xs font-bold text-purple-200">
+                          Synchronize to All 3 Modules
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300">
+                        Apply these 3D layer settings simultaneously across Jenkins CI/CD, SonarQube, and Aqua Trivy.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const styleUpdate = {
+                          borderColor: previewGlow,
+                          accentColor: previewGlow,
+                          shadow: `0 10px 30px -10px ${previewGlow}40`,
+                        };
+                        updateModuleStyle('integrated', styleUpdate);
+                        updateModuleStyle('jenkins', styleUpdate);
+                        updateModuleStyle('sonarqube', styleUpdate);
+                        updateModuleStyle('trivy', styleUpdate);
+                        setModelPickerToast('Synchronized to Jenkins, SonarQube & Trivy ✓');
+                        setTimeout(() => setModelPickerToast(null), 3000);
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 transition cursor-pointer flex items-center gap-2 shrink-0"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Sync All 3 Modules</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-800 bg-[#080D1A]/95 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+              <div className="text-xs text-slate-400 flex items-center gap-2">
+                <span>Selected Model:</span>
+                <span className="font-mono font-bold text-cyan-300">
+                  Model 0{selectedModel} ({DEVOPS_MODELS[selectedModel]?.name})
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModelPickerModal(false);
+                    openModuleCustomizer('integrated', 'DevSecops CI/CD Pipeline', 'animation');
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-[#111A2E] hover:bg-[#18233C] text-purple-300 border border-purple-500/30 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Open Full Anime & Layer Studio</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowModelPickerModal(false)}
+                  className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs transition cursor-pointer shadow-md shadow-cyan-600/30"
+                >
+                  Apply & Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

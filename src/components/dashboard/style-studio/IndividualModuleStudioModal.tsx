@@ -71,6 +71,7 @@ export const ALL_APPLICATION_MODULES: ModuleDefinition[] = [
   { id: 'cloud-accounts', name: 'Cloud Accounts', category: 'Compute & Servers', defaultIcon: '🔑', description: 'AWS IAM Roles and Azure Service Principals' },
 
   // DevOps & Tooling
+  { id: 'integrated', name: 'DevSecops CI/CD Pipeline', category: 'DevOps & Tooling', defaultIcon: '✨', description: 'Unified DevOps Suite combining Jenkins CI/CD, SonarQube Quality Gate, and Aqua Trivy Security' },
   { id: 'jenkins', name: 'Jenkins CI/CD Module', category: 'DevOps & Tooling', defaultIcon: '👨‍✈️', description: 'Pipeline automation, build nodes and CI/CD orchestration' },
   { id: 'sonarqube', name: 'SonarQube Quality Module', category: 'DevOps & Tooling', defaultIcon: '🔍', description: 'Code quality gates, SAST security and issue tracking' },
   { id: 'trivy', name: 'Trivy Security Module', category: 'DevOps & Tooling', defaultIcon: '🛡️', description: 'Container, filesystem and CVE vulnerability scanner' },
@@ -307,6 +308,7 @@ export function IndividualModuleStudioModal() {
   const [previewViewport, setPreviewViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [selectedModuleId, setSelectedModuleId] = useState<string>('aws-resources');
   const [saveToast, setSaveToast] = useState<boolean>(false);
+  const [devopsSyncToast, setDevopsSyncToast] = useState<boolean>(false);
   const [importJsonText, setImportJsonText] = useState<string>('');
   const [showImportDialog, setShowImportDialog] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -576,6 +578,32 @@ export function IndividualModuleStudioModal() {
               <RotateCcw className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Inherit Global</span>
             </button>
+
+            {/* Sync to All DevOps Tools (Jenkins + SonarQube + Trivy) */}
+            {['jenkins', 'sonarqube', 'trivy', 'integrated'].includes(selectedModuleId) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const styleCopy = { ...draft };
+                  updateModuleStyle('integrated', styleCopy);
+                  updateModuleStyle('jenkins', styleCopy);
+                  updateModuleStyle('sonarqube', styleCopy);
+                  updateModuleStyle('trivy', styleCopy);
+                  setDevopsSyncToast(true);
+                  setTimeout(() => setDevopsSyncToast(false), 2500);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs font-bold transition cursor-pointer border border-purple-500/40 shadow-sm"
+                title="Apply this exact design, archetype, anime and 8-layer configuration to Jenkins, SonarQube, and Trivy simultaneously"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <span className="hidden md:inline">
+                  {devopsSyncToast ? 'Synced to All 3 Tools ✓' : 'Sync to Jenkins, Sonar & Trivy'}
+                </span>
+                <span className="md:hidden">
+                  {devopsSyncToast ? 'Synced ✓' : 'Sync All 3'}
+                </span>
+              </button>
+            )}
 
             {/* Export JSON */}
             <button

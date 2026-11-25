@@ -86,55 +86,112 @@ export default function LoginPage() {
       <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-[#020617] to-transparent pointer-events-none z-[1]" />
       <div className="absolute bottom-0 inset-x-0 h-32 bg-gradient-to-t from-[#020617] to-transparent pointer-events-none z-[1]" />
 
-      {/* Left-Edge Vertical Cyber Telemetry Rail (Style 4: Dual Parallel Cloud Bus with Multi-Color Gradient Streams) */}
-      <aside
+      {/* Left-Edge Vertical Cyber Telemetry Rail with Real Passing Laser Light Lines */}
+      <div
         aria-label="Dual Cloud Cyber Rail"
-        className="hidden lg:flex fixed left-3 xl:left-7 top-1/2 -translate-y-1/2 z-20 items-center justify-center h-[480px] w-16 select-none font-mono pointer-events-none"
+        className="hidden xl:flex fixed left-3 2xl:left-7 top-1/2 -translate-y-1/2 z-20 items-center justify-center h-[390px] w-16 select-none font-mono pointer-events-none"
       >
-        <div className="relative w-12 h-full flex justify-between items-center py-2">
-          {/* Left Track: Multi-Cloud Gradient Beam Down */}
-          <div className="relative w-[3px] h-full bg-slate-800/90 overflow-hidden rounded-full">
-            <div className="beam-stream-down" />
+        <div className="relative w-14 h-full flex flex-col justify-between items-center py-2.5 bg-[#030714]/85 backdrop-blur-xl rounded-2xl border border-cyan-500/40 shadow-[0_0_25px_rgba(0,148,255,0.35),inset_0_0_15px_rgba(0,148,255,0.15)]">
+          
+          {/* Top Header Badge */}
+          <div className="z-10 px-2 py-0.5 rounded-md bg-[#020617] border border-cyan-400 text-[8px] font-extrabold text-cyan-300 tracking-wider shadow-[0_0_12px_rgba(6,182,212,0.6)] flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_#00e5ff]" />
+            <span>DUAL.BUS</span>
           </div>
 
-          {/* Horizontal Cyber Data Rungs */}
-          <div className="absolute inset-x-0 inset-y-16 flex flex-col justify-between items-center pointer-events-none">
-            <div className="w-full h-px bg-slate-700/60" />
-            <div className="w-full h-px bg-slate-700/60" />
-            <div className="w-full h-px bg-slate-700/60" />
-            <div className="w-full h-px bg-slate-700/60" />
-            <div className="w-full h-px bg-slate-700/60" />
-          </div>
+          {/* SVG High-Intensity Passing Light Engine */}
+          <svg viewBox="0 0 56 320" className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
+            <defs>
+              {/* Laser Stream Gradients */}
+              <linearGradient id="laserCyanStream" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="transparent" />
+                <stop offset="30%" stopColor="#0284c7" stopOpacity="0.8" />
+                <stop offset="70%" stopColor="#00e5ff" stopOpacity="1" />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity="1" />
+              </linearGradient>
 
-          {/* Center Vertical Label */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="writing-vertical-rl text-[8px] tracking-widest text-slate-400 uppercase bg-[#020617] px-1 py-2 rounded border border-slate-800">
+              <linearGradient id="laserAmberStream" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0%" stopColor="transparent" />
+                <stop offset="30%" stopColor="#d97706" stopOpacity="0.8" />
+                <stop offset="70%" stopColor="#fbbf24" stopOpacity="1" />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity="1" />
+              </linearGradient>
+
+              {/* High-Intensity Radiant Glow Filters */}
+              <filter id="cyanLaserGlow" x="-100%" y="-100%" width="300%" height="300%">
+                <feGaussianBlur stdDeviation="3.5" result="blur1" />
+                <feGaussianBlur stdDeviation="7" result="blur2" />
+                <feMerge>
+                  <feMergeNode in="blur2" />
+                  <feMergeNode in="blur1" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+
+              <filter id="amberLaserGlow" x="-100%" y="-100%" width="300%" height="300%">
+                <feGaussianBlur stdDeviation="3.5" result="blur1" />
+                <feGaussianBlur stdDeviation="7" result="blur2" />
+                <feMerge>
+                  <feMergeNode in="blur2" />
+                  <feMergeNode in="blur1" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            {/* Base Conduit Rails */}
+            {/* Left Track (Azure Channel) x=14 */}
+            <line x1="14" y1="36" x2="14" y2="284" stroke="rgba(2, 132, 199, 0.4)" strokeWidth="3" strokeLinecap="round" />
+            <line x1="14" y1="36" x2="14" y2="284" stroke="rgba(56, 189, 248, 0.2)" strokeWidth="6" strokeLinecap="round" />
+
+            {/* Right Track (AWS Channel) x=42 */}
+            <line x1="42" y1="36" x2="42" y2="284" stroke="rgba(217, 119, 6, 0.4)" strokeWidth="3" strokeLinecap="round" />
+            <line x1="42" y1="36" x2="42" y2="284" stroke="rgba(251, 191, 36, 0.2)" strokeWidth="6" strokeLinecap="round" />
+
+            {/* Horizontal Cyber Data Rungs & Glowing LEDs */}
+            {[72, 116, 160, 204, 248].map((y, idx) => (
+              <g key={idx}>
+                <line x1="14" y1={y} x2="42" y2={y} stroke="rgba(100, 116, 139, 0.6)" strokeWidth="1.5" strokeDasharray="3 2" />
+                <circle cx="14" cy={y} r="2.5" fill="#00e5ff" filter="url(#cyanLaserGlow)" />
+                <circle cx="42" cy={y} r="2.5" fill="#fbbf24" filter="url(#amberLaserGlow)" />
+              </g>
+            ))}
+
+            {/* 1. LEFT PASSING LIGHT BEAM (Streaming Down with blazing laser head) */}
+            <g className="laser-beam-down" filter="url(#cyanLaserGlow)">
+              <line x1="14" y1="0" x2="14" y2="75" stroke="url(#laserCyanStream)" strokeWidth="4.5" strokeLinecap="round" />
+              <circle cx="14" cy="75" r="3.5" fill="#ffffff" />
+              <circle cx="14" cy="75" r="6" fill="#00e5ff" opacity="0.6" />
+            </g>
+
+            {/* 2. RIGHT PASSING LIGHT BEAM (Streaming Up with blazing laser head) */}
+            <g className="laser-beam-up" filter="url(#amberLaserGlow)">
+              <line x1="42" y1="75" x2="42" y2="0" stroke="url(#laserAmberStream)" strokeWidth="4.5" strokeLinecap="round" />
+              <circle cx="42" cy="0" r="3.5" fill="#ffffff" />
+              <circle cx="42" cy="0" r="6" fill="#fbbf24" opacity="0.6" />
+            </g>
+          </svg>
+
+          {/* Center Vertical Text Label */}
+          <div className="z-10 px-1 py-2 rounded-lg bg-[#030917]/95 border border-cyan-500/50 shadow-[0_0_15px_rgba(0,148,255,0.4)] flex items-center justify-center">
+            <span className="writing-vertical-rl text-[7.5px] font-black tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-b from-cyan-300 via-white to-amber-300 uppercase">
               AWS // AZURE BUS
             </span>
           </div>
 
-          {/* Right Track: Multi-Cloud Gradient Beam Up */}
-          <div className="relative w-[3px] h-full bg-slate-800/90 overflow-hidden rounded-full">
-            <div className="beam-stream-up" />
-          </div>
-
-          {/* Top Header Badge spanning both */}
-          <div className="absolute top-2 inset-x-0 mx-auto w-max px-2.5 py-0.5 rounded-lg bg-[#030917] border border-cyan-400/80 text-[8px] font-bold text-cyan-300 text-center shadow-[0_0_12px_rgba(6,182,212,0.4)] pointer-events-auto">
-            DUAL.BUS
-          </div>
-
-          {/* Bottom Badge spanning both */}
-          <div className="absolute bottom-2 inset-x-0 mx-auto w-max px-2.5 py-0.5 rounded-lg bg-[#030917] border border-emerald-400/80 text-[8px] font-bold text-emerald-300 text-center shadow-[0_0_12px_rgba(16,185,129,0.35)] pointer-events-auto">
-            SYNC:0MS
+          {/* Bottom Badge */}
+          <div className="z-10 px-2 py-0.5 rounded-md bg-[#020617] border border-emerald-400 text-[8px] font-extrabold text-emerald-300 tracking-wider shadow-[0_0_12px_rgba(16,185,129,0.5)] flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shadow-[0_0_6px_#10b981]" />
+            <span>SYNC:0MS</span>
           </div>
         </div>
-      </aside>
+      </div>
 
       {/* Main Responsive Two-Column Grid - Fluid Wide Layout to Naturally Balance Screen Space */}
       <div className="relative z-10 w-full max-w-[1450px] mx-auto px-6 sm:px-10 lg:px-16 xl:px-24 py-10 sm:py-14 flex flex-col lg:flex-row items-center justify-between gap-12 lg:gap-14">
         
-        {/* ================= LEFT BRANDING SECTION (Shifted slightly to the right for perfect spacing) ================= */}
-        <div className="w-full lg:w-1/2 flex flex-col items-start space-y-6 max-w-xl lg:translate-x-6 xl:translate-x-10 transition-transform duration-300">
+        {/* ================= LEFT BRANDING SECTION ================= */}
+        <div className="w-full lg:w-1/2 flex flex-col items-start space-y-6 max-w-xl transition-transform duration-300">
           {/* Logo with 3-Bar Chart Cloud */}
           <div className="space-y-2">
             <div className="flex items-center gap-3.5">

@@ -153,20 +153,49 @@ export default function SettingsPage() {
         <Header onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
 
         <main className="p-4 lg:p-7 space-y-6 w-full">
-          <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-            <Link href="/" className="hover:text-blue-400 flex items-center gap-1">
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Dashboard</span>
-            </Link>
-            <span>/</span>
-            <span className="text-white">Settings</span>
-          </div>
+          {/* Master Control Bar Box (Terraform Style) */}
+          <div className="bg-[#090F1E]/90 border border-purple-500/30 rounded-2xl p-5 shadow-2xl shadow-purple-950/30 backdrop-blur-md">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs text-slate-400 mb-1.5">
+                  <Link href="/" className="hover:text-blue-400 flex items-center gap-1">
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Dashboard</span>
+                  </Link>
+                  <span>/</span>
+                  <span className="text-white">Settings</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500/20 via-indigo-500/20 to-blue-500/20 border border-purple-500/40 flex items-center justify-center shadow-lg shadow-purple-950/40 shrink-0">
+                    <Settings className="w-7 h-7 text-purple-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                        Platform Configuration &amp; Alert Policies
+                      </h1>
+                      <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                        Global Settings
+                      </span>
+                      <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        Multi-Cloud Engine Synced
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Threshold automation, DevOps notification recipients, Gmail SMTP alerts & cloud platform preferences
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-              <Settings className="w-5 h-5 text-slate-400" />
-              <span>Platform Configuration & Alert Policies</span>
-            </h2>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="text-xs text-emerald-400 font-mono font-medium px-3 py-1.5 bg-[#0D1526] border border-emerald-500/30 rounded-xl flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Auto-Persistence: Enabled</span>
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Alert Thresholds Card */}

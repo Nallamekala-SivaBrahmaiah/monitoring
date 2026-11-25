@@ -407,153 +407,172 @@ function KubernetesContent() {
 
         <main className="p-3 sm:p-5 lg:p-6 space-y-4 max-w-[1920px] mx-auto w-full">
           {/* ========================================================================= */}
-          {/* 1. UNIFIED SINGLE-DECK HEADER & ACTION STRIP (Matches Docker & Servers)   */}
+          {/* 1. MASTER CONTROL BAR BOX (Terraform Style)                                */}
           {/* ========================================================================= */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-                <Link href="/" className="hover:text-blue-400 flex items-center gap-1 transition-colors">
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Dashboard</span>
-                </Link>
-                <span>/</span>
+          <div className="bg-[#090F1E]/90 border border-sky-500/30 rounded-2xl p-5 shadow-2xl shadow-sky-950/30 backdrop-blur-md">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs text-slate-400 mb-1.5">
+                  <Link href="/" className="hover:text-blue-400 flex items-center gap-1 transition-colors">
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Dashboard</span>
+                  </Link>
+                  <span>/</span>
+                  {!selectedServer ? (
+                    <span className="text-white font-medium">Kubernetes</span>
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleBackToServers}
+                        className="text-slate-300 hover:text-white transition-colors"
+                      >
+                        Kubernetes
+                      </button>
+                      <span>/</span>
+                      <button
+                        onClick={() => {
+                          setSelectedNode(null);
+                          setActiveSection('overview');
+                        }}
+                        className="text-sky-400 font-mono font-bold hover:underline"
+                      >
+                        {selectedServer.name}
+                      </button>
+                      <span>/</span>
+                      <span className="text-slate-300 capitalize font-medium">
+                        {NAVIGATION_SECTIONS.find((s) => s.id === activeSection)?.label.replace(/^\d+\.\s*/, '')}
+                      </span>
+                      {selectedNode && (
+                        <>
+                          <span>/</span>
+                          <span className="text-emerald-400 font-mono font-bold truncate max-w-[200px]">
+                            {selectedNode.metadata?.name}
+                          </span>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500/20 via-sky-500/20 to-indigo-500/20 border border-sky-500/40 flex items-center justify-center shadow-lg shadow-sky-950/40 shrink-0">
+                    <KubernetesIcon className="w-7 h-7 text-[#326ce5]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                        {!selectedServer ? 'Kubernetes Cluster Infrastructure' : `Server: ${selectedServer.name}`}
+                      </h1>
+                      {!selectedServer ? (
+                        <>
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30 font-mono">
+                            {servers.length} Detected
+                          </span>
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Cluster Fleet Active
+                          </span>
+                        </>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          {selectedServer.connectionStatus || 'Connected'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Production Kubernetes cluster orchestration, pods, deployments, services, ingress & nodes
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions Bar (Single Row - Zero Wrapping) */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <ModuleCustomizeButton
+                  moduleId="kubernetes"
+                  moduleName="Kubernetes Module"
+                  variant="pill"
+                />
                 {!selectedServer ? (
-                  <span className="text-white font-medium">Kubernetes</span>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalAction('install');
+                        setIsInstallModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white rounded-xl transition-colors cursor-pointer shadow-sm shadow-sky-600/30 whitespace-nowrap"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>Install Kubernetes Tools on Server</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalAction('uninstall');
+                        setIsInstallModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-xl transition-colors cursor-pointer shadow-sm shadow-rose-600/30 whitespace-nowrap"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Uninstall Kubernetes Tools on Server</span>
+                    </button>
+
+                    <div className="flex items-center gap-2 text-xs bg-[#0D1526] border border-[#1E293B] px-3 py-1.5 rounded-xl whitespace-nowrap font-mono">
+                      <span className="text-white font-bold">{servers.length}</span>
+                      <span className="text-slate-400">Hosts</span>
+                      <span className="text-slate-600">|</span>
+                      <span className="text-sky-400 font-bold">{totalNodes}</span>
+                      <span className="text-slate-400">Nodes</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        fetchServers();
+                        syncNow();
+                      }}
+                      disabled={loadingServers || isSyncing}
+                      title="Refresh Fleet Telemetry"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#0D1526] hover:bg-gray-800 text-slate-200 border border-gray-800 rounded-xl transition-colors cursor-pointer shadow-sm disabled:opacity-50 whitespace-nowrap"
+                    >
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 text-sky-400 ${
+                          loadingServers || isSyncing ? 'animate-spin' : ''
+                        }`}
+                      />
+                      <span>Sync Clusters</span>
+                    </button>
+                  </>
                 ) : (
                   <>
                     <button
+                      type="button"
                       onClick={handleBackToServers}
-                      className="text-slate-300 hover:text-white transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#0D1526] hover:bg-gray-800 text-slate-300 hover:text-white border border-gray-800 rounded-xl transition shadow-sm whitespace-nowrap"
                     >
-                      Kubernetes
+                      <Server className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Switch Server</span>
                     </button>
-                    <span>/</span>
                     <button
+                      type="button"
                       onClick={() => {
-                        setSelectedNode(null);
-                        setActiveSection('overview');
+                        fetchClusterResources(selectedServer.name, true);
+                        syncNow();
                       }}
-                      className="text-sky-400 font-mono font-bold hover:underline"
+                      disabled={loadingCluster || isSyncing}
+                      title="Refresh Live Telemetry"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#0D1526] hover:bg-gray-800 text-slate-200 border border-gray-800 rounded-xl transition shadow-sm disabled:opacity-50 whitespace-nowrap"
                     >
-                      {selectedServer.name}
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 text-sky-400 ${
+                          loadingCluster || isSyncing ? 'animate-spin' : ''
+                        }`}
+                      />
+                      <span>Sync Cluster</span>
                     </button>
-                    <span>/</span>
-                    <span className="text-slate-300 capitalize font-medium">
-                      {NAVIGATION_SECTIONS.find((s) => s.id === activeSection)?.label.replace(/^\d+\.\s*/, '')}
-                    </span>
-                    {selectedNode && (
-                      <>
-                        <span>/</span>
-                        <span className="text-emerald-400 font-mono font-bold truncate max-w-[200px]">
-                          {selectedNode.metadata?.name}
-                        </span>
-                      </>
-                    )}
                   </>
                 )}
               </div>
-              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2.5">
-                <KubernetesIcon className="w-6 h-6 text-[#326ce5]" />
-                <span>{!selectedServer ? 'Kubernetes Cluster Infrastructure' : `Server: ${selectedServer.name}`}</span>
-                {!selectedServer ? (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                    {servers.length} Detected
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    {selectedServer.connectionStatus || 'Connected'}
-                  </span>
-                )}
-              </h2>
-            </div>
-
-            {/* Quick Actions Bar (Single Row - Zero Wrapping) */}
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <ModuleCustomizeButton
-                moduleId="kubernetes"
-                moduleName="Kubernetes Module"
-                variant="pill"
-              />
-              {!selectedServer ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModalAction('install');
-                      setIsInstallModalOpen(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-sky-600/30 whitespace-nowrap"
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>Install Kubernetes Tools on Server</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModalAction('uninstall');
-                      setIsInstallModalOpen(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors cursor-pointer shadow-sm shadow-rose-600/30 whitespace-nowrap"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Uninstall Kubernetes Tools on Server</span>
-                  </button>
-
-                  <div className="flex items-center gap-2 text-xs bg-[#111A2E] border border-[#1E293B] px-3 py-1.5 rounded-lg whitespace-nowrap">
-                    <span className="text-white font-bold">{servers.length}</span>
-                    <span className="text-slate-400">Hosts</span>
-                    <span className="text-slate-600">|</span>
-                    <span className="text-sky-400 font-bold">{totalNodes}</span>
-                    <span className="text-slate-400">Nodes</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      fetchServers();
-                      syncNow();
-                    }}
-                    disabled={loadingServers || isSyncing}
-                    title="Refresh Fleet Telemetry"
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition-colors cursor-pointer shadow-sm disabled:opacity-50 whitespace-nowrap"
-                  >
-                    <RefreshCw
-                      className={`w-3.5 h-3.5 text-sky-400 ${
-                        loadingServers || isSyncing ? 'animate-spin' : ''
-                      }`}
-                    />
-                    <span>Sync Clusters</span>
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleBackToServers}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#162238] text-slate-300 hover:text-white border border-[#1E293B] rounded-lg transition shadow-sm whitespace-nowrap"
-                  >
-                    <Server className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Switch Server</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      fetchClusterResources(selectedServer.name, true);
-                      syncNow();
-                    }}
-                    disabled={loadingCluster || isSyncing}
-                    title="Refresh Live Telemetry"
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-slate-200 border border-[#1E293B] rounded-lg transition shadow-sm disabled:opacity-50 whitespace-nowrap"
-                  >
-                    <RefreshCw
-                      className={`w-3.5 h-3.5 text-sky-400 ${
-                        loadingCluster || isSyncing ? 'animate-spin' : ''
-                      }`}
-                    />
-                    <span>Sync Cluster</span>
-                  </button>
-                </>
-              )}
             </div>
           </div>
 
