@@ -7,7 +7,7 @@ const password = process.env.REMOTE_PASSWORD || 'Nsbyadav@143';
 const conn = new Client();
 conn.on('ready', () => {
   console.log('Connected to production server. Pulling latest code and building...');
-  conn.exec('cd /home/siva/monitoring && git pull origin main && npm run build && pm2 reload monitoring-app', (err, stream) => {
+  conn.exec('cd /home/siva/monitoring && git pull origin main && npm install && npm run build && pm2 reload monitoring-app', (err, stream) => {
     if (err) {
       console.error('Exec error:', err);
       conn.end();
