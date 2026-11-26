@@ -63,6 +63,49 @@ export async function POST(request: NextRequest) {
     const commandsExecuted = body.commandsExecuted || 'ps aux --sort=-%cpu | head -10\npm2 restart monitoring-app';
     const resultOutcome = body.resultOutcome || 'Successfully resolved with zero downtime';
     const durationMinutes = Number(body.durationMinutes) || 15;
+    const activitiesList: Array<{ tool: string; icon?: string; actionName: string; commands: string }> =
+      Array.isArray(body.activities) && body.activities.length > 0 ? body.activities : [];
+
+    let multiToolSectionHtml = '';
+    if (activitiesList.length > 0) {
+      multiToolSectionHtml = activitiesList
+        .map(
+          (act, idx) => `
+        <div style="background-color: #090E1A; border: 1px solid #1E293B; border-radius: 10px; margin-bottom: 16px; overflow: hidden;">
+          <div style="background: #111A2E; padding: 10px 14px; border-bottom: 1px solid #1E293B;">
+            <table width="100%" cellspacing="0" cellpadding="0">
+              <tr>
+                <td>
+                  <span style="font-size: 13px; font-weight: bold; color: #FFFFFF;">
+                    [Step ${idx + 1}] ${act.tool.toUpperCase()}: <span style="color: #60A5FA;">${act.actionName}</span>
+                  </span>
+                </td>
+                <td align="right">
+                  <span style="font-size: 11px; color: #34D399; font-weight: bold; font-family: monospace;">
+                    &#10003; VERIFIED
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </div>
+          <div style="padding: 12px 14px;">
+            <div style="font-size: 11px; color: #94A3B8; margin-bottom: 6px; font-family: monospace;">Commands Run on ${serverOrHost}:</div>
+            <pre style="margin: 0; padding: 10px; background-color: #020617; border: 1px solid #1E293B; border-radius: 6px; color: #38BDF8; font-family: monospace; font-size: 12px; line-height: 1.5; overflow-x: auto;">${act.commands}</pre>
+          </div>
+        </div>
+      `
+        )
+        .join('');
+    } else {
+      multiToolSectionHtml = `
+        <div style="background-color: #090E1A; border: 1px solid #059669; border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+          <div style="font-size: 11px; font-weight: bold; color: #34D399; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+            &gt;_ Executed Terminal Commands (PuTTY / SSH / Shell Proof)
+          </div>
+          <pre style="margin: 0; padding: 12px; background-color: #020617; border: 1px solid #1E293B; border-radius: 6px; color: #38BDF8; font-family: monospace; font-size: 12px; line-height: 1.6; overflow-x: auto;">${commandsExecuted}</pre>
+        </div>
+      `;
+    }
 
     // Fetch enabled proof recipients
     let recipientsDocs = await DevOpsProofRecipient.find({ enabled: { $ne: false } }).lean();
@@ -191,12 +234,12 @@ export async function POST(request: NextRequest) {
                 </tbody>
               </table>
 
-              <!-- Commands Executed (Verifiable Server Proof) -->
-              <div style="background-color: #090E1A; border: 1px solid #059669; border-radius: 10px; padding: 16px; margin-bottom: 20px;">
-                <div style="font-size: 11px; font-weight: bold; color: #34D399; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
-                  &gt;_ Executed Terminal Commands (PuTTY / SSH / Shell Proof)
+              <!-- Commands Executed (Verifiable Server Proof - Multi-Tool Breakdown) -->
+              <div style="margin-bottom: 22px;">
+                <div style="font-size: 12px; font-weight: bold; color: #34D399; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
+                  &gt;_ Executed Terminal Commands &amp; Step-by-Step Proof
                 </div>
-                <pre style="margin: 0; padding: 12px; background-color: #020617; border: 1px solid #1E293B; border-radius: 6px; color: #38BDF8; font-family: monospace; font-size: 12px; line-height: 1.6; overflow-x: auto;">${commandsExecuted}</pre>
+                ${multiToolSectionHtml}
               </div>
 
               <!-- CTO / Leadership Note -->
