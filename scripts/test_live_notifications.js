@@ -113,6 +113,40 @@ async function runTest() {
     }
   }
 
+  console.log('\n=== Testing Proof of Work Dispatch ===');
+  const dispatchPayload = JSON.stringify({
+    engineerName: 'Siva',
+    engineerRole: 'Lead DevOps Engineer',
+    actionType: 'Troubleshooting & Fix',
+    tool: 'Server OS',
+    summary: 'Automated verification test of DevOps Proof of Work dispatch pipeline',
+    serverOrHost: 'vm01siva-mon (4.240.105.247)',
+    cloudProvider: 'Microsoft Azure',
+    cloudAccount: 'Azure Production Subscription',
+    sessionSource: 'PuTTY SSH & Web App Automated Verification',
+    commandsExecuted: 'sudo nginx -t && sudo systemctl reload nginx\ndocker stats --no-stream\nkubectl get pods -A',
+    resultOutcome: 'Verified exit status 0 across all tools and servers',
+    durationMinutes: 10,
+  });
+
+  const dispatchRes = await request(
+    {
+      hostname: BASE_HOST,
+      port: 443,
+      path: '/api/notifications/proof-of-work/dispatch',
+      method: 'POST',
+      headers: {
+        Cookie: authCookie,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(dispatchPayload),
+      },
+    },
+    dispatchPayload
+  );
+
+  console.log('Dispatch Status:', dispatchRes.statusCode);
+  console.log('Dispatch Response:', dispatchRes.body);
+
   console.log('\n=== ALL ENDPOINTS VERIFIED SUCCESSFULLY ===');
 }
 

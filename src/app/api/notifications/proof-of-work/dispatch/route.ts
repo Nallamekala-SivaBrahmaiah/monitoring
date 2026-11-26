@@ -53,7 +53,12 @@ export async function POST(request: NextRequest) {
 
     const engineerName = body.engineerName || config.engineerName || 'Siva';
     const engineerRole = body.engineerRole || config.engineerRole || 'Lead DevOps Engineer';
-    const actionType = body.actionType || 'Troubleshooting';
+    let actionType = body.actionType || 'Troubleshooting';
+    if (actionType.toLowerCase().includes('troubleshoot')) actionType = 'Troubleshooting';
+    else if (actionType.toLowerCase().includes('deploy')) actionType = 'Deployment';
+    else if (actionType.toLowerCase().includes('patch') || actionType.toLowerCase().includes('security')) actionType = 'Security Patch';
+    else if (actionType.toLowerCase().includes('config')) actionType = 'Configuration';
+    else if (actionType.toLowerCase().includes('disaster') || actionType.toLowerCase().includes('recovery')) actionType = 'Disaster Recovery';
     const tool = body.tool || 'Server OS';
     const summary = body.summary || `Troubleshooting and resolution executed on ${tool}`;
     const serverOrHost = body.serverOrHost || 'vm01siva-mon (4.240.105.247)';
@@ -73,7 +78,7 @@ export async function POST(request: NextRequest) {
       { name: 'gsr-server', cloudProvider: 'aws', status: 'Stopped', publicIp: '3.27.38.3', region: 'ap-south-1' },
     ];
 
-    const orderedSections = body.orderedSections || {
+    const defaultSections = {
       maven: {
         appName: 'monitoring',
         server: serverOrHost,
@@ -116,6 +121,15 @@ export async function POST(request: NextRequest) {
         commands: 'kubectl get pods -n production -o wide\nkubectl rollout restart deployment/monitoring-app -n production',
         status: '1/1 Ready, Running (Exit 0)',
       },
+    };
+
+    const inputSections = body.orderedSections || {};
+    const orderedSections = {
+      maven: { ...defaultSections.maven, ...(inputSections.maven || inputSections.section2_maven || {}) },
+      terraform: { ...defaultSections.terraform, ...(inputSections.terraform || inputSections.section3_terraform || {}) },
+      ansible: { ...defaultSections.ansible, ...(inputSections.ansible || inputSections.section4_ansible || {}) },
+      docker: { ...defaultSections.docker, ...(inputSections.docker || inputSections.section5_docker || {}) },
+      k8s: { ...defaultSections.k8s, ...(inputSections.k8s || inputSections.section6_k8s || {}) },
     };
 
     // Build Section 1: Server Fleet Table HTML

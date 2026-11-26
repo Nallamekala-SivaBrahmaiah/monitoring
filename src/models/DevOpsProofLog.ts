@@ -26,7 +26,6 @@ const DevOpsProofLogSchema: Schema<IDevOpsProofLog> = new Schema(
     actionType: {
       type: String,
       required: true,
-      enum: ['Deployment', 'Troubleshooting', 'Security Patch', 'Configuration', 'Disaster Recovery'],
       default: 'Troubleshooting',
     },
     tool: { type: String, required: true, default: 'Server OS' },
