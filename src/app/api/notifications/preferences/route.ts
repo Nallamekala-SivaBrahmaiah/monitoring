@@ -3,6 +3,12 @@ import connectToDatabase from '@/lib/mongodb';
 import NotificationPreferences from '@/models/NotificationPreferences';
 import DevOpsRecipient from '@/models/DevOpsRecipient';
 
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+};
+
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();
@@ -29,21 +35,24 @@ export async function GET(request: NextRequest) {
       })) as any;
     }
 
-    // Sync in any recipients from DevOpsRecipient if alertRecipients is empty
-    if (!prefs.alertRecipients || prefs.alertRecipients.length === 0) {
-      const devOpsDocs = await DevOpsRecipient.find({ enabled: { $ne: false } }).lean();
-      if (devOpsDocs.length > 0) {
-        prefs.alertRecipients = devOpsDocs.map((d: any) => d.email).filter(Boolean);
-      } else {
-        prefs.alertRecipients = ['nallasiva552@gmail.com'];
-      }
+    // Ensure phoneNumbers and alertRecipients are always arrays
+    if (!Array.isArray(prefs.phoneNumbers)) {
+      prefs.phoneNumbers = [];
     }
 
-    return NextResponse.json(prefs);
+    // Synchronize recipients with DevOpsRecipient collection
+    const devOpsDocs = await DevOpsRecipient.find({ enabled: { $ne: false } }).lean();
+    const devOpsEmails = devOpsDocs.map((d: any) => d.email).filter(Boolean);
+    const existingRecipients = Array.isArray(prefs.alertRecipients) ? prefs.alertRecipients : [];
+    const combinedRecipients = Array.from(new Set([...existingRecipients, ...devOpsEmails]));
+
+    prefs.alertRecipients = combinedRecipients.length > 0 ? combinedRecipients : ['nallasiva552@gmail.com'];
+
+    return NextResponse.json(prefs, { headers: NO_CACHE_HEADERS });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || 'Failed to fetch notification preferences' },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }
@@ -54,6 +63,58 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const userId = body.userId || 'admin';
 
+    // 1. Atomic Action Handlers (Guarantees no race conditions / clobbering)
+    if (body.action === 'add_phone' && body.phone) {
+      const cleanPhone = String(body.phone).trim();
+      if (cleanPhone.length >= 8) {
+        const doc = await NotificationPreferences.findOneAndUpdate(
+          { userId },
+          { $addToSet: { phoneNumbers: cleanPhone } },
+          { upsert: true, returnDocument: 'after' }
+        );
+        return NextResponse.json(doc, { headers: NO_CACHE_HEADERS });
+      }
+    }
+
+    if (body.action === 'remove_phone' && body.phone) {
+      const cleanPhone = String(body.phone).trim();
+      const doc = await NotificationPreferences.findOneAndUpdate(
+        { userId },
+        { $pull: { phoneNumbers: cleanPhone } },
+        { returnDocument: 'after' }
+      );
+      return NextResponse.json(doc, { headers: NO_CACHE_HEADERS });
+    }
+
+    if (body.action === 'add_recipient' && body.email) {
+      const cleanEmail = String(body.email).trim().toLowerCase();
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        await DevOpsRecipient.updateOne(
+          { email: cleanEmail },
+          { $set: { email: cleanEmail, enabled: true, role: 'DevOps Engineer' } },
+          { upsert: true }
+        );
+        const doc = await NotificationPreferences.findOneAndUpdate(
+          { userId },
+          { $addToSet: { alertRecipients: cleanEmail } },
+          { upsert: true, returnDocument: 'after' }
+        );
+        return NextResponse.json(doc, { headers: NO_CACHE_HEADERS });
+      }
+    }
+
+    if (body.action === 'remove_recipient' && body.email) {
+      const cleanEmail = String(body.email).trim().toLowerCase();
+      await DevOpsRecipient.deleteOne({ email: cleanEmail });
+      const doc = await NotificationPreferences.findOneAndUpdate(
+        { userId },
+        { $pull: { alertRecipients: cleanEmail } },
+        { returnDocument: 'after' }
+      );
+      return NextResponse.json(doc, { headers: NO_CACHE_HEADERS });
+    }
+
+    // 2. Granular Field Updates (Only updates explicitly provided fields)
     const updates: any = {};
     if (typeof body.emailNotificationsEnabled === 'boolean') {
       updates.emailNotificationsEnabled = body.emailNotificationsEnabled;
@@ -113,14 +174,14 @@ export async function PUT(request: NextRequest) {
     const updated = await NotificationPreferences.findOneAndUpdate(
       { userId },
       { $set: updates },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 
-    return NextResponse.json(updated);
+    return NextResponse.json(updated, { headers: NO_CACHE_HEADERS });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || 'Failed to update notification preferences' },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }

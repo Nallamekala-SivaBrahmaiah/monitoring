@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/mongodb';
 import DevOpsRecipient from '@/models/DevOpsRecipient';
+import NotificationPreferences from '@/models/NotificationPreferences';
 import { getEnabledDevOpsRecipients } from '@/lib/monitoring/alertEvaluationEngine';
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+};
 
 // Email validation regex (RFC 5322 compliant simple form)
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,17 +35,20 @@ export async function GET() {
       addedOn: r.addedOn || r.createdAt || new Date(),
     }));
 
-    return NextResponse.json({
-      success: true,
-      recipients: formatted,
-      count: formatted.length,
-      enabledCount: formatted.filter((r) => r.enabled).length,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        recipients: formatted,
+        count: formatted.length,
+        enabledCount: formatted.filter((r) => r.enabled).length,
+      },
+      { headers: NO_CACHE_HEADERS }
+    );
   } catch (err: any) {
     console.error('Error fetching DevOps recipients:', err);
     return NextResponse.json(
       { success: false, error: err.message || 'Failed to fetch DevOps recipients' },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }
@@ -56,7 +66,7 @@ export async function POST(request: NextRequest) {
     if (!body.email || typeof body.email !== 'string') {
       return NextResponse.json(
         { success: false, error: 'Email address is required.' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -65,16 +75,31 @@ export async function POST(request: NextRequest) {
     if (!EMAIL_REGEX.test(email)) {
       return NextResponse.json(
         { success: false, error: 'Please provide a valid email address (e.g., user@domain.com).' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
     // Check if recipient already exists
     const existing = await DevOpsRecipient.findOne({ email });
     if (existing) {
+      // Ensure it is also present in NotificationPreferences
+      await NotificationPreferences.updateMany(
+        {},
+        { $addToSet: { alertRecipients: email } }
+      );
+
       return NextResponse.json(
-        { success: false, error: `DevOps engineer with email '${email}' already exists.` },
-        { status: 409 }
+        {
+          success: true,
+          recipient: {
+            id: existing._id.toString(),
+            email: existing.email,
+            role: existing.role,
+            enabled: existing.enabled,
+            addedOn: existing.addedOn,
+          },
+        },
+        { headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -89,21 +114,30 @@ export async function POST(request: NextRequest) {
       addedOn: new Date(),
     });
 
-    return NextResponse.json({
-      success: true,
-      recipient: {
-        id: newRecipient._id.toString(),
-        email: newRecipient.email,
-        role: newRecipient.role,
-        enabled: newRecipient.enabled,
-        addedOn: newRecipient.addedOn,
+    // Synchronize into NotificationPreferences
+    await NotificationPreferences.updateMany(
+      {},
+      { $addToSet: { alertRecipients: email } }
+    );
+
+    return NextResponse.json(
+      {
+        success: true,
+        recipient: {
+          id: newRecipient._id.toString(),
+          email: newRecipient.email,
+          role: newRecipient.role,
+          enabled: newRecipient.enabled,
+          addedOn: newRecipient.addedOn,
+        },
       },
-    });
+      { headers: NO_CACHE_HEADERS }
+    );
   } catch (err: any) {
     console.error('Error adding DevOps recipient:', err);
     return NextResponse.json(
       { success: false, error: err.message || 'Failed to add DevOps recipient' },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }
@@ -121,7 +155,7 @@ export async function PATCH(request: NextRequest) {
     if (!body.id) {
       return NextResponse.json(
         { success: false, error: 'Recipient ID is required.' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -136,31 +170,34 @@ export async function PATCH(request: NextRequest) {
     const updated = await DevOpsRecipient.findByIdAndUpdate(
       body.id,
       { $set: updates },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updated) {
       return NextResponse.json(
         { success: false, error: 'DevOps recipient not found.' },
-        { status: 404 }
+        { status: 404, headers: NO_CACHE_HEADERS }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      recipient: {
-        id: updated._id.toString(),
-        email: updated.email,
-        role: updated.role,
-        enabled: updated.enabled,
-        addedOn: updated.addedOn,
+    return NextResponse.json(
+      {
+        success: true,
+        recipient: {
+          id: updated._id.toString(),
+          email: updated.email,
+          role: updated.role,
+          enabled: updated.enabled,
+          addedOn: updated.addedOn,
+        },
       },
-    });
+      { headers: NO_CACHE_HEADERS }
+    );
   } catch (err: any) {
     console.error('Error updating DevOps recipient:', err);
     return NextResponse.json(
       { success: false, error: err.message || 'Failed to update DevOps recipient' },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }
@@ -168,39 +205,54 @@ export async function PATCH(request: NextRequest) {
 /**
  * DELETE /api/notifications/devops-recipients
  * Remove a DevOps engineer recipient
- * Query: ?id=...
+ * Query: ?id=... or ?email=...
  */
 export async function DELETE(request: NextRequest) {
   try {
     await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const email = searchParams.get('email')?.trim().toLowerCase();
 
-    if (!id) {
+    if (!id && !email) {
       return NextResponse.json(
-        { success: false, error: 'Recipient ID is required.' },
-        { status: 400 }
+        { success: false, error: 'Recipient ID or Email is required.' },
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
-    const deleted = await DevOpsRecipient.findByIdAndDelete(id);
+    let deleted: any = null;
+    if (id) {
+      deleted = await DevOpsRecipient.findByIdAndDelete(id);
+    } else if (email) {
+      deleted = await DevOpsRecipient.findOneAndDelete({ email });
+    }
 
     if (!deleted) {
       return NextResponse.json(
         { success: false, error: 'DevOps recipient not found.' },
-        { status: 404 }
+        { status: 404, headers: NO_CACHE_HEADERS }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      message: `DevOps recipient ${deleted.email} removed successfully.`,
-    });
+    // Pull from NotificationPreferences
+    await NotificationPreferences.updateMany(
+      {},
+      { $pull: { alertRecipients: deleted.email } }
+    );
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: `DevOps recipient ${deleted.email} removed successfully.`,
+      },
+      { headers: NO_CACHE_HEADERS }
+    );
   } catch (err: any) {
     console.error('Error deleting DevOps recipient:', err);
     return NextResponse.json(
       { success: false, error: err.message || 'Failed to delete DevOps recipient' },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }
