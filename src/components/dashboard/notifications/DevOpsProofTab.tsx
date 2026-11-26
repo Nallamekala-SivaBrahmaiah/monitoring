@@ -2630,25 +2630,25 @@ export function DevOpsProofTab() {
               No proof of work logs dispatched yet. Click "Dispatch Proof of Work" above to send your first audit report!
             </div>
           ) : (
-            auditLogs.map((log) => (
+            auditLogs.map((log, idx) => (
               <div
-                key={log._id}
+                key={log._id || log.auditId || idx}
                 className="p-3.5 rounded-xl bg-[#090E1A] border border-[#1E293B] space-y-1.5 hover:border-slate-700 transition-all text-xs"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-blue-400">{log.auditId}</span>
+                    <span className="font-mono font-bold text-blue-400">{log.auditId || `AUDIT-${idx + 1}`}</span>
                     <span className="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 font-bold text-[10px]">
-                      {log.actionType} &bull; {log.tool}
+                      {log.actionType || 'Action'} &bull; {log.tool || 'DevOps'}
                     </span>
-                    <span className="text-slate-400 text-[11px]">by {log.engineerName}</span>
+                    <span className="text-slate-400 text-[11px]">by {log.engineerName || 'Siva'}</span>
                   </div>
-                  <span className="text-[11px] font-mono text-cyan-400">{log.clockTimeIST}</span>
+                  <span className="text-[11px] font-mono text-cyan-400">{log.clockTimeIST || ''}</span>
                 </div>
-                <div className="text-slate-200">{log.summary}</div>
+                <div className="text-slate-200">{log.summary || 'Dispatch Summary'}</div>
                 <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
-                  <span>Outcome: <strong className="text-emerald-400">{log.resultOutcome}</strong></span>
-                  <span className="text-slate-500">Recipients: {log.recipients.length} &bull; Status: <strong className="text-emerald-400">{log.status}</strong></span>
+                  <span>Outcome: <strong className="text-emerald-400">{log.resultOutcome || 'SUCCESS'}</strong></span>
+                  <span className="text-slate-500">Recipients: {log.recipients?.length || 0} &bull; Status: <strong className="text-emerald-400">{log.status || 'Dispatched'}</strong></span>
                 </div>
               </div>
             ))
