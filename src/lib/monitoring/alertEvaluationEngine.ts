@@ -138,7 +138,7 @@ export async function getNotificationPreferences() {
       inAppNotificationsEnabled: true,
       incidentDispatcherConnected: false,
       alertRecipients: [],
-      ignoredServers: ['vm01siva-mon'],
+      ignoredServers: [],
       notifyOnResolved: false,
       reminderIntervalMinutes: 60,
       minSeverity: 'warning' as const,
@@ -193,9 +193,9 @@ export async function getNotificationPreferences() {
       inAppNotificationsEnabled: prefs?.inAppNotificationsEnabled !== false,
       incidentDispatcherConnected: Boolean((prefs as any)?.incidentDispatcherConnected),
       alertRecipients: effectiveRecipients.length > 0 ? effectiveRecipients : [adminEmail],
-      ignoredServers: Array.isArray(prefs?.ignoredServers) && prefs.ignoredServers.length > 0
+      ignoredServers: Array.isArray(prefs?.ignoredServers)
         ? prefs.ignoredServers
-        : ['vm01siva-mon'],
+        : [],
       notifyOnResolved: prefs?.notifyOnResolved !== false,
       reminderIntervalMinutes: prefs?.reminderIntervalMinutes || 60,
       minSeverity: prefs?.minSeverity || 'warning',
@@ -209,7 +209,7 @@ export async function getNotificationPreferences() {
     inAppNotificationsEnabled: true,
     incidentDispatcherConnected: false,
     alertRecipients: ['nallasiva552@gmail.com'],
-    ignoredServers: ['vm01siva-mon'],
+    ignoredServers: [],
     notifyOnResolved: true,
     reminderIntervalMinutes: 60,
     minSeverity: 'warning' as const,
@@ -839,7 +839,7 @@ export async function evaluateResourceMetrics(
   await connectToDatabase();
 
   const prefs = await getNotificationPreferences();
-  const ignoredList = Array.isArray((prefs as any).ignoredServers) ? (prefs as any).ignoredServers : ['vm01siva-mon'];
+  const ignoredList = Array.isArray((prefs as any).ignoredServers) ? (prefs as any).ignoredServers : [];
   const isIgnored = ignoredList.some((pattern: string) => {
     const p = pattern.trim().toLowerCase();
     if (!p) return false;

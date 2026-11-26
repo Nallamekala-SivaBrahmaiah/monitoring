@@ -47,7 +47,7 @@ const NotificationPreferencesSchema: Schema<INotificationPreferences> = new Sche
     },
     ignoredServers: {
       type: [String],
-      default: ['vm01siva-mon'],
+      default: [],
     },
     smsEnabled: {
       type: Boolean,

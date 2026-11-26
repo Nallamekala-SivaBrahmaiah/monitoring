@@ -39,8 +39,8 @@ export async function GET(request: NextRequest) {
     if (!Array.isArray(prefs.phoneNumbers)) {
       prefs.phoneNumbers = [];
     }
-    if (!Array.isArray(prefs.ignoredServers) || prefs.ignoredServers.length === 0) {
-      prefs.ignoredServers = ['vm01siva-mon'];
+    if (!Array.isArray(prefs.ignoredServers)) {
+      prefs.ignoredServers = [];
     }
 
     // Synchronize recipients with DevOpsRecipient collection

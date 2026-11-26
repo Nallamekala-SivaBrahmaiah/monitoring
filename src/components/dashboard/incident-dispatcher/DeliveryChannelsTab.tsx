@@ -80,7 +80,7 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
   const [editPhoneValue, setEditPhoneValue] = useState('');
 
   // --- 6. IGNORED SERVERS STATE ---
-  const [ignoredServers, setIgnoredServers] = useState<string[]>(['vm01siva-mon']);
+  const [ignoredServers, setIgnoredServers] = useState<string[]>([]);
   const [newIgnoredServer, setNewIgnoredServer] = useState('');
 
   const [isSavingChannels, setIsSavingChannels] = useState(false);
@@ -155,10 +155,10 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
               localStorage.setItem('notification_phones', JSON.stringify(pData.phoneNumbers));
             }
           }
-          if (Array.isArray(pData.ignoredServers) && pData.ignoredServers.length > 0) {
+          if (Array.isArray(pData.ignoredServers)) {
             setIgnoredServers(pData.ignoredServers);
           } else {
-            setIgnoredServers(['vm01siva-mon']);
+            setIgnoredServers([]);
           }
           if (typeof pData.emailNotificationsEnabled === 'boolean') setEmailEnabled(pData.emailNotificationsEnabled);
           if (typeof pData.smsEnabled === 'boolean') setSmsEnabled(pData.smsEnabled);

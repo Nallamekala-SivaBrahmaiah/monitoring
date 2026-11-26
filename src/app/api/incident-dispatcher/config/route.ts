@@ -34,7 +34,7 @@ export async function GET() {
         updatedAt: prefs.updatedAt || new Date(),
         enabledDevOpsCount,
         alertRecipients: prefs.alertRecipients || [],
-        ignoredServers: prefs.ignoredServers || ['vm01siva-mon'],
+        ignoredServers: prefs.ignoredServers || [],
       },
       { headers: NO_CACHE_HEADERS }
     );
