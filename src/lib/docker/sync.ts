@@ -52,6 +52,10 @@ async function runCommandOnAzureVM(
   token: string,
   commands: string[]
 ): Promise<string | null> {
+  // If this server is vm01siva-mon or self-hosted, skip remote RunCommand to prevent 409 conflicts
+  if (vmName.toLowerCase().includes('vm01siva-mon')) {
+    return null;
+  }
   try {
     const url = `https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Compute/virtualMachines/${vmName}/runCommand?api-version=2023-09-01`;
 

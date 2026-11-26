@@ -20,6 +20,10 @@ import {
   Sliders,
   Settings,
   ShieldCheck,
+  Server,
+  EyeOff,
+  ShieldAlert,
+  Check,
 } from 'lucide-react';
 
 interface DeliveryChannelsTabProps {
@@ -75,6 +79,10 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
   const [editingPhoneIndex, setEditingPhoneIndex] = useState<number | null>(null);
   const [editPhoneValue, setEditPhoneValue] = useState('');
 
+  // --- 6. IGNORED SERVERS STATE ---
+  const [ignoredServers, setIgnoredServers] = useState<string[]>(['vm01siva-mon']);
+  const [newIgnoredServer, setNewIgnoredServer] = useState('');
+
   const [isSavingChannels, setIsSavingChannels] = useState(false);
 
   // Persistence helper to MongoDB & localStorage (Partial & safe updates)
@@ -85,6 +93,7 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
 
       if (overrides.recipients !== undefined) payload.alertRecipients = overrides.recipients;
       if (overrides.phoneNumbers !== undefined) payload.phoneNumbers = overrides.phoneNumbers;
+      if (overrides.ignoredServers !== undefined) payload.ignoredServers = overrides.ignoredServers;
       if (overrides.emailEnabled !== undefined) payload.emailNotificationsEnabled = overrides.emailEnabled;
       if (overrides.audioEnabled !== undefined) payload.audioEnabled = overrides.audioEnabled;
       if (overrides.pushEnabled !== undefined) payload.pushEnabled = overrides.pushEnabled;
@@ -97,6 +106,7 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
       if (Object.keys(overrides).length === 0) {
         payload.alertRecipients = recipients;
         payload.phoneNumbers = phoneNumbers;
+        payload.ignoredServers = ignoredServers;
         payload.emailNotificationsEnabled = emailEnabled;
         payload.audioEnabled = audioEnabled;
         payload.pushEnabled = pushEnabled;
@@ -145,6 +155,11 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
               localStorage.setItem('notification_phones', JSON.stringify(pData.phoneNumbers));
             }
           }
+          if (Array.isArray(pData.ignoredServers) && pData.ignoredServers.length > 0) {
+            setIgnoredServers(pData.ignoredServers);
+          } else {
+            setIgnoredServers(['vm01siva-mon']);
+          }
           if (typeof pData.emailNotificationsEnabled === 'boolean') setEmailEnabled(pData.emailNotificationsEnabled);
           if (typeof pData.smsEnabled === 'boolean') setSmsEnabled(pData.smsEnabled);
           if (typeof pData.audioEnabled === 'boolean') setAudioEnabled(pData.audioEnabled);
@@ -192,23 +207,33 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
     loadRealChannelConfig();
   }, []);
 
-  // Real Email Test Dispatcher
-  const handleTestEmail = async () => {
+  // Real Email Test Dispatcher (Sends to all configured recipients or individual address)
+  const handleTestEmail = async (singleEmail?: string) => {
     try {
       setIsSendingTestEmail(true);
-      const targetTo = recipients[0] || 'nallasiva552@gmail.com';
+      const targetList = singleEmail
+        ? [singleEmail.trim()]
+        : recipients.length > 0
+        ? recipients
+        : ['nallasiva552@gmail.com'];
+
       const res = await fetch('/api/notifications/test-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recipient: targetTo,
-          message: 'Live test notification from Notification Channels & Incident Dispatcher',
+          recipients: targetList,
+          message: 'Live test notification from Multi-Cloud Monitoring Incident Dispatcher',
           severity: 'info',
         }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        onShowToast(`Live test email dispatched to ${targetTo}! Check your inbox.`, 'success');
+        onShowToast(
+          singleEmail
+            ? `Live test email dispatched to ${singleEmail}! Check inbox.`
+            : `Live test email dispatched to all ${targetList.length} recipients: [${targetList.join(', ')}]! Check inboxes.`,
+          'success'
+        );
       } else {
         onShowToast(data.error || 'Failed to dispatch test email', 'warning');
       }
@@ -216,6 +241,76 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
       onShowToast(err.message || 'Error triggering test email', 'warning');
     } finally {
       setIsSendingTestEmail(false);
+    }
+  };
+
+  // Ignored Servers Handler
+  const handleToggleIgnoreServer = async (serverName: string) => {
+    const isCurrentlyIgnored = ignoredServers.includes(serverName);
+    const nextList = isCurrentlyIgnored
+      ? ignoredServers.filter((s) => s !== serverName)
+      : [...ignoredServers, serverName];
+    setIgnoredServers(nextList);
+
+    try {
+      await fetch('/api/notifications/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: isCurrentlyIgnored ? 'unignore_server' : 'ignore_server',
+          server: serverName,
+        }),
+      });
+      onShowToast(
+        isCurrentlyIgnored
+          ? `Server ${serverName} unmuted. Alert monitoring re-enabled.`
+          : `Server ${serverName} completely ignored & muted from all alerts!`,
+        isCurrentlyIgnored ? 'info' : 'success'
+      );
+    } catch (e) {
+      onShowToast(`Updated ignore status for ${serverName}`, 'info');
+    }
+  };
+
+  const handleAddIgnoredServer = async () => {
+    if (!newIgnoredServer.trim()) {
+      onShowToast('Please enter a server name or ID to ignore.', 'warning');
+      return;
+    }
+    const clean = newIgnoredServer.trim();
+    if (ignoredServers.includes(clean)) {
+      onShowToast('Server is already in the ignored list.', 'warning');
+      return;
+    }
+    const nextList = [...ignoredServers, clean];
+    setIgnoredServers(nextList);
+    setNewIgnoredServer('');
+
+    try {
+      await fetch('/api/notifications/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ignore_server', server: clean }),
+      });
+      onShowToast(`Server ${clean} added to ignore list! No alert emails will be sent.`, 'success');
+    } catch (e) {
+      onShowToast(`Added ${clean} to ignore list.`, 'info');
+    }
+  };
+
+  const handleRemoveIgnoredServer = async (serverName: string) => {
+    const nextList = ignoredServers.filter((s) => s !== serverName);
+    setIgnoredServers(nextList);
+
+    try {
+      await fetch('/api/notifications/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unignore_server', server: serverName }),
+      });
+      onShowToast(`Removed ${serverName} from ignore list.`, 'info');
+    } catch (e) {
+      onShowToast(`Removed ${serverName} from ignore list.`, 'info');
     }
   };
 
@@ -553,6 +648,98 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
         </button>
       </div>
 
+      {/* Ignored & Excluded Servers Control Card */}
+      <div className="p-5 rounded-2xl bg-[#090F1E]/90 border border-amber-500/30 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <EyeOff className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white tracking-wide">Ignored &amp; Excluded Servers</h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  {ignoredServers.length} Server(s) Muted
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Servers listed here are completely ignored by the alert evaluation engine: zero CPU/RAM/Disk alerts and zero alert emails are dispatched, and remote Azure RunCommands are bypassed.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Toggle for vm01siva-mon */}
+          <div className="flex items-center gap-2.5 bg-slate-950/80 px-3.5 py-2 rounded-xl border border-slate-800 shrink-0">
+            <Server className="w-4 h-4 text-cyan-400" />
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-white font-mono">vm01siva-mon</span>
+              <span className="text-[10px] text-slate-400">Self-Hosted Host</span>
+            </div>
+            <button
+              onClick={() => handleToggleIgnoreServer('vm01siva-mon')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ml-2 flex items-center gap-1.5 ${
+                ignoredServers.includes('vm01siva-mon')
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500/30'
+                  : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'
+              }`}
+            >
+              {ignoredServers.includes('vm01siva-mon') ? (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Ignored</span>
+                </>
+              ) : (
+                <span>Mute / Ignore</span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Ignored Servers Tag Deck */}
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-800/80">
+          <span className="text-[11px] font-mono uppercase text-slate-400 mr-1">Currently Ignored:</span>
+          {ignoredServers.length === 0 ? (
+            <span className="text-xs text-slate-500 italic">No servers currently ignored. All servers will trigger alert emails.</span>
+          ) : (
+            ignoredServers.map((srv) => (
+              <span
+                key={srv}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/40 border border-amber-500/30 text-xs font-mono text-amber-200"
+              >
+                <Server className="w-3 h-3 text-amber-400" />
+                <span>{srv}</span>
+                <button
+                  onClick={() => handleRemoveIgnoredServer(srv)}
+                  className="hover:text-rose-400 ml-1 text-slate-400"
+                  title={`Stop ignoring ${srv}`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+
+        {/* Add custom server to ignore */}
+        <div className="flex gap-2 max-w-md pt-1">
+          <input
+            type="text"
+            placeholder="Server name or ID (e.g. vm01siva-mon, i-0abcd1234)..."
+            value={newIgnoredServer}
+            onChange={(e) => setNewIgnoredServer(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddIgnoredServer()}
+            className="flex-1 bg-slate-950 border border-slate-750 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+          />
+          <button
+            onClick={handleAddIgnoredServer}
+            className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-xs font-semibold text-amber-300 border border-amber-500/40 transition-colors flex items-center gap-1 shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Ignore Server</span>
+          </button>
+        </div>
+      </div>
+
       {/* 5 Delivery Channels Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* ========================================================= */}
@@ -720,6 +907,14 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
                       <span className="font-mono truncate">{email}</span>
                       <div className="flex items-center gap-1 shrink-0">
                         <button
+                          onClick={() => handleTestEmail(email)}
+                          disabled={isSendingTestEmail}
+                          className="p-1 text-slate-400 hover:text-emerald-400 transition-colors"
+                          title={`Send live test alert directly to ${email}`}
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => {
                             setEditingRecipientIndex(idx);
                             setEditRecipientValue(email);
@@ -767,12 +962,12 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
           <div className="pt-2 flex items-center justify-between">
             <span className="text-[11px] text-slate-400 font-mono">Port {smtpPort} (TLS Active)</span>
             <button
-              onClick={handleTestEmail}
+              onClick={() => handleTestEmail()}
               disabled={isSendingTestEmail}
               className="px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
             >
               <Send className={`w-3 h-3 ${isSendingTestEmail ? 'animate-spin' : ''}`} />
-              <span>{isSendingTestEmail ? 'Dispatching...' : 'Send Test Email'}</span>
+              <span>{isSendingTestEmail ? 'Dispatching to All...' : `Send Test to All (${recipients.length})`}</span>
             </button>
           </div>
         </div>

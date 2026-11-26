@@ -158,6 +158,9 @@ export async function getNotificationPreferences() {
         emailNotificationsEnabled: prefs.emailNotificationsEnabled !== false,
         inAppNotificationsEnabled: prefs.inAppNotificationsEnabled !== false,
         alertRecipients: dbRecipients,
+        ignoredServers: Array.isArray(prefs.ignoredServers) && prefs.ignoredServers.length > 0
+          ? prefs.ignoredServers
+          : ['vm01siva-mon'],
         notifyOnResolved: prefs.notifyOnResolved !== false,
         reminderIntervalMinutes: prefs.reminderIntervalMinutes || 60,
         minSeverity: prefs.minSeverity || 'warning',
@@ -171,6 +174,7 @@ export async function getNotificationPreferences() {
     emailNotificationsEnabled: true,
     inAppNotificationsEnabled: true,
     alertRecipients: effectiveRecipients,
+    ignoredServers: ['vm01siva-mon'],
     notifyOnResolved: true,
     reminderIntervalMinutes: 60,
     minSeverity: 'warning' as const,
@@ -798,6 +802,31 @@ export async function evaluateResourceMetrics(
   input: MetricEvaluationInput
 ): Promise<EvaluationResult[]> {
   await connectToDatabase();
+
+  const prefs = await getNotificationPreferences();
+  const ignoredList = Array.isArray((prefs as any).ignoredServers) ? (prefs as any).ignoredServers : ['vm01siva-mon'];
+  const isIgnored = ignoredList.some((pattern: string) => {
+    const p = pattern.trim().toLowerCase();
+    if (!p) return false;
+    const rName = (input.resourceName || '').toLowerCase();
+    const rId = (input.resourceId || '').toLowerCase();
+    return rName === p || rName.includes(p) || rId === p || rId.includes(p);
+  });
+
+  if (isIgnored) {
+    // Completely ignore and silence this server - skip evaluation and resolve any lingering active alerts
+    await Alert.updateMany(
+      {
+        $or: [{ resourceName: input.resourceName }, { resourceId: input.resourceId }],
+        status: 'active',
+      },
+      {
+        $set: { status: 'resolved', resolvedAt: new Date(), message: 'Server muted / ignored from alerting' }
+      }
+    ).catch(() => null);
+    return [];
+  }
+
   const thresholds = await getAlertThresholds();
   if (!thresholds.enabled) return [];
 

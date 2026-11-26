@@ -39,6 +39,9 @@ export async function GET(request: NextRequest) {
     if (!Array.isArray(prefs.phoneNumbers)) {
       prefs.phoneNumbers = [];
     }
+    if (!Array.isArray(prefs.ignoredServers) || prefs.ignoredServers.length === 0) {
+      prefs.ignoredServers = ['vm01siva-mon'];
+    }
 
     // Synchronize recipients with DevOpsRecipient collection
     const devOpsDocs = await DevOpsRecipient.find({ enabled: { $ne: false } }).lean();
@@ -64,6 +67,28 @@ export async function PUT(request: NextRequest) {
     const userId = body.userId || 'admin';
 
     // 1. Atomic Action Handlers (Guarantees no race conditions / clobbering)
+    if (body.action === 'ignore_server' && body.server) {
+      const cleanServer = String(body.server).trim();
+      if (cleanServer) {
+        const doc = await NotificationPreferences.findOneAndUpdate(
+          { userId },
+          { $addToSet: { ignoredServers: cleanServer } },
+          { upsert: true, returnDocument: 'after' }
+        );
+        return NextResponse.json(doc, { headers: NO_CACHE_HEADERS });
+      }
+    }
+
+    if (body.action === 'unignore_server' && body.server) {
+      const cleanServer = String(body.server).trim();
+      const doc = await NotificationPreferences.findOneAndUpdate(
+        { userId },
+        { $pull: { ignoredServers: cleanServer } },
+        { returnDocument: 'after' }
+      );
+      return NextResponse.json(doc, { headers: NO_CACHE_HEADERS });
+    }
+
     if (body.action === 'add_phone' && body.phone) {
       const cleanPhone = String(body.phone).trim();
       if (cleanPhone.length >= 8) {
@@ -142,6 +167,11 @@ export async function PUT(request: NextRequest) {
       updates.phoneNumbers = body.phoneNumbers
         .map((p: string) => p.trim())
         .filter((p: string) => p.length >= 8);
+    }
+    if (Array.isArray(body.ignoredServers)) {
+      updates.ignoredServers = body.ignoredServers
+        .map((s: string) => s.trim())
+        .filter(Boolean);
     }
     if (typeof body.smsEnabled === 'boolean') {
       updates.smsEnabled = body.smsEnabled;

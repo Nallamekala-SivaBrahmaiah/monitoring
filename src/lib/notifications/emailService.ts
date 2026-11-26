@@ -417,18 +417,34 @@ Multi-Cloud Infrastructure Monitoring Platform • Automated Real-Time Alerting
     attempt++;
     try {
       const transporter = getTransporter();
-      const info = await transporter.sendMail({
-        from: `"Cloud Infrastructure Monitor" <${sender}>`,
-        to: toList,
-        subject,
-        text: textContent,
-        html: htmlContent,
-      });
-
-      console.log(
-        `[EmailService] ✉️ Alert email successfully delivered for ${payload.serverName} (attempt ${attempt}/${maxAttempts}, messageId: ${info.messageId}) to [${toList.join(', ')}]`
+      const sendResults = await Promise.allSettled(
+        toList.map((recipientEmail) =>
+          transporter.sendMail({
+            from: `"Cloud Infrastructure Monitor" <${sender}>`,
+            to: recipientEmail,
+            subject,
+            text: textContent,
+            html: htmlContent,
+          })
+        )
       );
-      return { success: true, messageId: info.messageId, recipients: toList };
+
+      const fulfilled = sendResults.filter(
+        (r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled'
+      );
+      const rejected = sendResults.filter(
+        (r): r is PromiseRejectedResult => r.status === 'rejected'
+      );
+
+      if (fulfilled.length > 0) {
+        const firstMessageId = fulfilled[0].value.messageId;
+        console.log(
+          `[EmailService] ✉️ Alert email successfully delivered for ${payload.serverName} (attempt ${attempt}/${maxAttempts}, messageId: ${firstMessageId}) to ${fulfilled.length}/${toList.length} recipients: [${toList.join(', ')}]`
+        );
+        return { success: true, messageId: firstMessageId, recipients: toList };
+      }
+
+      throw rejected[0]?.reason || new Error('Failed to deliver alert email to any recipient');
     } catch (err: any) {
       lastError = err;
       console.warn(
@@ -656,18 +672,34 @@ Multi-Cloud Infrastructure Monitoring Platform • Automated Real-Time Alerting
     attempt++;
     try {
       const transporter = getTransporter();
-      const info = await transporter.sendMail({
-        from: `"Cloud Infrastructure Monitor" <${sender}>`,
-        to: toList,
-        subject,
-        text: textContent,
-        html: htmlContent,
-      });
-
-      console.log(
-        `[EmailService] ✉️ Resolved/Recovery email sent for ${payload.serverName} (attempt ${attempt}/${maxAttempts}, messageId: ${info.messageId}) to [${toList.join(', ')}]`
+      const sendResults = await Promise.allSettled(
+        toList.map((recipientEmail) =>
+          transporter.sendMail({
+            from: `"Cloud Infrastructure Monitor" <${sender}>`,
+            to: recipientEmail,
+            subject,
+            text: textContent,
+            html: htmlContent,
+          })
+        )
       );
-      return { success: true, messageId: info.messageId, recipients: toList };
+
+      const fulfilled = sendResults.filter(
+        (r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled'
+      );
+      const rejected = sendResults.filter(
+        (r): r is PromiseRejectedResult => r.status === 'rejected'
+      );
+
+      if (fulfilled.length > 0) {
+        const firstMessageId = fulfilled[0].value.messageId;
+        console.log(
+          `[EmailService] ✉️ Resolved/Recovery email sent for ${payload.serverName} (attempt ${attempt}/${maxAttempts}, messageId: ${firstMessageId}) to ${fulfilled.length}/${toList.length} recipients: [${toList.join(', ')}]`
+        );
+        return { success: true, messageId: firstMessageId, recipients: toList };
+      }
+
+      throw rejected[0]?.reason || new Error('Failed to deliver resolved email to any recipient');
     } catch (err: any) {
       lastError = err;
       console.warn(
@@ -770,15 +802,34 @@ Multi-Cloud Infrastructure Monitoring Platform • Automated Real-Time Alerting
 
   try {
     const transporter = getTransporter();
-    const info = await transporter.sendMail({
-      from: `"Cloud Infrastructure Monitor" <${sender}>`,
-      to: toList,
-      subject,
-      text: textContent,
-      html: htmlContent,
-    });
+    const sendResults = await Promise.allSettled(
+      toList.map((recipientEmail) =>
+        transporter.sendMail({
+          from: `"Cloud Infrastructure Monitor" <${sender}>`,
+          to: recipientEmail,
+          subject,
+          text: textContent,
+          html: htmlContent,
+        })
+      )
+    );
 
-    return { success: true, messageId: info.messageId, recipients: toList };
+    const fulfilled = sendResults.filter(
+      (r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled'
+    );
+    const rejected = sendResults.filter(
+      (r): r is PromiseRejectedResult => r.status === 'rejected'
+    );
+
+    if (fulfilled.length > 0) {
+      const firstMessageId = fulfilled[0].value.messageId;
+      console.log(
+        `[EmailService] ✉️ Test email delivered to ${fulfilled.length}/${toList.length} recipients: [${toList.join(', ')}]`
+      );
+      return { success: true, messageId: firstMessageId, recipients: toList };
+    }
+
+    throw rejected[0]?.reason || new Error('Failed to deliver test email to any recipient');
   } catch (err: any) {
     console.error('[EmailService] Test email failed:', err.message);
     return { success: false, error: err.message, recipients: toList };

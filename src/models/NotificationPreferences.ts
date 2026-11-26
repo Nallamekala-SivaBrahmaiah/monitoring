@@ -6,6 +6,7 @@ export interface INotificationPreferences extends Document {
   inAppNotificationsEnabled: boolean;
   alertRecipients: string[];
   phoneNumbers: string[];
+  ignoredServers: string[];
   smsEnabled: boolean;
   audioEnabled: boolean;
   pushEnabled: boolean;
@@ -42,6 +43,10 @@ const NotificationPreferencesSchema: Schema<INotificationPreferences> = new Sche
     phoneNumbers: {
       type: [String],
       default: [],
+    },
+    ignoredServers: {
+      type: [String],
+      default: ['vm01siva-mon'],
     },
     smsEnabled: {
       type: Boolean,
