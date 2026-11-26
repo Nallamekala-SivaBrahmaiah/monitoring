@@ -203,29 +203,22 @@ export function MaintenanceSilenceTab({
     return list;
   }, [apiServers, customServers, filteredAzureVMs, filteredEC2Instances, filteredK8sClusters]);
 
-  // Initial maintenance windows using real servers
-  const [windows, setWindows] = useState<MaintenanceWindow[]>(() => [
-    {
-      id: 'mw-1',
-      target: '10.0.1.24',
-      targetName: 'vm01siva-mon',
-      provider: 'azure',
-      reason: 'Scheduled Linux Kernel security patch & OS reboot',
-      startTime: 'Today, 22:00 UTC',
-      endTime: 'Today, 23:30 UTC',
-      status: 'scheduled',
-    },
-    {
-      id: 'mw-2',
-      target: 'k8s.internal.cluster:6443',
-      targetName: 'k8s-cluster-workers',
-      provider: 'k8s',
-      reason: 'Kubernetes rolling node upgrade (v1.28 ➔ v1.29)',
-      startTime: 'Tomorrow, 01:00 UTC',
-      endTime: 'Tomorrow, 03:00 UTC',
-      status: 'scheduled',
-    },
-  ]);
+  // Initial maintenance windows using real servers or local storage
+  const [windows, setWindows] = useState<MaintenanceWindow[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('maintenance_windows');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('maintenance_windows', JSON.stringify(windows));
+    } catch (e) {}
+  }, [windows]);
 
   const [snoozeMinutes, setSnoozeMinutes] = useState<number>(30);
   const [dedupMinutes, setDedupMinutes] = useState<number>(10);
@@ -717,7 +710,14 @@ export function MaintenanceSilenceTab({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {windows.map((win) => {
+              {windows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 px-4 text-center text-slate-500 font-mono text-xs">
+                    No active or scheduled maintenance windows. Click &ldquo;+ Schedule Silence Window&rdquo; above to select a real server from your fleet.
+                  </td>
+                </tr>
+              ) : (
+                windows.map((win) => {
                 const isEditing = editingWindowId === win.id;
 
                 return (
@@ -824,7 +824,7 @@ export function MaintenanceSilenceTab({
                     )}
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>

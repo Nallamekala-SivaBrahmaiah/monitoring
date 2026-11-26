@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Mail,
   Volume2,
@@ -30,16 +30,14 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
   // --- 1. EMAIL GATEWAY STATE ---
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [editingEmail, setEditingEmail] = useState(false);
-  const [smtpHost, setSmtpHost] = useState('email-smtp.us-east-1.amazonaws.com');
+  const [smtpHost, setSmtpHost] = useState('smtp.gmail.com');
   const [smtpPort, setSmtpPort] = useState('587');
-  const [senderEmail, setSenderEmail] = useState('alerts@devops-monitoring.internal');
-  const [recipients, setRecipients] = useState<string[]>([
-    'nallasiva552@gmail.com',
-    'devops-sre-alerts@company.internal',
-  ]);
+  const [senderEmail, setSenderEmail] = useState('nallasiva552@gmail.com');
+  const [recipients, setRecipients] = useState<string[]>(['nallasiva552@gmail.com']);
   const [newEmail, setNewEmail] = useState('');
   const [editingRecipientIndex, setEditingRecipientIndex] = useState<number | null>(null);
   const [editRecipientValue, setEditRecipientValue] = useState('');
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
 
   // --- 2. AUDIO CHIME STATE ---
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -65,17 +63,69 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
   const [editingWebhook, setEditingWebhook] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookType, setWebhookType] = useState<'slack' | 'teams' | 'discord' | 'custom'>('slack');
-  const [webhookSecret, setWebhookSecret] = useState('whsec_9a8f27b9c4e12480e');
+  const [webhookSecret, setWebhookSecret] = useState('');
 
   // --- 5. EMERGENCY SMS STATE ---
   const [smsEnabled, setSmsEnabled] = useState(true);
   const [editingSms, setEditingSms] = useState(false);
   const [smsProvider, setSmsProvider] = useState<'twilio' | 'aws_sns'>('aws_sns');
-  const [phoneNumbers, setPhoneNumbers] = useState<string[]>(['+91 98765 43210', '+1 (555) 234-5678']);
+  const [phoneNumbers, setPhoneNumbers] = useState<string[]>([]);
   const [newPhone, setNewPhone] = useState('');
   const [smsOnlyP1, setSmsOnlyP1] = useState(true);
   const [editingPhoneIndex, setEditingPhoneIndex] = useState<number | null>(null);
   const [editPhoneValue, setEditPhoneValue] = useState('');
+
+  // Load real recipients & SMTP config on mount
+  useEffect(() => {
+    async function loadRealChannelConfig() {
+      try {
+        const [recipientsRes, smtpRes] = await Promise.all([
+          fetch('/api/notifications/devops-recipients'),
+          fetch('/api/notifications/smtp-status'),
+        ]);
+        if (recipientsRes.ok) {
+          const rData = await recipientsRes.json();
+          if (Array.isArray(rData.recipients) && rData.recipients.length > 0) {
+            setRecipients(rData.recipients.map((r: any) => r.email).filter(Boolean));
+          }
+        }
+        if (smtpRes.ok) {
+          const sData = await smtpRes.json();
+          if (sData.host) setSmtpHost(sData.host);
+          if (sData.port) setSmtpPort(String(sData.port));
+        }
+      } catch (err) {
+        console.warn('Failed loading channel configuration from API:', err);
+      }
+    }
+    loadRealChannelConfig();
+  }, []);
+
+  // Real Email Test Dispatcher
+  const handleTestEmail = async () => {
+    try {
+      setIsSendingTestEmail(true);
+      const res = await fetch('/api/notifications/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient: recipients[0] || 'nallasiva552@gmail.com',
+          message: 'Live test notification from Notification Channels & Incident Dispatcher',
+          severity: 'info',
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        onShowToast(`Live test email dispatched to ${recipients[0] || 'nallasiva552@gmail.com'}!`, 'success');
+      } else {
+        onShowToast(data.error || 'Failed to dispatch test email', 'warning');
+      }
+    } catch (err: any) {
+      onShowToast(err.message || 'Error triggering test email', 'warning');
+    } finally {
+      setIsSendingTestEmail(false);
+    }
+  };
 
   // Web Audio Synthesizer
   const playWebAudioSound = (tone: 'siren' | 'bell' | 'pulse') => {
@@ -464,11 +514,12 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
           <div className="pt-2 flex items-center justify-between">
             <span className="text-[11px] text-slate-400 font-mono">Port {smtpPort} (TLS Active)</span>
             <button
-              onClick={() => onShowToast('Test email dispatched to primary recipient!', 'success')}
-              className="px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-all flex items-center gap-1.5"
+              onClick={handleTestEmail}
+              disabled={isSendingTestEmail}
+              className="px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
             >
-              <Send className="w-3 h-3" />
-              <span>Send Test Email</span>
+              <Send className={`w-3 h-3 ${isSendingTestEmail ? 'animate-spin' : ''}`} />
+              <span>{isSendingTestEmail ? 'Dispatching...' : 'Send Test Email'}</span>
             </button>
           </div>
         </div>
@@ -1050,67 +1101,73 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
                 Emergency On-Call Phone Numbers ({phoneNumbers.length})
               </label>
               <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">
-                {phoneNumbers.map((phone, idx) => (
-                  <div
-                    key={phone}
-                    className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-200"
-                  >
-                    {editingPhoneIndex === idx ? (
-                      <div className="flex items-center gap-1.5 flex-1 mr-2">
-                        <input
-                          type="tel"
-                          value={editPhoneValue}
-                          onChange={(e) => setEditPhoneValue(e.target.value)}
-                          className="flex-1 bg-slate-950 border border-amber-500 rounded px-2 py-0.5 text-xs text-white font-mono focus:outline-none"
-                        />
-                        <button
-                          onClick={() => handleSaveEditPhone(idx)}
-                          className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold flex items-center gap-1"
-                          title="Save Phone"
-                        >
-                          <Save className="w-3 h-3" />
-                          <span>Save</span>
-                        </button>
-                        <button
-                          onClick={() => setEditingPhoneIndex(null)}
-                          className="p-1 text-slate-400 hover:text-white"
-                          title="Cancel"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <span className="font-mono">{phone}</span>
-                        <div className="flex items-center gap-1 shrink-0">
+                {phoneNumbers.length === 0 ? (
+                  <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-800 text-[11px] text-slate-400 text-center font-mono">
+                    No emergency phones configured. Add a mobile number below to receive SMS alerts.
+                  </div>
+                ) : (
+                  phoneNumbers.map((phone, idx) => (
+                    <div
+                      key={phone}
+                      className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-200"
+                    >
+                      {editingPhoneIndex === idx ? (
+                        <div className="flex items-center gap-1.5 flex-1 mr-2">
+                          <input
+                            type="tel"
+                            value={editPhoneValue}
+                            onChange={(e) => setEditPhoneValue(e.target.value)}
+                            className="flex-1 bg-slate-950 border border-amber-500 rounded px-2 py-0.5 text-xs text-white font-mono focus:outline-none"
+                          />
                           <button
-                            onClick={() => {
-                              setEditingPhoneIndex(idx);
-                              setEditPhoneValue(phone);
-                            }}
-                            className="p-1 text-slate-400 hover:text-amber-400 transition-colors"
-                            title="Edit phone"
+                            onClick={() => handleSaveEditPhone(idx)}
+                            className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold flex items-center gap-1"
+                            title="Save Phone"
                           >
-                            <Edit3 className="w-3.5 h-3.5" />
+                            <Save className="w-3 h-3" />
+                            <span>Save</span>
                           </button>
                           <button
-                            onClick={() => handleRemovePhone(phone)}
-                            className="p-1 text-slate-400 hover:text-rose-400 transition-colors"
-                            title="Remove phone"
+                            onClick={() => setEditingPhoneIndex(null)}
+                            className="p-1 text-slate-400 hover:text-white"
+                            title="Cancel"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <X className="w-3 h-3" />
                           </button>
                         </div>
-                      </>
-                    )}
-                  </div>
-                ))}
+                      ) : (
+                        <>
+                          <span className="font-mono">{phone}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => {
+                                setEditingPhoneIndex(idx);
+                                setEditPhoneValue(phone);
+                              }}
+                              className="p-1 text-slate-400 hover:text-amber-400 transition-colors"
+                              title="Edit phone"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleRemovePhone(phone)}
+                              className="p-1 text-slate-400 hover:text-rose-400 transition-colors"
+                              title="Remove phone"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="flex gap-2">
                 <input
                   type="tel"
-                  placeholder="+91 98765 43210"
+                  placeholder="+91..."
                   value={newPhone}
                   onChange={(e) => setNewPhone(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddPhone()}

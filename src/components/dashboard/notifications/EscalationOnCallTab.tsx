@@ -55,15 +55,15 @@ export function EscalationOnCallTab({ onShowToast }: EscalationOnCallTabProps) {
       title: 'SRE Primary Responder',
       delayMins: 0,
       responder: 'Siva Brahmaiah (Lead SRE)',
-      description: 'Immediately sounds In-App Audio Siren, browser push, and sends Slack P1 broadcast.',
+      description: 'Immediately sounds In-App Audio Siren, browser push, and sends high-priority notifications.',
       colorBorder: 'border-cyan-500/40',
     },
     {
       id: 'tier-2',
       level: 2,
-      title: 'DevOps Lead & Secondary',
+      title: 'DevOps Operations & Cloud Lead',
       delayMins: 5,
-      responder: 'Anand Kumar (DevOps Lead)',
+      responder: 'On-Call Cloud Engineering Team',
       description: 'Fires Emergency SMS to mobile phones and high-priority email alerts to engineering leads.',
       colorBorder: 'border-amber-500/40',
     },
@@ -91,20 +91,10 @@ export function EscalationOnCallTab({ onShowToast }: EscalationOnCallTabProps) {
       name: 'Siva Brahmaiah',
       initials: 'SB',
       role: 'Lead SRE & DevOps Cloud Architect',
-      shift: '08:00 - 20:00 IST',
-      phone: '+91 98765 43210',
+      shift: '24/7 Primary Duty',
+      phone: '',
       email: 'nallasiva552@gmail.com',
       status: 'duty',
-    },
-    {
-      id: 'mem-2',
-      name: 'Anand Kumar',
-      initials: 'AK',
-      role: 'Cloud Infrastructure Systems Admin',
-      shift: '20:00 - 08:00 IST',
-      phone: '+91 98765 12345',
-      email: 'anand.k@company.internal',
-      status: 'backup',
     },
   ]);
 
@@ -124,9 +114,9 @@ export function EscalationOnCallTab({ onShowToast }: EscalationOnCallTabProps) {
   const [newMemberShift, setNewMemberShift] = useState('08:00 - 20:00 IST');
 
   // Simulated Live Incident State
-  const [incidentActive, setIncidentActive] = useState<boolean>(true);
+  const [incidentActive, setIncidentActive] = useState<boolean>(false);
   const [incidentAcknowledged, setIncidentAcknowledged] = useState<boolean>(false);
-  const [countdownSeconds, setCountdownSeconds] = useState<number>(68);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(300);
 
   useEffect(() => {
     if (!incidentActive || incidentAcknowledged) return;
@@ -248,7 +238,7 @@ export function EscalationOnCallTab({ onShowToast }: EscalationOnCallTabProps) {
       role: newMemberRole.trim() || 'DevOps SRE Engineer',
       shift: newMemberShift,
       phone: newMemberPhone.trim(),
-      email: newMemberEmail.trim() || 'oncall@company.internal',
+      email: newMemberEmail.trim() || 'nallasiva552@gmail.com',
       status: 'backup',
     };
     setMembers([...members, newMem]);
@@ -266,66 +256,96 @@ export function EscalationOnCallTab({ onShowToast }: EscalationOnCallTabProps) {
       <div className="bg-[#090F1E]/95 border border-cyan-500/30 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2.5">
-            <div className={`w-3 h-3 rounded-full ${incidentAcknowledged ? 'bg-emerald-400' : 'bg-rose-500 animate-ping'}`} />
+            <div className={`w-3 h-3 rounded-full ${!incidentActive ? 'bg-emerald-400' : incidentAcknowledged ? 'bg-emerald-400' : 'bg-rose-500 animate-ping'}`} />
             <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
               <span>Live Escalation Flight Deck</span>
               <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                incidentAcknowledged
+                !incidentActive
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                  : incidentAcknowledged
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
               }`}>
-                {incidentAcknowledged ? 'ACKNOWLEDGED — ESCALATION SILENCED' : 'ACTIVE CRITICAL INCIDENT'}
+                {!incidentActive
+                  ? 'STANDBY — ZERO UNACKNOWLEDGED BREACHES'
+                  : incidentAcknowledged
+                  ? 'ACKNOWLEDGED — ESCALATION SILENCED'
+                  : 'ACTIVE CRITICAL INCIDENT'}
               </span>
             </h2>
           </div>
 
-          <button
-            onClick={handleResetSimulation}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-mono border border-slate-700 transition-all self-start sm:self-auto"
-          >
-            <RotateCcw className="w-3 h-3" />
-            <span>Simulate Firing Incident</span>
-          </button>
+          {incidentActive && (
+            <button
+              onClick={() => setIncidentActive(false)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-400 hover:text-white text-xs font-mono border border-slate-700 transition-all self-start sm:self-auto"
+            >
+              <X className="w-3 h-3" />
+              <span>End Simulation</span>
+            </button>
+          )}
         </div>
 
-        <div className="mt-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-rose-400 font-mono">[CRITICAL P1]</span>
-              <span className="text-xs font-semibold text-white">aws-ec2-prod-database-01: High CPU Load &gt; 96.4%</span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Triggered 2m 14s ago • Target SRE: Siva Brahmaiah • Level 1 Immediate Audio & Push Sent.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {!incidentAcknowledged ? (
-              <>
-                <div className="text-right">
-                  <div className="text-[10px] font-mono uppercase text-slate-400">Escalates to L2 in</div>
-                  <div className="text-lg font-mono font-bold text-amber-400">
-                    {Math.floor(countdownSeconds / 60)}:
-                    {(countdownSeconds % 60).toString().padStart(2, '0')}
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleAcknowledge}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/40 transition-all active:scale-95 flex items-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Acknowledge Alert (Halt L2)</span>
-                </button>
-              </>
-            ) : (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Acknowledged by Siva Brahmaiah (SRE Lead)</span>
+        {incidentActive ? (
+          <div className="mt-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-rose-400 font-mono">[SIMULATED P1 DRILL]</span>
+                <span className="text-xs font-semibold text-white">Production Cluster Critical Metric Breach Test</span>
               </div>
-            )}
+              <p className="text-xs text-slate-400">
+                Triggered for testing • Primary Responder: Siva Brahmaiah • Level 1 Immediate Audio & Push Sent.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {!incidentAcknowledged ? (
+                <>
+                  <div className="text-right">
+                    <div className="text-[10px] font-mono uppercase text-slate-400">Escalates to L2 in</div>
+                    <div className="text-lg font-mono font-bold text-amber-400">
+                      {Math.floor(countdownSeconds / 60)}:
+                      {(countdownSeconds % 60).toString().padStart(2, '0')}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleAcknowledge}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/40 transition-all active:scale-95 flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Acknowledge Alert (Halt L2)</span>
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>Acknowledged by Siva Brahmaiah (SRE Lead)</span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-emerald-400 font-mono">[FLEET NORMAL]</span>
+                <span className="text-xs font-semibold text-white">All Multi-Cloud Resources Operational</span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Primary On-Call: Siva Brahmaiah (Lead SRE) • Tier 1 automated dispatch ready for unhandled breaches.
+              </p>
+            </div>
+
+            <button
+              onClick={handleResetSimulation}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-cyan-300 border border-slate-700 text-xs font-mono font-semibold transition-all flex items-center gap-1.5 self-start sm:self-auto shadow-md"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Simulate Incident Drill</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 2. 3-Tier Automated Escalation Policy (With Edit, Save, Remove on each Tier) */}
@@ -540,7 +560,7 @@ export function EscalationOnCallTab({ onShowToast }: EscalationOnCallTabProps) {
                 <label className="text-[10px] font-mono text-slate-400 uppercase">Emergency Phone</label>
                 <input
                   type="tel"
-                  placeholder="+91 98765 00000"
+                  placeholder="+91..."
                   value={newMemberPhone}
                   onChange={(e) => setNewMemberPhone(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-750 rounded px-2.5 py-1.5 text-white font-mono"
