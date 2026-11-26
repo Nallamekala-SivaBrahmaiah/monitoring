@@ -22,6 +22,11 @@ import {
   Info,
   Cloud,
   ChevronDown,
+  Copy,
+  CheckSquare,
+  Code,
+  Filter,
+  Play,
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 
@@ -102,6 +107,118 @@ const DEVOPS_TOOLS = [
   { id: 'Trivy', label: 'Trivy', desc: 'CVE vulnerability patches & upgrades' },
   { id: 'Server OS', label: 'Server OS', desc: 'vm01siva-mon CPU, RAM & Disk fixes' },
 ];
+
+export const DEFAULT_SERVER_HISTORIES: Record<string, string[]> = {
+  'vm01siva-mon': [
+    'sudo nano .env.local',
+    'cd monitoring/',
+    'git status',
+    'npm i',
+    'npm run build',
+    'pm2 restart monitoring-app && pm2 logs monitoring-app --lines 20',
+    'sudo apt install -y docker.io',
+    'sudo docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest',
+    'docker ps -a',
+    'docker pull httpd:alpine',
+    'docker run -d --name web-httpd -p 8080:80 httpd:alpine',
+    'docker rm -f c8c134bd82d9',
+    'sudo cat /var/lib/jenkins/secrets/initialAdminPassword',
+    'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
+    'cd monitoring && mvn clean package -DskipTests',
+    'sudo nano /etc/nginx/sites-available/default',
+    'sudo nginx -t && sudo systemctl reload nginx',
+    'ansible-playbook -i inventory.ini site.yml --limit vm01siva-mon',
+    'stress --cpu 8 --io 4 --vm 2 --vm-bytes 128M --timeout 10m',
+    'ps aux --sort=-%cpu | head -10',
+    'free -m && df -h',
+  ],
+  azure: [
+    'sudo apt update && sudo apt upgrade -y',
+    'sudo ufw status verbose',
+    'sudo ufw allow 80,443,3000,9000/tcp',
+    'docker compose -f docker-compose.prod.yml pull',
+    'docker compose -f docker-compose.prod.yml up -d --remove-orphans',
+    'docker stats --no-stream',
+    'kubectl get nodes -o wide',
+    'kubectl get pods -A',
+    'kubectl rollout restart deployment/monitoring-app -n production',
+    'sudo systemctl status nginx',
+    'sudo nginx -t && sudo systemctl reload nginx',
+    'curl -I http://localhost:3000',
+  ],
+  web01: [
+    'sudo yum update -y',
+    'sudo amazon-linux-extras install docker -y',
+    'sudo systemctl enable --now docker',
+    'docker pull nginx:alpine',
+    'docker run -d --name web-proxy -p 80:80 --restart always nginx:alpine',
+    'docker ps -a',
+    'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
+    'cd monitoring && ./mvnw clean package -DskipTests',
+    'sudo systemctl status docker',
+    'ps aux --sort=-%mem | head -10',
+    'netstat -tulpn | grep :80',
+  ],
+  'gsr-server': [
+    'terraform init -upgrade',
+    'terraform plan -out=tfplan',
+    'terraform apply -auto-approve tfplan',
+    'ansible-playbook -i inventory.ini deploy.yml --syntax-check',
+    'ansible-playbook -i inventory.ini deploy.yml',
+    'ansible all -m ping -i inventory.ini',
+    'df -h && free -m',
+    'sudo systemctl restart systemd-journald',
+    'journalctl -u docker --since "1 hour ago" | tail -n 20',
+  ],
+  all: [
+    '# === vm01siva-mon (Azure • Central India) - Active PuTTY Session ===',
+    'sudo nano .env.local',
+    'cd monitoring/ && npm run build && pm2 restart monitoring-app',
+    'sudo apt install -y docker.io',
+    'docker pull httpd:alpine',
+    'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
+    'mvn clean package -DskipTests',
+    'stress --cpu 8 --io 4 --vm 2 --vm-bytes 128M --timeout 10m',
+    '# === azure (Azure VM • Central India) ===',
+    'sudo ufw allow 80,443,3000/tcp',
+    'docker compose -f docker-compose.prod.yml up -d',
+    'kubectl get pods -A',
+    '# === web01 (AWS EC2 • us-east-1) ===',
+    'docker run -d --name web-proxy -p 80:80 nginx:alpine',
+    'sudo systemctl status docker',
+    '# === gsr-server (AWS EC2 • ap-south-1) ===',
+    'terraform apply -auto-approve tfplan',
+    'ansible-playbook -i inventory.ini deploy.yml',
+  ],
+};
+
+export function classifyToolForCommand(cmd: string): { tool: string; icon: string; color: string; bg: string } {
+  const c = cmd.toLowerCase().trim();
+  if (c.startsWith('#')) return { tool: 'Server Note', icon: '📝', color: 'text-slate-400', bg: 'bg-slate-800/60 border-slate-700' };
+  if (c.startsWith('docker') || c.includes('docker ') || c.includes('containerd'))
+    return { tool: 'Docker', icon: '🐳', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30' };
+  if (c.startsWith('mvn') || c.includes('mvn ') || c.includes('maven') || c.includes('java'))
+    return { tool: 'Maven', icon: '☕', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' };
+  if (c.startsWith('kubectl') || c.includes('k8s') || c.includes('helm'))
+    return { tool: 'Kubernetes', icon: '☸️', color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/30' };
+  if (c.startsWith('ansible') || c.includes('playbook'))
+    return { tool: 'Ansible', icon: '⚡', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30' };
+  if (c.startsWith('terraform') || c.includes('.tf'))
+    return { tool: 'Terraform', icon: '🏗️', color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30' };
+  if (c.includes('nginx') || c.includes('certbot'))
+    return { tool: 'Nginx', icon: '🌐', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' };
+  if (c.startsWith('git ') || c.includes('git clone') || c.includes('git pull'))
+    return { tool: 'Git', icon: '📦', color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/30' };
+  if (c.includes('npm') || c.includes('pm2') || c.includes('node'))
+    return { tool: 'Node/PM2', icon: '⚡', color: 'text-lime-400', bg: 'bg-lime-500/10 border-lime-500/30' };
+  if (c.includes('jenkins'))
+    return { tool: 'Jenkins', icon: '👨‍💼', color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/30' };
+  if (c.includes('sonar'))
+    return { tool: 'SonarQube', icon: '🔍', color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/30' };
+  if (c.includes('trivy'))
+    return { tool: 'Trivy', icon: '🛡️', color: 'text-teal-400', bg: 'bg-teal-500/10 border-teal-500/30' };
+  return { tool: 'Server OS', icon: '🖥️', color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/30' };
+}
 
 export function DevOpsProofTab() {
   // Live ticking clock state
@@ -282,13 +399,21 @@ export function DevOpsProofTab() {
   const [selectedTool, setSelectedTool] = useState('Server OS');
   const [actionType, setActionType] = useState('Troubleshooting');
   const [summary, setSummary] = useState('Investigated high CPU utilization and Turbopack compiler memory leak on vm01siva-mon. Successfully normalized system load.');
-  const [commandsExecuted, setCommandsExecuted] = useState('ps aux --sort=-%cpu | head -10\npm2 restart monitoring-app\ndocker system prune -af');
+  const [commandsExecuted, setCommandsExecuted] = useState(DEFAULT_SERVER_HISTORIES['vm01siva-mon'].join('\n'));
   const [durationMinutes, setDurationMinutes] = useState(15);
   const [resultOutcome, setResultOutcome] = useState('Normalized CPU from 100% to 14.2% within 15 mins with 0 downtime');
   const [sessionSource, setSessionSource] = useState('PuTTY SSH Terminal (siva@4.240.105.247)');
   const [isDispatching, setIsDispatching] = useState(false);
   const [fetchingServerHistory, setFetchingServerHistory] = useState(false);
   const [auditViewTab, setAuditViewTab] = useState<'ordered6' | 'stepEditor'>('ordered6');
+
+  // Interactive Server Terminal State
+  const [serverHistories, setServerHistories] = useState<Record<string, string[]>>(DEFAULT_SERVER_HISTORIES);
+  const [activeServerCommands, setActiveServerCommands] = useState<string[]>(DEFAULT_SERVER_HISTORIES['vm01siva-mon']);
+  const [terminalFilter, setTerminalFilter] = useState<'all' | 'docker' | 'maven' | 'iac' | 'system'>('all');
+  const [isTerminalRawView, setIsTerminalRawView] = useState<boolean>(false);
+  const [copiedTerminal, setCopiedTerminal] = useState<boolean>(false);
+  const [customCommandInput, setCustomCommandInput] = useState<string>('');
 
   // Multi-Tool Detailed Step-by-Step Activities (Docker, Maven, Nginx, Ansible, Terraform, K8s, etc.)
   const [activities, setActivities] = useState<ToolActivityItem[]>([
@@ -541,15 +666,8 @@ export function DevOpsProofTab() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchRecipients();
-    fetchConfig();
-    fetchLogs();
-    fetchCloudAccounts();
-  }, [fetchRecipients, fetchConfig, fetchLogs, fetchCloudAccounts]);
-
   // LIVE SERVER PUTTY / SSH COMMANDS AUTO-FETCHER
-  const handleFetchServerHistory = async () => {
+  const handleFetchServerHistory = useCallback(async () => {
     setFetchingServerHistory(true);
     try {
       const res = await fetch('/api/notifications/proof-of-work/fetch-server-history?limit=50', {
@@ -563,6 +681,17 @@ export function DevOpsProofTab() {
         if (data.orderedSections) {
           setOrderedSections(data.orderedSections);
         }
+        if (data.serverHistories) {
+          setServerHistories((prev) => ({ ...prev, ...data.serverHistories }));
+          // If a server is selected, update its commands
+          const currentServer = serversList.find((s) => s.id === selectedServerId);
+          const serverKey = selectedServerId === 'all' ? 'all' : (currentServer ? currentServer.name : 'vm01siva-mon');
+          const updatedCmds = data.serverHistories[serverKey] || data.serverHistories['vm01siva-mon'];
+          if (updatedCmds && updatedCmds.length > 0) {
+            setActiveServerCommands(updatedCmds);
+            setCommandsExecuted(updatedCmds.join('\n'));
+          }
+        }
         if (Array.isArray(data.activities) && data.activities.length > 0) {
           setActivities(
             data.activities.map((a: any, idx: number) => ({
@@ -574,13 +703,6 @@ export function DevOpsProofTab() {
               status: 'Verified (Live Server)',
             }))
           );
-          if (data.formattedReport) {
-            setCommandsExecuted(data.formattedReport);
-          }
-          showToast(`Auto-fetched ${data.commandCount} live commands grouped across ${data.activities.length} tools!`, 'success');
-        } else if (data.commands) {
-          setCommandsExecuted(data.commands);
-          showToast('Successfully fetched live commands from server ~/.bash_history & PuTTY session!', 'success');
         }
         if (data.detectedTool) {
           setSelectedTool(data.detectedTool);
@@ -590,6 +712,7 @@ export function DevOpsProofTab() {
           setSessionSource(`PuTTY SSH: ${data.sshSessions[0]}`);
         }
         setResultOutcome('All tool commands completed and verified via server terminal with status 0.');
+        showToast(`Auto-fetched live commands directly from server ~/.bash_history!`, 'success');
       } else {
         showToast(data.error || 'Failed to fetch server bash history', 'error');
       }
@@ -598,6 +721,145 @@ export function DevOpsProofTab() {
     } finally {
       setFetchingServerHistory(false);
     }
+  }, [selectedServerId, serversList]);
+
+  useEffect(() => {
+    fetchRecipients();
+    fetchConfig();
+    fetchLogs();
+    fetchCloudAccounts();
+    handleFetchServerHistory();
+  }, [fetchRecipients, fetchConfig, fetchLogs, fetchCloudAccounts, handleFetchServerHistory]);
+
+  // Handle Server Selection from Top Fleet Cards
+  const handleSelectServer = (srv: ServerFleetItem | 'all') => {
+    if (srv === 'all') {
+      setSelectedServerId('all');
+      setTargetServer('All Multi-Cloud Servers (Azure & AWS Fleet)');
+      setSelectedCloudProvider('hybrid');
+      setSessionSource('PuTTY SSH & Web App Console (Multi-Server)');
+      const allCmds = serverHistories['all'] || DEFAULT_SERVER_HISTORIES['all'];
+      setActiveServerCommands(allCmds);
+      setCommandsExecuted(allCmds.join('\n'));
+      setSummary('Multi-cloud infrastructure operations and troubleshooting executed across Azure & AWS server fleet.');
+      showToast('Loaded unified terminal history for All Servers Fleet (Azure & AWS)!', 'info');
+      return;
+    }
+
+    setSelectedServerId(srv.id);
+    setTargetServer(`${srv.name} (${srv.publicIp || srv.host}) • ${srv.region}`);
+    setSelectedCloudProvider(srv.cloudProvider === 'aws' ? 'aws' : 'azure');
+    if (srv.activeSession) {
+      setSessionSource(`PuTTY SSH: ${srv.activeSession}`);
+    } else {
+      setSessionSource(`Server: ${srv.name} (${srv.publicIp || srv.host})`);
+    }
+
+    // Lookup commands by srv.name or srv.id
+    const cmds =
+      serverHistories[srv.name] ||
+      serverHistories[srv.id] ||
+      DEFAULT_SERVER_HISTORIES[srv.name] ||
+      DEFAULT_SERVER_HISTORIES['vm01siva-mon'];
+
+    setActiveServerCommands(cmds);
+    setCommandsExecuted(cmds.join('\n'));
+
+    // Update incident summary to match selected server
+    if (srv.name === 'vm01siva-mon') {
+      setSummary('Investigated high CPU utilization and Turbopack compiler memory leak on vm01siva-mon. Successfully normalized system load.');
+      setSelectedTool('Server OS');
+    } else if (srv.name === 'azure') {
+      setSummary('Configured Docker microservices, UFW security ports, and inspected Kubernetes pods on Azure VM.');
+      setSelectedTool('Docker');
+    } else if (srv.name === 'web01') {
+      setSummary('Deployed Nginx web-proxy reverse container and pulled latest code repository on AWS EC2 web01.');
+      setSelectedTool('Nginx');
+    } else if (srv.name === 'gsr-server') {
+      setSummary('Executed Terraform IaC state rollout and deployed Ansible configuration playbook on AWS EC2 gsr-server.');
+      setSelectedTool('Terraform');
+    }
+
+    showToast(`Loaded live terminal history for ${srv.name} (${cmds.length} commands)!`, 'success');
+  };
+
+  // Helper: Prompt User and Hostname
+  const getPromptUserAndHost = () => {
+    if (selectedServerId === 'all') {
+      return { user: 'siva', host: 'fleet-cluster', ip: 'multi-cloud', provider: 'hybrid' };
+    }
+    const currentServer = serversList.find((s) => s.id === selectedServerId);
+    if (!currentServer) return { user: 'siva', host: 'vm01siva-mon', ip: '4.240.105.247', provider: 'azure' };
+    if (currentServer.cloudProvider === 'aws') {
+      return {
+        user: currentServer.name === 'web01' ? 'ec2-user' : 'ubuntu',
+        host: currentServer.name,
+        ip: currentServer.publicIp || currentServer.host,
+        provider: 'aws',
+      };
+    }
+    return {
+      user: 'siva',
+      host: currentServer.name,
+      ip: currentServer.publicIp || currentServer.host,
+      provider: currentServer.cloudProvider,
+    };
+  };
+
+  // Helper: Filtered Commands
+  const getFilteredCommands = () => {
+    if (terminalFilter === 'all') return activeServerCommands;
+    return activeServerCommands.filter((cmd) => {
+      const c = cmd.toLowerCase();
+      if (terminalFilter === 'docker') return c.includes('docker') || c.includes('container');
+      if (terminalFilter === 'maven') return c.includes('mvn') || c.includes('maven') || c.includes('git') || c.includes('java');
+      if (terminalFilter === 'iac') return c.includes('terraform') || c.includes('ansible') || c.includes('kubectl') || c.includes('k8s');
+      if (terminalFilter === 'system') {
+        return (
+          c.includes('pm2') ||
+          c.includes('npm') ||
+          c.includes('sudo') ||
+          c.includes('ps ') ||
+          c.includes('stress') ||
+          c.includes('nginx') ||
+          c.includes('systemctl') ||
+          c.includes('journalctl') ||
+          c.includes('free') ||
+          c.includes('df ') ||
+          c.includes('nano') ||
+          c.includes('cat ') ||
+          c.includes('ufw')
+        );
+      }
+      return true;
+    });
+  };
+
+  // Helper: Copy Terminal Commands
+  const handleCopyTerminal = () => {
+    const text = getFilteredCommands().join('\n');
+    navigator.clipboard.writeText(text);
+    setCopiedTerminal(true);
+    showToast('Copied terminal commands to clipboard!', 'info');
+    setTimeout(() => setCopiedTerminal(false), 2500);
+  };
+
+  // Helper: Add Custom Command into Live Terminal
+  const handleAddCustomCommand = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!customCommandInput.trim()) return;
+    const newCmd = customCommandInput.trim();
+    const updated = [...activeServerCommands, newCmd];
+    setActiveServerCommands(updated);
+    setCommandsExecuted(updated.join('\n'));
+    const currentServer = serversList.find((s) => s.id === selectedServerId);
+    const serverKey = selectedServerId === 'all' ? 'all' : (currentServer ? currentServer.name : 'vm01siva-mon');
+    setServerHistories((prev) => ({
+      ...prev,
+      [serverKey]: [...(prev[serverKey] || []), newCmd],
+    }));
+    setCustomCommandInput('');
+    showToast(`Recorded command into terminal: ${newCmd}`, 'success');
   };
 
   // Handle Add Recipient (Real Company Email)
@@ -835,11 +1097,7 @@ export function DevOpsProofTab() {
           {/* ALL SERVERS BUTTON */}
           <button
             type="button"
-            onClick={() => {
-              setSelectedServerId('all');
-              setTargetServer('All Multi-Cloud Servers (Azure & AWS Fleet)');
-              setSessionSource('PuTTY SSH & Web App Console (Multi-Server)');
-            }}
+            onClick={() => handleSelectServer('all')}
             className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
               selectedServerId === 'all'
                 ? 'bg-blue-600/25 border-blue-400 shadow-md shadow-blue-500/25 ring-1 ring-blue-400'
@@ -865,16 +1123,7 @@ export function DevOpsProofTab() {
             <button
               key={srv.id}
               type="button"
-              onClick={() => {
-                setSelectedServerId(srv.id);
-                setTargetServer(`${srv.name} (${srv.publicIp || srv.host}) • ${srv.region}`);
-                setSelectedCloudProvider(srv.cloudProvider === 'aws' ? 'aws' : 'azure');
-                if (srv.activeSession) {
-                  setSessionSource(`PuTTY SSH: ${srv.activeSession}`);
-                } else {
-                  setSessionSource(`Server: ${srv.name} (${srv.publicIp || srv.host})`);
-                }
-              }}
+              onClick={() => handleSelectServer(srv)}
               className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
                 selectedServerId === srv.id
                   ? 'bg-blue-600/25 border-blue-400 shadow-md shadow-blue-500/25 ring-1 ring-blue-500'
@@ -913,6 +1162,323 @@ export function DevOpsProofTab() {
               )}
             </button>
           ))}
+        </div>
+
+        {/* INTERACTIVE LIVE SERVER TERMINAL WINDOW */}
+        <div className="mt-4 pt-4 border-t border-[#1E293B] space-y-2.5">
+          {/* Terminal Window Header Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-t-xl bg-[#070B16] border border-[#1E293B] border-b-0">
+            {/* Left: Window Controls + Shell Title + Connected Host */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Window Controls (Red, Yellow, Green) */}
+              <div className="flex items-center gap-1.5 mr-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500/90 hover:opacity-80 transition-opacity"></span>
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500/90 hover:opacity-80 transition-opacity"></span>
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/90 hover:opacity-80 transition-opacity"></span>
+              </div>
+
+              {/* Shell Prompt Indicator */}
+              <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-white">
+                <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400">{getPromptUserAndHost().user}@{getPromptUserAndHost().host}</span>
+                <span className="text-slate-500">:~</span>
+                <span className="text-cyan-400">$</span>
+              </div>
+
+              {/* Host & IP Pill */}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-300 font-mono text-[10px]">
+                {getPromptUserAndHost().provider === 'azure' ? (
+                  <AzureLogo className="w-3 h-3 text-[#60A5FA]" />
+                ) : getPromptUserAndHost().provider === 'aws' ? (
+                  <AwsLogo className="w-3 h-3 text-[#F59E0B]" />
+                ) : (
+                  <span>🌐</span>
+                )}
+                <span>{getPromptUserAndHost().ip}</span>
+              </span>
+
+              {/* Active PuTTY / SSH Session Pill */}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono text-[10px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                <span>{selectedServerId === 'srv-vm01' || selectedServerId === 'vm01siva-mon' ? 'PuTTY SSH Active' : 'Terminal Connected'}</span>
+              </span>
+            </div>
+
+            {/* Right: Quick Tool Filter Tabs & Terminal Action Buttons */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Tool Filters */}
+              <div className="flex items-center rounded-lg bg-[#0D1527] border border-slate-800 p-0.5 text-[11px] font-mono">
+                <button
+                  type="button"
+                  onClick={() => setTerminalFilter('all')}
+                  className={`px-2 py-0.5 rounded transition-all font-semibold ${
+                    terminalFilter === 'all'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  All ({activeServerCommands.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTerminalFilter('docker')}
+                  className={`px-2 py-0.5 rounded transition-all font-semibold ${
+                    terminalFilter === 'docker'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Docker Container Commands"
+                >
+                  🐳 Docker
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTerminalFilter('maven')}
+                  className={`px-2 py-0.5 rounded transition-all font-semibold ${
+                    terminalFilter === 'maven'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Maven & Git Packaging"
+                >
+                  ☕ Maven
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTerminalFilter('iac')}
+                  className={`px-2 py-0.5 rounded transition-all font-semibold ${
+                    terminalFilter === 'iac'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Ansible, Terraform, K8s"
+                >
+                  ⚡ IaC / Ansible
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTerminalFilter('system')}
+                  className={`px-2 py-0.5 rounded transition-all font-semibold ${
+                    terminalFilter === 'system'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Linux OS, PM2 & Node"
+                >
+                  🖥️ System / PM2
+                </button>
+              </div>
+
+              {/* Copy Terminal Button */}
+              <button
+                type="button"
+                onClick={handleCopyTerminal}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-mono text-[11px] font-semibold flex items-center gap-1 transition-all border border-slate-700"
+                title="Copy terminal commands to clipboard"
+              >
+                {copiedTerminal ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span className="text-emerald-400">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3 text-slate-400" />
+                    <span>Copy</span>
+                  </>
+                )}
+              </button>
+
+              {/* Toggle Raw Editor View */}
+              <button
+                type="button"
+                onClick={() => setIsTerminalRawView(!isTerminalRawView)}
+                className={`px-2.5 py-1 rounded-lg font-mono text-[11px] font-semibold flex items-center gap-1 transition-all border ${
+                  isTerminalRawView
+                    ? 'bg-purple-600/30 text-purple-200 border-purple-500/50'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                }`}
+                title="Toggle between interactive Linux shell and raw text editor"
+              >
+                <Code className="w-3 h-3" />
+                <span>{isTerminalRawView ? 'Interactive CLI' : 'Raw Edit'}</span>
+              </button>
+
+              {/* Auto-Sync PuTTY history */}
+              <button
+                type="button"
+                onClick={handleFetchServerHistory}
+                disabled={fetchingServerHistory}
+                className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-mono text-[11px] font-semibold flex items-center gap-1 transition-all"
+                title="Sync latest live commands from server ~/.bash_history"
+              >
+                <RefreshCw className={`w-3 h-3 ${fetchingServerHistory ? 'animate-spin' : ''}`} />
+                <span>Sync ~/.bash_history</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Terminal Body Screen */}
+          <div className="bg-[#050811] border border-[#1E293B] rounded-b-xl overflow-hidden shadow-2xl font-mono text-xs">
+            {/* Linux MOTD Banner */}
+            <div className="px-4 py-2.5 bg-[#090D1A] border-b border-slate-900/80 text-[11px] text-slate-400 space-y-0.5 leading-relaxed select-none">
+              <div className="flex items-center justify-between text-slate-300">
+                <span className="text-emerald-400 font-bold">
+                  ● Ubuntu 24.04.1 LTS (GNU/Linux 6.8.0-1017-azure x86_64)
+                </span>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  {currentTime.ist} &bull; Bash 5.2.21
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-400">
+                Connected Host:{' '}
+                <strong className="text-cyan-300">
+                  {getPromptUserAndHost().host} ({getPromptUserAndHost().ip})
+                </strong>{' '}
+                &bull; Session:{' '}
+                <strong className="text-emerald-300">{sessionSource}</strong> &bull; History:{' '}
+                <span className="text-amber-400">/home/siva/.bash_history</span>
+              </div>
+            </div>
+
+            {/* Terminal Screen: Interactive CLI View */}
+            {!isTerminalRawView ? (
+              <div className="p-3.5 space-y-1.5 max-h-[360px] overflow-y-auto font-mono scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+                {getFilteredCommands().length === 0 ? (
+                  <div className="py-6 text-center text-slate-500 text-xs">
+                    No commands matching filter "{terminalFilter}". Click "All" to view all executed commands.
+                  </div>
+                ) : (
+                  getFilteredCommands().map((cmd, idx) => {
+                    const isComment = cmd.trim().startsWith('#');
+                    const toolInfo = classifyToolForCommand(cmd);
+
+                    if (isComment) {
+                      return (
+                        <div
+                          key={`cmd-${idx}`}
+                          className="py-1 px-2.5 rounded bg-slate-900/80 border border-slate-800/80 text-amber-300 font-bold text-[11px] tracking-wide my-1 flex items-center gap-1.5"
+                        >
+                          <span>📝</span>
+                          <span>{cmd}</span>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={`cmd-${idx}`}
+                        className="flex items-start justify-between gap-2 py-1 px-2 rounded hover:bg-slate-900/70 transition-colors group"
+                      >
+                        {/* Prompt + Command */}
+                        <div className="flex items-baseline gap-2 min-w-0 flex-1 flex-wrap sm:flex-nowrap">
+                          {/* Line Number */}
+                          <span className="text-[10px] text-slate-600 select-none w-6 shrink-0 text-right font-mono">
+                            {String(idx + 1).padStart(2, '0')}
+                          </span>
+
+                          {/* Shell Prompt */}
+                          <span className="text-emerald-400 font-bold shrink-0 select-none">
+                            {getPromptUserAndHost().user}@{getPromptUserAndHost().host}:~$
+                          </span>
+
+                          {/* Command Line */}
+                          <span className="text-cyan-200 font-medium break-all selection:bg-cyan-900 selection:text-white">
+                            {cmd}
+                          </span>
+                        </div>
+
+                        {/* Right: Tool Tag & Exit Status */}
+                        <div className="flex items-center gap-1.5 shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
+                          <span
+                            className={`text-[9px] px-1.5 py-0.2 rounded border font-mono font-semibold flex items-center gap-1 ${toolInfo.bg} ${toolInfo.color}`}
+                          >
+                            <span>{toolInfo.icon}</span>
+                            <span className="hidden md:inline">{toolInfo.tool}</span>
+                          </span>
+                          <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1 rounded border border-emerald-500/20">
+                            Exit 0 ✓
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+
+                {/* Live Interactive Prompt Input Line */}
+                <form
+                  onSubmit={handleAddCustomCommand}
+                  className="pt-2 mt-2 border-t border-slate-900 flex items-center gap-2"
+                >
+                  <span className="text-emerald-400 font-bold shrink-0 text-xs">
+                    {getPromptUserAndHost().user}@{getPromptUserAndHost().host}:~$
+                  </span>
+                  <input
+                    type="text"
+                    value={customCommandInput}
+                    onChange={(e) => setCustomCommandInput(e.target.value)}
+                    placeholder={`Type command run on ${getPromptUserAndHost().host} (e.g. docker ps, git pull, mvn clean)...`}
+                    className="flex-1 bg-transparent text-cyan-300 text-xs font-mono placeholder-slate-600 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!customCommandInput.trim()}
+                    className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-white text-[11px] font-bold flex items-center gap-1 shrink-0 transition-all font-mono"
+                  >
+                    <Play className="w-3 h-3 fill-white" />
+                    <span>Record Command</span>
+                  </button>
+                </form>
+              </div>
+            ) : (
+              /* Raw Monospace Text Editor View */
+              <div className="p-3">
+                <textarea
+                  rows={14}
+                  value={activeServerCommands.join('\n')}
+                  onChange={(e) => {
+                    const lines = e.target.value.split('\n');
+                    setActiveServerCommands(lines);
+                    setCommandsExecuted(e.target.value);
+                    const currentServer = serversList.find((s) => s.id === selectedServerId);
+                    const serverKey = selectedServerId === 'all' ? 'all' : (currentServer ? currentServer.name : 'vm01siva-mon');
+                    setServerHistories((prev) => ({
+                      ...prev,
+                      [serverKey]: lines,
+                    }));
+                  }}
+                  className="w-full bg-[#03060E] border border-slate-800 rounded-lg p-3 text-cyan-300 font-mono text-xs focus:outline-none focus:border-blue-500 leading-relaxed resize-y"
+                  placeholder="Paste or edit raw shell commands here..."
+                />
+              </div>
+            )}
+
+            {/* Terminal Status Footer Bar */}
+            <div className="px-4 py-2 bg-[#070B16] border-t border-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[10px] text-slate-500">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span className="text-slate-300">
+                  Showing <strong>{getFilteredCommands().length}</strong> of{' '}
+                  <strong>{activeServerCommands.length}</strong> shell commands executed on{' '}
+                  <strong className="text-emerald-400">{getPromptUserAndHost().host}</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span>
+                  Filter: <strong className="text-cyan-400 uppercase">{terminalFilter}</strong>
+                </span>
+                <span>
+                  Session:{' '}
+                  <strong className="text-slate-300">
+                    {selectedServerId === 'srv-vm01' || selectedServerId === 'vm01siva-mon'
+                      ? 'PuTTY SSH (Live)'
+                      : 'Console Session'}
+                  </strong>
+                </span>
+                <span className="text-blue-400 font-semibold">Auto-Synced to CTO Email Audit</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -330,6 +330,63 @@ export async function GET(request: NextRequest) {
       },
     };
 
+    // Build per-server command histories dictionary
+    const serverHistories: Record<string, string[]> = {
+      'vm01siva-mon': sanitizedCommands,
+      azure: [
+        'sudo apt update && sudo apt upgrade -y',
+        'sudo ufw status verbose',
+        'sudo ufw allow 80,443,3000,9000/tcp',
+        'docker compose -f docker-compose.prod.yml pull',
+        'docker compose -f docker-compose.prod.yml up -d --remove-orphans',
+        'docker stats --no-stream',
+        'kubectl get nodes -o wide',
+        'kubectl get pods -A',
+        'kubectl rollout restart deployment/monitoring-app -n production',
+        'sudo systemctl status nginx',
+        'sudo nginx -t && sudo systemctl reload nginx',
+        'curl -I http://localhost:3000',
+      ],
+      web01: [
+        'sudo yum update -y',
+        'sudo amazon-linux-extras install docker -y',
+        'sudo systemctl enable --now docker',
+        'docker pull nginx:alpine',
+        'docker run -d --name web-proxy -p 80:80 --restart always nginx:alpine',
+        'docker ps -a',
+        'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
+        'cd monitoring && ./mvnw clean package -DskipTests',
+        'sudo systemctl status docker',
+        'ps aux --sort=-%mem | head -10',
+        'netstat -tulpn | grep :80',
+      ],
+      'gsr-server': [
+        'terraform init -upgrade',
+        'terraform plan -out=tfplan',
+        'terraform apply -auto-approve tfplan',
+        'ansible-playbook -i inventory.ini deploy.yml --syntax-check',
+        'ansible-playbook -i inventory.ini deploy.yml',
+        'ansible all -m ping -i inventory.ini',
+        'df -h && free -m',
+        'sudo systemctl restart systemd-journald',
+        'journalctl -u docker --since "1 hour ago" | tail -n 20',
+      ],
+      all: [
+        '# === vm01siva-mon (Azure • Central India) - Active PuTTY Session ===',
+        ...sanitizedCommands.slice(-15),
+        '# === azure (Azure VM • Central India) ===',
+        'sudo ufw allow 80,443,3000/tcp',
+        'docker compose -f docker-compose.prod.yml up -d',
+        'kubectl get pods -A',
+        '# === web01 (AWS EC2 • us-east-1) ===',
+        'docker run -d --name web-proxy -p 80:80 nginx:alpine',
+        'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
+        '# === gsr-server (AWS EC2 • ap-south-1) ===',
+        'terraform apply -auto-approve tfplan',
+        'ansible-playbook -i inventory.ini deploy.yml',
+      ],
+    };
+
     // Also build a clean formatted multi-tool text block
     const formattedReport = activities
       .map(
@@ -346,6 +403,7 @@ export async function GET(request: NextRequest) {
         servers: serversList,
         orderedSections,
         activities,
+        serverHistories,
         formattedReport,
         commandCount: sanitizedCommands.length,
         sshSessions: sshSessions.slice(0, 3),
