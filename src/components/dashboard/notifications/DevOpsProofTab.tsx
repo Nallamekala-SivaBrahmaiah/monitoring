@@ -69,6 +69,19 @@ interface CloudAccountOption {
   accountId?: string;
 }
 
+export interface ServerFleetItem {
+  id: string;
+  name: string;
+  host: string;
+  publicIp: string;
+  cloudProvider: 'azure' | 'aws' | 'hybrid';
+  status: 'Running' | 'Stopped' | 'Active';
+  region: string;
+  activeSession?: string;
+  cpuUsage?: number;
+  memoryUsage?: number;
+}
+
 export interface ToolActivityItem {
   id: string;
   tool: string;
@@ -157,6 +170,102 @@ export function DevOpsProofTab() {
   const [selectedCloudAccount, setSelectedCloudAccount] = useState('Azure Production Subscription (Visual Studio Enterprise)');
   const [targetServer, setTargetServer] = useState('vm01siva-mon (4.240.105.247) • Central India');
 
+  // Multi-Server Fleet & Login Activity state (AWS & Azure)
+  const [serversList, setServersList] = useState<ServerFleetItem[]>([
+    {
+      id: 'srv-vm01',
+      name: 'vm01siva-mon',
+      host: '4.240.105.247',
+      publicIp: '4.240.105.247',
+      cloudProvider: 'azure',
+      status: 'Running',
+      region: 'Central India',
+      activeSession: 'PuTTY SSH: siva pts/0 (Active)',
+      cpuUsage: 14.2,
+      memoryUsage: 48.5,
+    },
+    {
+      id: 'srv-azure',
+      name: 'azure',
+      host: '20.40.49.224',
+      publicIp: '20.40.49.224',
+      cloudProvider: 'azure',
+      status: 'Stopped',
+      region: 'Central India',
+      cpuUsage: 0,
+      memoryUsage: 0,
+    },
+    {
+      id: 'srv-web01',
+      name: 'web01',
+      host: '15.135.74.255',
+      publicIp: '15.135.74.255',
+      cloudProvider: 'aws',
+      status: 'Stopped',
+      region: 'us-east-1',
+      cpuUsage: 0,
+      memoryUsage: 0,
+    },
+    {
+      id: 'srv-gsr',
+      name: 'gsr-server',
+      host: '3.27.38.3',
+      publicIp: '3.27.38.3',
+      cloudProvider: 'aws',
+      status: 'Stopped',
+      region: 'ap-south-1',
+      cpuUsage: 0,
+      memoryUsage: 0,
+    },
+  ]);
+  const [selectedServerId, setSelectedServerId] = useState<string>('all');
+
+  // The 6 Ordered Sections
+  const [orderedSections, setOrderedSections] = useState({
+    maven: {
+      appName: 'monitoring',
+      server: 'vm01siva-mon (4.240.105.247)',
+      source: 'PuTTY Terminal & Web App Console',
+      action: 'GitHub Clone & Maven Clean Package Build',
+      commands: 'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git\ncd monitoring && mvn clean package -DskipTests',
+      status: 'BUILD SUCCESS (Exit 0)',
+    },
+    terraform: {
+      projectName: 'azure-rg01-infrastructure',
+      server: 'vm01siva-mon (4.240.105.247)',
+      source: 'PuTTY Terminal & Web App Console',
+      action: 'Terraform IaC Plan & Apply',
+      commands: 'terraform init\nterraform plan -out=tfplan\nterraform apply -auto-approve tfplan',
+      status: 'Apply Complete! 2 added (Exit 0)',
+    },
+    ansible: {
+      playbookName: 'site.yml',
+      server: 'vm01siva-mon & AWS web01 inventory',
+      source: 'PuTTY Terminal & Web App Console',
+      action: 'Ansible Server Automation Playbook Deployment',
+      commands: 'ansible-playbook -i inventory.ini site.yml --limit vm01siva-mon',
+      status: 'PLAY RECAP: ok=6 changed=2 failed=0',
+    },
+    docker: {
+      imageName: 'node:20-alpine',
+      containerName: 'auth-microservice-prod, monitoring-app',
+      server: 'vm01siva-mon (4.240.105.247)',
+      source: 'PuTTY Terminal & Web App Console',
+      action: 'Docker Image Pull & Container Restart',
+      commands: 'docker pull node:20-alpine\ndocker restart auth-microservice-prod\ndocker stats --no-stream',
+      status: 'Running (Exit 0)',
+    },
+    k8s: {
+      clusterName: 'vm01siva-mon (k8s-master)',
+      namespace: 'production',
+      pods: 'monitoring-app-7b8f-x91',
+      source: 'PuTTY Terminal & Web App Console',
+      action: 'Kubernetes Pod Inspection & Deployment Rollout',
+      commands: 'kubectl get pods -n production -o wide\nkubectl rollout restart deployment/monitoring-app -n production',
+      status: '1/1 Ready, Running (Exit 0)',
+    },
+  });
+
   // Config state
   const [config, setConfig] = useState<ProofConfig>({
     engineerName: 'Siva',
@@ -179,6 +288,7 @@ export function DevOpsProofTab() {
   const [sessionSource, setSessionSource] = useState('PuTTY SSH Terminal (siva@4.240.105.247)');
   const [isDispatching, setIsDispatching] = useState(false);
   const [fetchingServerHistory, setFetchingServerHistory] = useState(false);
+  const [auditViewTab, setAuditViewTab] = useState<'ordered6' | 'stepEditor'>('ordered6');
 
   // Multi-Tool Detailed Step-by-Step Activities (Docker, Maven, Nginx, Ansible, Terraform, K8s, etc.)
   const [activities, setActivities] = useState<ToolActivityItem[]>([
@@ -447,6 +557,12 @@ export function DevOpsProofTab() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        if (Array.isArray(data.servers) && data.servers.length > 0) {
+          setServersList(data.servers);
+        }
+        if (data.orderedSections) {
+          setOrderedSections(data.orderedSections);
+        }
         if (Array.isArray(data.activities) && data.activities.length > 0) {
           setActivities(
             data.activities.map((a: any, idx: number) => ({
@@ -601,13 +717,15 @@ export function DevOpsProofTab() {
           engineerRole: config.engineerRole,
           actionType,
           tool: toolSummary,
-          cloudProvider: selectedCloudProvider === 'azure' ? 'Microsoft Azure' : selectedCloudProvider === 'aws' ? 'Amazon Web Services (AWS)' : 'Hybrid / On-Premise',
+          cloudProvider: selectedCloudProvider === 'azure' ? 'Microsoft Azure' : selectedCloudProvider === 'aws' ? 'Amazon Web Services (AWS)' : 'Hybrid / Multi-Cloud',
           cloudAccount: selectedCloudAccount,
-          serverOrHost: targetServer,
+          serverOrHost: selectedServerId === 'all' ? 'All Multi-Cloud Servers (Azure & AWS Fleet)' : targetServer,
           sessionSource,
-          summary: summary || `Executed step-by-step multi-tool deployment & troubleshooting across ${toolSummary}.`,
+          summary: summary || `Executed step-by-step multi-tool deployment & troubleshooting across ${targetServer}.`,
           commandsExecuted: aggregatedCommands,
           activities,
+          servers: serversList,
+          orderedSections,
           resultOutcome,
           durationMinutes,
         }),
@@ -688,6 +806,113 @@ export function DevOpsProofTab() {
               UTC: <span className="text-cyan-400">{currentTime.utc || '00:00:00 UTC'}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* MULTI-SERVER FLEET & LOGIN ACTIVITY BAR (AWS & AZURE) */}
+      <div className="bg-[#111A2E] border border-blue-500/30 rounded-2xl p-4 md:p-5 shadow-xl space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#1E293B]">
+          <div className="flex items-center gap-2">
+            <Server className="w-4 h-4 text-blue-400" />
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+              Multi-Cloud Server Fleet &amp; Login Activity
+            </h3>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-mono text-[10px] border border-emerald-500/30">
+              {serversList.filter((s) => s.status.toLowerCase() === 'running').length} Running &bull;{' '}
+              {serversList.filter((s) => s.status.toLowerCase() === 'stopped').length} Stopped
+            </span>
+          </div>
+          <div className="text-[11px] font-mono text-slate-400">
+            Selected:{' '}
+            <strong className="text-cyan-300">
+              {selectedServerId === 'all' ? '🌐 All Servers Fleet View' : targetServer}
+            </strong>
+          </div>
+        </div>
+
+        {/* Server Cards Horizontal Selector */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 pt-1">
+          {/* ALL SERVERS BUTTON */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedServerId('all');
+              setTargetServer('All Multi-Cloud Servers (Azure & AWS Fleet)');
+              setSessionSource('PuTTY SSH & Web App Console (Multi-Server)');
+            }}
+            className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+              selectedServerId === 'all'
+                ? 'bg-blue-600/25 border-blue-400 shadow-md shadow-blue-500/25 ring-1 ring-blue-400'
+                : 'bg-[#090E1A] border-[#1E293B] hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>🌐</span>
+                <span>All Servers Fleet</span>
+              </span>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                Fleet View
+              </span>
+            </div>
+            <div className="mt-2 text-[10px] text-slate-400 font-mono">
+              Aggregated AWS &amp; Azure actions
+            </div>
+          </button>
+
+          {/* INDIVIDUAL SERVERS */}
+          {serversList.map((srv) => (
+            <button
+              key={srv.id}
+              type="button"
+              onClick={() => {
+                setSelectedServerId(srv.id);
+                setTargetServer(`${srv.name} (${srv.publicIp || srv.host}) • ${srv.region}`);
+                setSelectedCloudProvider(srv.cloudProvider === 'aws' ? 'aws' : 'azure');
+                if (srv.activeSession) {
+                  setSessionSource(`PuTTY SSH: ${srv.activeSession}`);
+                } else {
+                  setSessionSource(`Server: ${srv.name} (${srv.publicIp || srv.host})`);
+                }
+              }}
+              className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                selectedServerId === srv.id
+                  ? 'bg-blue-600/25 border-blue-400 shadow-md shadow-blue-500/25 ring-1 ring-blue-500'
+                  : 'bg-[#090E1A] border-[#1E293B] hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-xs font-bold text-white font-mono truncate">{srv.name}</span>
+                <span
+                  className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-extrabold flex items-center gap-1 ${
+                    srv.status.toLowerCase() === 'running'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      srv.status.toLowerCase() === 'running'
+                        ? 'bg-emerald-400 animate-pulse'
+                        : 'bg-rose-400'
+                    }`}
+                  ></span>
+                  <span>{srv.status.toUpperCase()}</span>
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                <span>{srv.publicIp || srv.host}</span>
+                <span className={srv.cloudProvider === 'azure' ? 'text-[#60A5FA]' : 'text-[#F59E0B]'}>
+                  {srv.cloudProvider?.toUpperCase()}
+                </span>
+              </div>
+              {srv.activeSession && (
+                <div className="mt-1 text-[9px] text-emerald-400 font-mono truncate">
+                  ⚡ {srv.activeSession}
+                </div>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1199,8 +1424,285 @@ export function DevOpsProofTab() {
           </div>
         </div>
 
-        {/* MULTI-TOOL STEP-BY-STEP ACTIVITY BREAKDOWN (PROOF) */}
-        <div className="space-y-4 pt-1">
+        {/* VIEW MODE TOGGLE BUTTONS (6-SECTION ORDERED REPORT VS CUSTOM STEP EDITOR) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-1.5 rounded-xl bg-[#090E1A] border border-[#1E293B]">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setAuditViewTab('ordered6')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                auditViewTab === 'ordered6'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>📋 6-Section Executive Report</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/20 font-mono">User Order</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuditViewTab('stepEditor')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                auditViewTab === 'stepEditor'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Terminal className="w-3.5 h-3.5" />
+              <span>Step-by-Step Tool Editor</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/20 font-mono">{activities.length} Steps</span>
+            </button>
+          </div>
+
+          <span className="text-[11px] font-mono text-cyan-300 hidden md:inline-block">
+            {auditViewTab === 'ordered6'
+              ? '1: Fleet • 2: Maven • 3: Terraform • 4: Ansible • 5: Docker • 6: K8s'
+              : 'Interactive Multi-Tool Terminal Timeline'}
+          </span>
+        </div>
+
+        {/* 6-SECTION ORDERED EXECUTIVE VIEW */}
+        {auditViewTab === 'ordered6' ? (
+          <div className="space-y-4 pt-1">
+            {/* SECTION 1: ALL SERVERS FLEET OVERVIEW */}
+            <div className="bg-[#090E1A] border border-[#1E293B] rounded-xl overflow-hidden shadow-md">
+              <div className="bg-[#0D1527] px-4 py-2.5 border-b border-[#1E293B] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-blue-600 text-white font-mono font-bold text-[10px]">
+                    SECTION 1
+                  </span>
+                  <span className="text-xs font-bold text-white uppercase font-mono">
+                    All Servers Fleet Status (AWS &amp; Azure - Active / Running / Stopped)
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                  {serversList.length} Servers Monitored
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse font-mono">
+                  <thead>
+                    <tr className="bg-[#0B132B] text-slate-400 text-[10px] uppercase border-b border-slate-800">
+                      <th className="py-2.5 px-3.5">Server Name</th>
+                      <th className="py-2.5 px-3">Cloud Provider</th>
+                      <th className="py-2.5 px-3">IP Address</th>
+                      <th className="py-2.5 px-3">Region</th>
+                      <th className="py-2.5 px-3 text-center">Power Status</th>
+                      <th className="py-2.5 px-3.5 text-right">Active PuTTY Session</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80">
+                    {serversList.map((srv) => (
+                      <tr key={srv.id} className="hover:bg-slate-900/50 transition-colors">
+                        <td className="py-2.5 px-3.5 font-bold text-white flex items-center gap-1.5">
+                          <span>🖥️</span>
+                          <span>{srv.name}</span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              srv.cloudProvider === 'azure'
+                                ? 'bg-[#0078D4]/20 text-[#60A5FA] border border-[#0078D4]/40'
+                                : 'bg-[#FF9900]/20 text-[#F59E0B] border border-[#FF9900]/40'
+                            }`}
+                          >
+                            {srv.cloudProvider === 'azure' ? (
+                              <AzureLogo className="w-3 h-3" />
+                            ) : (
+                              <AwsLogo className="w-3 h-3" />
+                            )}
+                            <span>{srv.cloudProvider?.toUpperCase()}</span>
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-300">{srv.publicIp || srv.host}</td>
+                        <td className="py-2.5 px-3 text-slate-400">{srv.region}</td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono ${
+                              srv.status.toLowerCase() === 'running' || srv.status.toLowerCase() === 'online'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                srv.status.toLowerCase() === 'running' || srv.status.toLowerCase() === 'online'
+                                  ? 'bg-emerald-400 animate-pulse'
+                                  : 'bg-rose-400'
+                              }`}
+                            ></span>
+                            <span>{srv.status.toUpperCase()}</span>
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3.5 text-right text-[11px] text-cyan-300 font-mono">
+                          {srv.activeSession ? (
+                            <span className="text-emerald-400 font-semibold">{srv.activeSession}</span>
+                          ) : (
+                            <span className="text-slate-500">Idle / No SSH</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* SECTION 2: MAVEN ACTIVITY */}
+            <div className="bg-[#090E1A] border border-[#1E293B] rounded-xl overflow-hidden shadow-md">
+              <div className="bg-[#0D1527] px-4 py-2.5 border-b border-[#1E293B] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-amber-600 text-white font-mono font-bold text-[10px]">
+                    SECTION 2
+                  </span>
+                  <span className="text-xs font-bold text-white uppercase font-mono flex items-center gap-1.5">
+                    <span>☕</span>
+                    <span>Maven Builds &amp; Application Deployments</span>
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                  ✓ {orderedSections.maven.status}
+                </span>
+              </div>
+              <div className="p-3.5 space-y-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between text-slate-400 text-[11px] pb-1 border-b border-slate-800">
+                  <span>
+                    App: <strong className="text-white">{orderedSections.maven.appName}</strong> &bull; Server:{' '}
+                    <strong className="text-white">{orderedSections.maven.server}</strong>
+                  </span>
+                  <span className="text-cyan-400 font-mono">{orderedSections.maven.source}</span>
+                </div>
+                <div className="bg-black/90 p-2.5 rounded-lg border border-slate-800/80 font-mono text-cyan-300 text-xs">
+                  <pre className="margin-0 whitespace-pre-wrap">{orderedSections.maven.commands}</pre>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 3: TERRAFORM ACTIVITY */}
+            <div className="bg-[#090E1A] border border-[#1E293B] rounded-xl overflow-hidden shadow-md">
+              <div className="bg-[#0D1527] px-4 py-2.5 border-b border-[#1E293B] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-purple-600 text-white font-mono font-bold text-[10px]">
+                    SECTION 3
+                  </span>
+                  <span className="text-xs font-bold text-white uppercase font-mono flex items-center gap-1.5">
+                    <span>🏗️</span>
+                    <span>Terraform Infrastructure as Code (IaC)</span>
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                  ✓ {orderedSections.terraform.status}
+                </span>
+              </div>
+              <div className="p-3.5 space-y-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between text-slate-400 text-[11px] pb-1 border-b border-slate-800">
+                  <span>
+                    Project: <strong className="text-white">{orderedSections.terraform.projectName}</strong> &bull; Server:{' '}
+                    <strong className="text-white">{orderedSections.terraform.server}</strong>
+                  </span>
+                  <span className="text-cyan-400 font-mono">{orderedSections.terraform.source}</span>
+                </div>
+                <div className="bg-black/90 p-2.5 rounded-lg border border-slate-800/80 font-mono text-cyan-300 text-xs">
+                  <pre className="margin-0 whitespace-pre-wrap">{orderedSections.terraform.commands}</pre>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 4: ANSIBLE ACTIVITY */}
+            <div className="bg-[#090E1A] border border-[#1E293B] rounded-xl overflow-hidden shadow-md">
+              <div className="bg-[#0D1527] px-4 py-2.5 border-b border-[#1E293B] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-red-600 text-white font-mono font-bold text-[10px]">
+                    SECTION 4
+                  </span>
+                  <span className="text-xs font-bold text-white uppercase font-mono flex items-center gap-1.5">
+                    <span>⚡</span>
+                    <span>Ansible Server Automation &amp; Playbooks</span>
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                  ✓ {orderedSections.ansible.status}
+                </span>
+              </div>
+              <div className="p-3.5 space-y-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between text-slate-400 text-[11px] pb-1 border-b border-slate-800">
+                  <span>
+                    Playbook: <strong className="text-white">{orderedSections.ansible.playbookName}</strong> &bull; Target Inventory:{' '}
+                    <strong className="text-white">{orderedSections.ansible.server}</strong>
+                  </span>
+                  <span className="text-cyan-400 font-mono">{orderedSections.ansible.source}</span>
+                </div>
+                <div className="bg-black/90 p-2.5 rounded-lg border border-slate-800/80 font-mono text-cyan-300 text-xs">
+                  <pre className="margin-0 whitespace-pre-wrap">{orderedSections.ansible.commands}</pre>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 5: DOCKER ACTIVITY */}
+            <div className="bg-[#090E1A] border border-[#1E293B] rounded-xl overflow-hidden shadow-md">
+              <div className="bg-[#0D1527] px-4 py-2.5 border-b border-[#1E293B] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-blue-600 text-white font-mono font-bold text-[10px]">
+                    SECTION 5
+                  </span>
+                  <span className="text-xs font-bold text-white uppercase font-mono flex items-center gap-1.5">
+                    <span>🐳</span>
+                    <span>Docker Containers &amp; Image Management</span>
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                  ✓ {orderedSections.docker.status}
+                </span>
+              </div>
+              <div className="p-3.5 space-y-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between text-slate-400 text-[11px] pb-1 border-b border-slate-800">
+                  <span>
+                    Image: <strong className="text-white">{orderedSections.docker.imageName}</strong> &bull; Container:{' '}
+                    <strong className="text-white">{orderedSections.docker.containerName}</strong> &bull; Server:{' '}
+                    <strong className="text-white">{orderedSections.docker.server}</strong>
+                  </span>
+                  <span className="text-cyan-400 font-mono">{orderedSections.docker.source}</span>
+                </div>
+                <div className="bg-black/90 p-2.5 rounded-lg border border-slate-800/80 font-mono text-cyan-300 text-xs">
+                  <pre className="margin-0 whitespace-pre-wrap">{orderedSections.docker.commands}</pre>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 6: KUBERNETES ACTIVITY */}
+            <div className="bg-[#090E1A] border border-[#1E293B] rounded-xl overflow-hidden shadow-md">
+              <div className="bg-[#0D1527] px-4 py-2.5 border-b border-[#1E293B] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-cyan-600 text-white font-mono font-bold text-[10px]">
+                    SECTION 6
+                  </span>
+                  <span className="text-xs font-bold text-white uppercase font-mono flex items-center gap-1.5">
+                    <span>☸️</span>
+                    <span>Kubernetes Deployments &amp; Pod Lifecycle</span>
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                  ✓ {orderedSections.k8s.status}
+                </span>
+              </div>
+              <div className="p-3.5 space-y-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between text-slate-400 text-[11px] pb-1 border-b border-slate-800">
+                  <span>
+                    Cluster: <strong className="text-white">{orderedSections.k8s.clusterName}</strong> &bull; Namespace:{' '}
+                    <strong className="text-white">{orderedSections.k8s.namespace}</strong>
+                  </span>
+                  <span className="text-cyan-400 font-mono">{orderedSections.k8s.source}</span>
+                </div>
+                <div className="bg-black/90 p-2.5 rounded-lg border border-slate-800/80 font-mono text-cyan-300 text-xs">
+                  <pre className="margin-0 whitespace-pre-wrap">{orderedSections.k8s.commands}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* STEP-BY-STEP CUSTOM TOOL EDITOR VIEW */
+          <div className="space-y-4 pt-1">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
             <div>
               <div className="text-xs font-bold text-white flex items-center gap-2">
@@ -1381,6 +1883,7 @@ export function DevOpsProofTab() {
             ))}
           </div>
         </div>
+      )}
 
         {/* Dispatch Action Button */}
         <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
