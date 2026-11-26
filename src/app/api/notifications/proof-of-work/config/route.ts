@@ -33,6 +33,9 @@ export async function GET() {
           'server',
         ],
       });
+    } else {
+      if (!config.engineerRole) (config as any).engineerRole = 'Lead DevOps Engineer';
+      if (!config.engineerName) (config as any).engineerName = 'Siva';
     }
 
     return NextResponse.json({ success: true, config }, { headers: NO_CACHE_HEADERS });

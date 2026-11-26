@@ -1643,7 +1643,7 @@ export function DevOpsProofTab() {
                   <label className="text-[10px] font-mono uppercase text-slate-400">Engineer Name</label>
                   <input
                     type="text"
-                    value={config.engineerName}
+                    value={config.engineerName || 'Siva'}
                     onChange={(e) => setConfig({ ...config, engineerName: e.target.value })}
                     className="w-full bg-[#090E1A] border border-[#1E293B] rounded-lg px-3 py-2 text-white font-semibold focus:outline-none focus:border-blue-500"
                     placeholder="Siva"
@@ -1653,7 +1653,7 @@ export function DevOpsProofTab() {
                   <label className="text-[10px] font-mono uppercase text-slate-400">Role Title</label>
                   <input
                     type="text"
-                    value={config.engineerRole}
+                    value={config.engineerRole || 'Lead DevOps Engineer'}
                     onChange={(e) => setConfig({ ...config, engineerRole: e.target.value })}
                     className="w-full bg-[#090E1A] border border-[#1E293B] rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-blue-500"
                     placeholder="Lead DevOps Engineer"
