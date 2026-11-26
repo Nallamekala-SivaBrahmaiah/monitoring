@@ -102,10 +102,17 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
       if (overrides.smsEnabled !== undefined) payload.smsEnabled = overrides.smsEnabled;
       if (overrides.smsOnlyP1 !== undefined) payload.smsOnlyP1 = overrides.smsOnlyP1;
 
+      // Only include phoneNumbers if explicitly given or non-empty to prevent accidental wiping
+      if (overrides.phoneNumbers !== undefined) {
+        payload.phoneNumbers = overrides.phoneNumbers;
+      } else if (phoneNumbers.length > 0) {
+        payload.phoneNumbers = phoneNumbers;
+      }
+
       // If no explicit field override (e.g. Save All Channel Settings clicked), save full state
       if (Object.keys(overrides).length === 0) {
         payload.alertRecipients = recipients;
-        payload.phoneNumbers = phoneNumbers;
+        if (phoneNumbers.length > 0) payload.phoneNumbers = phoneNumbers;
         payload.ignoredServers = ignoredServers;
         payload.emailNotificationsEnabled = emailEnabled;
         payload.audioEnabled = audioEnabled;
@@ -136,10 +143,11 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
   useEffect(() => {
     async function loadRealChannelConfig() {
       try {
-        const [prefsRes, recipientsRes, smtpRes] = await Promise.all([
+        const [prefsRes, recipientsRes, smtpRes, phonesRes] = await Promise.all([
           fetch('/api/notifications/preferences', { cache: 'no-store' }),
           fetch('/api/notifications/devops-recipients', { cache: 'no-store' }),
           fetch('/api/notifications/smtp-status', { cache: 'no-store' }),
+          fetch('/api/notifications/emergency-phones', { cache: 'no-store' }),
         ]);
 
         let loadedRecipients: string[] = [];
@@ -149,7 +157,7 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
           if (Array.isArray(pData.alertRecipients) && pData.alertRecipients.length > 0) {
             loadedRecipients = pData.alertRecipients;
           }
-          if (Array.isArray(pData.phoneNumbers)) {
+          if (Array.isArray(pData.phoneNumbers) && pData.phoneNumbers.length > 0) {
             setPhoneNumbers(pData.phoneNumbers);
             if (typeof window !== 'undefined') {
               localStorage.setItem('notification_phones', JSON.stringify(pData.phoneNumbers));
@@ -167,6 +175,22 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
           if (typeof pData.webhookEnabled === 'boolean') setWebhookEnabled(pData.webhookEnabled);
           if (typeof pData.webhookUrl === 'string') setWebhookUrl(pData.webhookUrl);
           if (typeof pData.smsOnlyP1 === 'boolean') setSmsOnlyP1(pData.smsOnlyP1);
+        }
+
+        // Dedicated emergency phones endpoint (guarantees DB collection sync)
+        if (phonesRes && phonesRes.ok) {
+          try {
+            const phData = await phonesRes.json();
+            if (Array.isArray(phData.phones) && phData.phones.length > 0) {
+              const phoneList = phData.phones.map((p: any) => p.phone).filter(Boolean);
+              if (phoneList.length > 0) {
+                setPhoneNumbers(phoneList);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('notification_phones', JSON.stringify(phoneList));
+                }
+              }
+            }
+          } catch (e) {}
         }
 
         if (recipientsRes.ok) {
@@ -477,7 +501,7 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
     }
   };
 
-  // --- PHONE HELPERS (With Atomic MongoDB Persistence & Local Cache) ---
+  // --- PHONE HELPERS (With Atomic MongoDB Persistence & Dedicated EmergencyPhone Model) ---
   const handleAddPhone = async () => {
     if (!newPhone || newPhone.trim().length < 8) {
       onShowToast('Please enter a valid phone number with country code (e.g. +91 9876543210).', 'warning');
@@ -497,11 +521,18 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
     }
 
     try {
-      await fetch('/api/notifications/preferences', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add_phone', phone: cleanPhone }),
-      });
+      await Promise.all([
+        fetch('/api/notifications/emergency-phones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: cleanPhone }),
+        }),
+        fetch('/api/notifications/preferences', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'add_phone', phone: cleanPhone }),
+        }),
+      ]);
       onShowToast(`Added & saved ${cleanPhone} to emergency roster!`, 'success');
     } catch (e) {
       onShowToast(`Added phone: ${cleanPhone}`, 'info');
@@ -527,17 +558,27 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
 
     try {
       if (oldPhone && oldPhone !== cleanPhone) {
-        await fetch('/api/notifications/preferences', {
+        await Promise.all([
+          fetch(`/api/notifications/emergency-phones?phone=${encodeURIComponent(oldPhone)}`, { method: 'DELETE' }),
+          fetch('/api/notifications/preferences', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'remove_phone', phone: oldPhone }),
+          }),
+        ]);
+      }
+      await Promise.all([
+        fetch('/api/notifications/emergency-phones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: cleanPhone }),
+        }),
+        fetch('/api/notifications/preferences', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'remove_phone', phone: oldPhone }),
-        });
-      }
-      await fetch('/api/notifications/preferences', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add_phone', phone: cleanPhone }),
-      });
+          body: JSON.stringify({ action: 'add_phone', phone: cleanPhone }),
+        }),
+      ]);
       onShowToast('Phone number updated & saved to database!', 'success');
     } catch (e) {
       onShowToast('Updated phone number.', 'info');
@@ -554,11 +595,14 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
     }
 
     try {
-      await fetch('/api/notifications/preferences', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'remove_phone', phone: cleanPhone }),
-      });
+      await Promise.all([
+        fetch(`/api/notifications/emergency-phones?phone=${encodeURIComponent(cleanPhone)}`, { method: 'DELETE' }),
+        fetch('/api/notifications/preferences', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'remove_phone', phone: cleanPhone }),
+        }),
+      ]);
       onShowToast(`Removed ${cleanPhone} from roster.`, 'info');
     } catch (e) {
       onShowToast(`Removed phone: ${cleanPhone}`, 'info');

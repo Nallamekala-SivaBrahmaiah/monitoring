@@ -23,6 +23,8 @@ import {
   Mail,
   Shield,
   Layers,
+  Smartphone,
+  PhoneCall,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -35,6 +37,14 @@ interface DevOpsRecipientItem {
   role: string;
   enabled: boolean;
   addedOn: string;
+}
+
+interface EmergencyPhoneItem {
+  id: string;
+  phone: string;
+  label: string;
+  enabled: boolean;
+  createdAt: string;
 }
 
 interface SmtpStatus {
@@ -120,6 +130,14 @@ export default function NotificationsPage() {
   const [recipients, setRecipients] = useState<DevOpsRecipientItem[]>([]);
   const [loadingRecipients, setLoadingRecipients] = useState(true);
 
+  // Emergency Phones
+  const [phones, setPhones] = useState<EmergencyPhoneItem[]>([]);
+  const [loadingPhones, setLoadingPhones] = useState(true);
+  const [newPhone, setNewPhone] = useState('');
+  const [phoneLabel, setPhoneLabel] = useState('On-Call DevOps');
+  const [addingPhone, setAddingPhone] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+
   // Add Recipient Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -183,18 +201,35 @@ export default function NotificationsPage() {
     }
   }, []);
 
+  // Fetch Emergency Phones
+  const fetchPhones = useCallback(async () => {
+    try {
+      const res = await fetch('/api/notifications/emergency-phones', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setPhones(data.phones || []);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch emergency phones:', err);
+    } finally {
+      setLoadingPhones(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchFeed();
     fetchSmtpStatus();
     fetchRecipients();
+    fetchPhones();
 
     const interval = setInterval(() => {
       fetchFeed();
       fetchRecipients();
+      fetchPhones();
     }, 15000);
 
     return () => clearInterval(interval);
-  }, [fetchFeed, fetchSmtpStatus, fetchRecipients]);
+  }, [fetchFeed, fetchSmtpStatus, fetchRecipients, fetchPhones]);
 
   // Feed Actions: Mark Single Read
   const handleMarkAsRead = async (id: string) => {
@@ -317,6 +352,65 @@ export default function NotificationsPage() {
     } catch (err) {
       console.error('Failed to delete recipient:', err);
       fetchRecipients();
+    }
+  };
+
+  // Add Emergency Phone
+  const handleAddEmergencyPhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPhoneError('');
+    const clean = newPhone.trim();
+    if (clean.length < 8) {
+      setPhoneError('Please enter a valid phone number with country code (e.g., +91 9876543210).');
+      return;
+    }
+    setAddingPhone(true);
+    try {
+      const res = await fetch('/api/notifications/emergency-phones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: clean, label: phoneLabel }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPhones((prev) => [...prev.filter((p) => p.phone !== clean), data.phone]);
+        setNewPhone('');
+        setToastMessage(`Saved ${clean} to emergency SMS roster.`);
+        setTimeout(() => setToastMessage(null), 4000);
+      } else {
+        setPhoneError(data.error || 'Failed to add phone.');
+      }
+    } catch (err: any) {
+      setPhoneError(err.message || 'Network error.');
+    } finally {
+      setAddingPhone(false);
+    }
+  };
+
+  // Toggle phone status
+  const handleTogglePhoneStatus = async (id: string, currentStatus: boolean) => {
+    const nextStatus = !currentStatus;
+    setPhones((prev) => prev.map((p) => (p.id === id ? { ...p, enabled: nextStatus } : p)));
+    try {
+      await fetch('/api/notifications/emergency-phones', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, enabled: nextStatus }),
+      });
+    } catch {}
+  };
+
+  // Delete phone
+  const handleDeleteEmergencyPhone = async (id: string, phone: string) => {
+    setPhones((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await fetch(`/api/notifications/emergency-phones?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(phone)}`, {
+        method: 'DELETE',
+      });
+      setToastMessage(`Removed ${phone} from emergency phones.`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch {
+      fetchPhones();
     }
   };
 
@@ -508,7 +602,7 @@ export default function NotificationsPage() {
                     ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                     : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                 }`}>
-                  {recipients.length}
+                  {recipients.length + phones.length}
                 </span>
               </button>
             </div>
@@ -892,6 +986,137 @@ export default function NotificationsPage() {
                     )}
                     <span>Send Test Email to All</span>
                   </button>
+                </div>
+              </div>
+
+              {/* CARD 3: Emergency SMS & On-Call Mobile Numbers */}
+              <div className="bg-[#111A2E] border border-[#1E293B] rounded-2xl p-6 shadow-sm space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-sm shrink-0">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base font-bold text-white tracking-tight">
+                          Emergency SMS &amp; On-Call Mobile Numbers
+                        </h2>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                          AWS SNS &amp; Twilio
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Urgent SMS notifications sent directly to on-call mobile phones for critical P1 downtime incidents.
+                      </p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleAddEmergencyPhone} className="flex items-center gap-2 w-full sm:w-auto">
+                    <input
+                      type="tel"
+                      placeholder="+91 9876543210..."
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      className="px-3 py-2 rounded-lg bg-[#0D1526] border border-[#1E293B] text-slate-100 placeholder-slate-500 text-xs font-mono focus:outline-none focus:border-amber-500 transition-colors w-full sm:w-56"
+                    />
+                    <button
+                      type="submit"
+                      disabled={addingPhone}
+                      className="px-4 py-2 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-all shadow-sm flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                    >
+                      {addingPhone ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                      <span>Add Phone</span>
+                    </button>
+                  </form>
+                </div>
+
+                {phoneError && (
+                  <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-800 text-xs text-rose-300 flex items-center gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{phoneError}</span>
+                  </div>
+                )}
+
+                {/* Phones Table */}
+                <div className="overflow-x-auto rounded-xl border border-[#1E293B] bg-[#0D1526]/40">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-[#1E293B] text-[11px] font-semibold text-slate-400 uppercase tracking-wider bg-[#111A2E]/60">
+                        <th className="py-3.5 px-4 w-12 text-slate-400">#</th>
+                        <th className="py-3.5 px-4">Mobile Number</th>
+                        <th className="py-3.5 px-4">Designation</th>
+                        <th className="py-3.5 px-4">Status</th>
+                        <th className="py-3.5 px-4">Added On</th>
+                        <th className="py-3.5 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#1E293B]/70 text-xs">
+                      {loadingPhones ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-500">
+                            <RotateCw className="w-4 h-4 animate-spin inline-block mr-2" />
+                            Loading emergency phone roster...
+                          </td>
+                        </tr>
+                      ) : phones.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-500">
+                            No emergency phones configured. Enter mobile number with country code above to add.
+                          </td>
+                        </tr>
+                      ) : (
+                        phones.map((ph, idx) => (
+                          <tr key={ph.id || ph.phone} className="hover:bg-[#18233C]/40 transition-colors group">
+                            <td className="py-3.5 px-4 font-bold text-slate-300">{idx + 1}</td>
+                            <td className="py-3.5 px-4 font-mono text-slate-200">{ph.phone}</td>
+                            <td className="py-3.5 px-4 text-slate-300">{ph.label || 'On-Call DevOps'}</td>
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={ph.enabled}
+                                    onChange={() => handleTogglePhoneStatus(ph.id, ph.enabled)}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500"></div>
+                                </label>
+                                <span className={`text-xs font-semibold ${ph.enabled ? 'text-amber-400' : 'text-slate-400'}`}>
+                                  {ph.enabled ? 'Enabled' : 'Disabled'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-400 font-mono text-[11px]">
+                              {formatDateTime(ph.createdAt)}
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                onClick={() => handleDeleteEmergencyPhone(ph.id, ph.phone)}
+                                title="Remove phone"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4 text-rose-500/90 hover:text-rose-400" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                  <span>
+                    Configured Phone Contacts: <strong className="text-white">{phones.length}</strong> (
+                    <strong className="text-amber-400">{phones.filter((p) => p.enabled).length}</strong> Active)
+                  </span>
+                  <Link
+                    href="/dashboard/incident-dispatcher"
+                    className="text-amber-400 hover:underline flex items-center gap-1 font-semibold"
+                  >
+                    <span>Advanced Pager &amp; SMS Settings</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </Link>
                 </div>
               </div>
             </div>
