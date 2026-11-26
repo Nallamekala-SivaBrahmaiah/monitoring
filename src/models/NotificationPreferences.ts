@@ -12,6 +12,7 @@ export interface INotificationPreferences extends Document {
   pushEnabled: boolean;
   webhookEnabled: boolean;
   webhookUrl: string;
+  incidentDispatcherConnected: boolean;
   smsOnlyP1: boolean;
   notifyOnResolved: boolean;
   reminderIntervalMinutes: number;
@@ -67,6 +68,10 @@ const NotificationPreferencesSchema: Schema<INotificationPreferences> = new Sche
     webhookUrl: {
       type: String,
       default: '',
+    },
+    incidentDispatcherConnected: {
+      type: Boolean,
+      default: false,
     },
     smsOnlyP1: {
       type: Boolean,

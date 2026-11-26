@@ -157,6 +157,7 @@ export async function getNotificationPreferences() {
       return {
         emailNotificationsEnabled: prefs.emailNotificationsEnabled !== false,
         inAppNotificationsEnabled: prefs.inAppNotificationsEnabled !== false,
+        incidentDispatcherConnected: Boolean((prefs as any).incidentDispatcherConnected),
         alertRecipients: dbRecipients,
         ignoredServers: Array.isArray(prefs.ignoredServers) && prefs.ignoredServers.length > 0
           ? prefs.ignoredServers
@@ -173,6 +174,7 @@ export async function getNotificationPreferences() {
   return {
     emailNotificationsEnabled: true,
     inAppNotificationsEnabled: true,
+    incidentDispatcherConnected: false,
     alertRecipients: effectiveRecipients,
     ignoredServers: ['vm01siva-mon'],
     notifyOnResolved: true,

@@ -11,6 +11,7 @@ import {
   Sparkles,
   Wrench,
   Activity,
+  Radio,
 } from 'lucide-react';
 import {
   MultiCloudBrandLogo,
@@ -129,6 +130,11 @@ export function Sidebar({
       href: '/dashboard/notifications',
       icon: NotificationChannelsIcon,
       badge: unreadNotifCount,
+    },
+    {
+      label: 'Incident Dispatcher',
+      href: '/dashboard/incident-dispatcher',
+      icon: Radio,
     },
     { label: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
   ];

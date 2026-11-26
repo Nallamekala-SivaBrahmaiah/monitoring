@@ -27,6 +27,7 @@ import {
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { NotificationsIcon, NotificationChannelsIcon, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
+import { IncidentDispatcherBadge } from '@/components/dashboard/incident-dispatcher/IncidentDispatcherBadge';
 
 interface DevOpsRecipientItem {
   id: string;
@@ -446,6 +447,9 @@ export default function NotificationsPage() {
               {activeTab === 'feed' ? 'Notifications' : 'Notification Channels'}
             </span>
           </div>
+
+          {/* Incident Dispatcher Module Integration Status */}
+          <IncidentDispatcherBadge />
 
           {/* Main Title & Dual Tab Switcher */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1 border-b border-[#1E293B]">

@@ -30,6 +30,7 @@ import { AlertItem } from '@/types/monitoring';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { GroupedServerCardItem } from '@/app/api/alerts/grouped/route';
 import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
+import { IncidentDispatcherBadge } from '@/components/dashboard/incident-dispatcher/IncidentDispatcherBadge';
 
 export default function AlertsPage() {
   const { cloudProvider, triggerRefresh } = useMonitoring();
@@ -336,6 +337,9 @@ export default function AlertsPage() {
               </Link>
             </div>
           </div>
+
+          {/* Incident Dispatcher Module Integration Status */}
+          <IncidentDispatcherBadge />
 
           {/* KPI Summary Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
