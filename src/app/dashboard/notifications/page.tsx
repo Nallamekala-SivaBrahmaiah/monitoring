@@ -25,11 +25,14 @@ import {
   Layers,
   Smartphone,
   PhoneCall,
+  ShieldCheck,
+  Clock,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { NotificationsIcon, NotificationChannelsIcon, AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { IncidentDispatcherBadge } from '@/components/dashboard/incident-dispatcher/IncidentDispatcherBadge';
+import { DevOpsProofTab } from '@/components/dashboard/notifications/DevOpsProofTab';
 
 interface DevOpsRecipientItem {
   id: string;
@@ -94,9 +97,9 @@ function GmailLogo({ className = 'w-6 h-6' }: { className?: string }) {
 export default function NotificationsPage() {
   const pathname = usePathname();
   const isChannelsRoute = pathname?.includes('notification-channels');
-  const [activeTab, setActiveTab] = useState<'feed' | 'channels'>(isChannelsRoute ? 'channels' : 'feed');
+  const [activeTab, setActiveTab] = useState<'feed' | 'proof' | 'channels'>(isChannelsRoute ? 'channels' : 'feed');
 
-  const switchTab = (tab: 'feed' | 'channels') => {
+  const switchTab = (tab: 'feed' | 'proof' | 'channels') => {
     setActiveTab(tab);
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
@@ -538,7 +541,7 @@ export default function NotificationsPage() {
             </Link>
             <span>/</span>
             <span className="text-white font-medium">
-              {activeTab === 'feed' ? 'Notifications' : 'Notification Channels'}
+              {activeTab === 'feed' ? 'Notifications' : activeTab === 'proof' ? 'Work & Troubleshooting Proof' : 'Notification Channels'}
             </span>
           </div>
 
@@ -554,6 +557,11 @@ export default function NotificationsPage() {
                     <NotificationsIcon className="w-7 h-7" />
                     <span>In-App Notifications</span>
                   </>
+                ) : activeTab === 'proof' ? (
+                  <>
+                    <ShieldCheck className="w-7 h-7 text-indigo-400" />
+                    <span>DevOps Work &amp; Troubleshooting Proof Dispatcher</span>
+                  </>
                 ) : (
                   <>
                     <NotificationChannelsIcon className="w-7 h-7" />
@@ -564,12 +572,14 @@ export default function NotificationsPage() {
               <p className="text-xs text-slate-400 mt-1">
                 {activeTab === 'feed'
                   ? 'Real-time alert events, telemetry violations, and system activity feed'
+                  : activeTab === 'proof'
+                  ? 'Timestamped proof of deployments and troubleshooting dispatched with clock schedule to CTO & Leadership'
                   : 'Manage Gmail SMTP connectivity, alert delivery channels, and DevOps engineer distribution list'}
               </p>
             </div>
 
             {/* Tab Pills */}
-            <div className="flex items-center gap-2 border-b border-[#1E293B] self-start sm:self-auto select-none">
+            <div className="flex items-center gap-2 border-b border-[#1E293B] self-start sm:self-auto select-none overflow-x-auto max-w-full">
               <button
                 onClick={() => switchTab('feed')}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
@@ -585,6 +595,26 @@ export default function NotificationsPage() {
                     {unreadCount}
                   </span>
                 )}
+              </button>
+
+              {/* NEW MIDDLE TAB: WORK & TROUBLESHOOTING PROOF */}
+              <button
+                onClick={() => switchTab('proof')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer ${
+                  activeTab === 'proof'
+                    ? 'border-indigo-400 text-white bg-[#111A2E] shadow-[0_4px_12px_rgba(99,102,241,0.25)]'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#111A2E]/50 font-medium'
+                }`}
+              >
+                <ShieldCheck className={`w-3.5 h-3.5 ${activeTab === 'proof' ? 'text-indigo-400 animate-pulse' : 'text-slate-400'}`} />
+                <span>Work &amp; Troubleshooting Proof</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  activeTab === 'proof'
+                    ? 'bg-indigo-500/30 text-indigo-200 border border-indigo-500/50'
+                    : 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+                }`}>
+                  Live Clock
+                </span>
               </button>
 
               <button
@@ -802,7 +832,12 @@ export default function NotificationsPage() {
             </div>
           )}
 
-          {/* TAB 2: NOTIFICATION CHANNELS & DEVOPS RECIPIENTS */}
+          {/* TAB 2: DEVOPS WORK & TROUBLESHOOTING PROOF DISPATCHER (CTO & LEADERSHIP AUDIT) */}
+          {activeTab === 'proof' && (
+            <DevOpsProofTab />
+          )}
+
+          {/* TAB 3: NOTIFICATION CHANNELS & DEVOPS RECIPIENTS */}
           {activeTab === 'channels' && (
             <div className="space-y-6">
               {/* CARD 1: Gmail SMTP Configuration */}
