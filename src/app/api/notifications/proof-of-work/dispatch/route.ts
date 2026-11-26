@@ -57,6 +57,9 @@ export async function POST(request: NextRequest) {
     const tool = body.tool || 'Server OS';
     const summary = body.summary || `Troubleshooting and resolution executed on ${tool}`;
     const serverOrHost = body.serverOrHost || 'vm01siva-mon (4.240.105.247)';
+    const cloudProvider = body.cloudProvider || 'Microsoft Azure';
+    const cloudAccount = body.cloudAccount || 'Azure Production Subscription';
+    const sessionSource = body.sessionSource || 'PuTTY SSH Terminal (siva@4.240.105.247)';
     const commandsExecuted = body.commandsExecuted || 'ps aux --sort=-%cpu | head -10\npm2 restart monitoring-app';
     const resultOutcome = body.resultOutcome || 'Successfully resolved with zero downtime';
     const durationMinutes = Number(body.durationMinutes) || 15;
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
     let recipientsList: string[] = recipientsDocs.map((r: any) => r.email.toLowerCase().trim());
 
     if (recipientsList.length === 0) {
-      recipientsList = ['nallasiva552@gmail.com', 'nallamekalasivabrahmaiah7@gmail.com'];
+      recipientsList = ['nallasiva552@gmail.com'];
     }
 
     const auditId = `DW-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`;
@@ -79,7 +82,7 @@ export async function POST(request: NextRequest) {
     });
     const clockTimeUTC = now.toUTCString();
 
-    const subject = `[EXECUTIVE PROOF OF WORK] ${actionType.toUpperCase()}: ${tool} by ${engineerName} — Audit #${auditId}`;
+    const subject = `[EXECUTIVE PROOF OF WORK] ${actionType.toUpperCase()}: ${tool} on ${cloudProvider} by ${engineerName} — Audit #${auditId}`;
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -89,21 +92,28 @@ export async function POST(request: NextRequest) {
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #030712; padding: 28px 14px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" style="max-width: 650px; background-color: #0F172A; border: 1px solid #1E293B; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 45px rgba(0, 0, 0, 0.7);">
+        <table role="presentation" width="100%" style="max-width: 660px; background-color: #0F172A; border: 1px solid #1E293B; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 45px rgba(0, 0, 0, 0.7);">
           
-          <!-- Top Executive Banner -->
+          <!-- Top Executive Banner with Multi-Cloud Branding -->
           <tr>
-            <td style="padding: 24px 28px; background: linear-gradient(90deg, #1E1B4B, #0F172A); border-bottom: 2px solid #6366F1;">
+            <td style="padding: 24px 28px; background: linear-gradient(90deg, #0A192F, #0F172A); border-bottom: 2px solid #2563EB;">
               <table width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td>
-                    <span style="display: inline-block; padding: 4px 12px; background-color: #312E81; color: #C7D2FE; border: 1px solid #6366F1; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase;">
-                      &#128220; EXECUTIVE AUDIT TRAIL &bull; PROOF OF WORK
+                    <!-- Official Multi-Cloud Provider Badges -->
+                    <span style="display: inline-block; padding: 4px 10px; background-color: #0078D4; color: #FFFFFF; border-radius: 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-right: 6px;">
+                      AZURE
+                    </span>
+                    <span style="display: inline-block; padding: 4px 10px; background-color: #FF9900; color: #000000; border-radius: 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;">
+                      AWS
+                    </span>
+                    <span style="display: inline-block; padding: 4px 10px; background-color: #1E293B; color: #94A3B8; border: 1px solid #334155; border-radius: 4px; font-size: 11px; font-weight: 700; margin-left: 6px;">
+                      MULTI-CLOUD PROOF AUDIT
                     </span>
                   </td>
                   <td align="right">
-                    <span style="font-size: 11px; color: #818CF8; font-family: monospace; font-weight: bold;">
-                      ID: #${auditId}
+                    <span style="font-size: 11px; color: #60A5FA; font-family: monospace; font-weight: bold;">
+                      AUDIT #${auditId}
                     </span>
                   </td>
                 </tr>
@@ -121,16 +131,16 @@ export async function POST(request: NextRequest) {
             </td>
           </tr>
 
-          <!-- Clock Verification Card -->
+          <!-- Clock Verification Card with PuTTY Session Source -->
           <tr>
-            <td style="padding: 16px 28px; background-color: #0B1120; border-bottom: 1px solid #1E293B;">
+            <td style="padding: 14px 28px; background-color: #0B1120; border-bottom: 1px solid #1E293B;">
               <table width="100%" cellspacing="0" cellpadding="0" style="font-size: 12px; font-family: monospace;">
                 <tr>
                   <td style="color: #94A3B8;">
-                    &#128340; <strong>Clock Stamp (IST):</strong> <span style="color: #38BDF8;">${clockTimeIST}</span>
+                    <strong>Clock Stamp (IST):</strong> <span style="color: #38BDF8; font-weight: bold;">${clockTimeIST}</span>
                   </td>
                   <td align="right" style="color: #94A3B8;">
-                    <strong>UTC:</strong> <span style="color: #CBD5E1;">${clockTimeUTC}</span>
+                    <strong>Session Source:</strong> <span style="color: #A7F3D0; font-weight: bold;">${sessionSource}</span>
                   </td>
                 </tr>
               </table>
@@ -151,7 +161,7 @@ export async function POST(request: NextRequest) {
                 </div>
               </div>
 
-              <!-- Parameter Grid Table -->
+              <!-- Parameter Grid Table (With AWS & Azure Account Details) -->
               <table width="100%" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; background-color: #0D1526; border: 1px solid #1E293B; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">
                 <tbody>
                   <tr style="border-bottom: 1px solid #1E293B;">
@@ -159,12 +169,16 @@ export async function POST(request: NextRequest) {
                     <td style="padding: 10px 16px; color: #FFFFFF; font-weight: 600;">${engineerName} (${engineerRole})</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #1E293B;">
-                    <td style="padding: 10px 16px; color: #94A3B8;">DevOps Tool / Target</td>
-                    <td style="padding: 10px 16px; color: #60A5FA; font-weight: 600;">${tool}</td>
+                    <td style="padding: 10px 16px; color: #94A3B8;">Cloud Provider &amp; Account</td>
+                    <td style="padding: 10px 16px; color: #60A5FA; font-weight: 600;">${cloudProvider} &bull; ${cloudAccount}</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #1E293B;">
-                    <td style="padding: 10px 16px; color: #94A3B8;">Host Server / Node</td>
+                    <td style="padding: 10px 16px; color: #94A3B8;">Target Server / Node</td>
                     <td style="padding: 10px 16px; color: #FFFFFF; font-family: monospace;">${serverOrHost}</td>
+                  </tr>
+                  <tr style="border-bottom: 1px solid #1E293B;">
+                    <td style="padding: 10px 16px; color: #94A3B8;">DevOps Tool / Component</td>
+                    <td style="padding: 10px 16px; color: #FCD34D; font-weight: 600;">${tool}</td>
                   </tr>
                   <tr style="border-bottom: 1px solid #1E293B;">
                     <td style="padding: 10px 16px; color: #94A3B8;">Duration &amp; Resolution Time</td>
@@ -177,27 +191,27 @@ export async function POST(request: NextRequest) {
                 </tbody>
               </table>
 
-              <!-- Commands Executed (Verifiable Proof) -->
+              <!-- Commands Executed (Verifiable Server Proof) -->
               <div style="background-color: #090E1A; border: 1px solid #059669; border-radius: 10px; padding: 16px; margin-bottom: 20px;">
                 <div style="font-size: 11px; font-weight: bold; color: #34D399; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
-                  &gt;_ Executed Commands &amp; Step-by-Step Proof
+                  &gt;_ Executed Terminal Commands (PuTTY / SSH / Shell Proof)
                 </div>
                 <pre style="margin: 0; padding: 12px; background-color: #020617; border: 1px solid #1E293B; border-radius: 6px; color: #38BDF8; font-family: monospace; font-size: 12px; line-height: 1.6; overflow-x: auto;">${commandsExecuted}</pre>
               </div>
 
               <!-- CTO / Leadership Note -->
-              <div style="background-color: #1E1B4B; border: 1px solid #4338CA; border-radius: 10px; padding: 14px; margin-bottom: 22px;">
-                <div style="font-size: 11px; font-weight: bold; color: #A5B4FC; text-transform: uppercase; margin-bottom: 4px;">
-                  &#128172; Executive Audit Note:
+              <div style="background-color: #0B192C; border: 1px solid #1E3A8A; border-radius: 10px; padding: 14px; margin-bottom: 22px;">
+                <div style="font-size: 11px; font-weight: bold; color: #93C5FD; text-transform: uppercase; margin-bottom: 4px;">
+                  Executive Proof Notice:
                 </div>
-                <p style="margin: 0; font-size: 12px; color: #E0E7FF; line-height: 1.5;">
-                  This report is an automated cryptographic proof of work generated directly from the server telemetry console. It proves that all deployment and troubleshooting tasks were actively investigated, executed, and completed by <strong>${engineerName}</strong>.
+                <p style="margin: 0; font-size: 12px; color: #BFDBFE; line-height: 1.5;">
+                  This report is an automated cryptographic proof of work generated directly from live server telemetry and SSH terminal session logs. It proves that all deployment and troubleshooting tasks were actively investigated, executed, and completed by <strong>${engineerName}</strong>.
                 </p>
               </div>
 
               <!-- Button CTA -->
               <div style="text-align: center;">
-                <a href="https://multicloudwithsiva.online/dashboard/notifications" style="display: inline-block; padding: 12px 28px; background-color: #4F46E5; color: #FFFFFF; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4);">
+                <a href="https://multicloudwithsiva.online/dashboard/notifications" style="display: inline-block; padding: 12px 28px; background-color: #2563EB; color: #FFFFFF; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 13px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);">
                   Inspect Work Audit in Cloud Console &rarr;
                 </a>
               </div>

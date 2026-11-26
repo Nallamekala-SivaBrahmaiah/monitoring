@@ -11,27 +11,7 @@ const NO_CACHE_HEADERS = {
 export async function GET() {
   try {
     await connectToDatabase();
-    let recipients = await DevOpsProofRecipient.find().sort({ createdAt: 1 }).lean();
-
-    // If empty, initialize with default recipients
-    if (recipients.length === 0) {
-      const initial = [
-        {
-          email: 'nallasiva552@gmail.com',
-          name: 'Siva (DevOps Lead)',
-          role: 'Personal Audit Trail',
-          enabled: true,
-        },
-        {
-          email: 'nallamekalasivabrahmaiah7@gmail.com',
-          name: 'Executive / CTO Desk',
-          role: 'CTO',
-          enabled: true,
-        },
-      ];
-      await DevOpsProofRecipient.insertMany(initial);
-      recipients = await DevOpsProofRecipient.find().sort({ createdAt: 1 }).lean();
-    }
+    const recipients = await DevOpsProofRecipient.find().sort({ createdAt: 1 }).lean();
 
     const formatted = recipients.map((r: any) => ({
       id: r._id.toString(),
@@ -147,6 +127,15 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const email = searchParams.get('email');
+    const clearAll = searchParams.get('clearAll') === 'true';
+
+    if (clearAll) {
+      await DevOpsProofRecipient.deleteMany({});
+      return NextResponse.json(
+        { success: true, message: 'All proof recipients removed successfully.' },
+        { headers: NO_CACHE_HEADERS }
+      );
+    }
 
     if (!id && !email) {
       return NextResponse.json(
