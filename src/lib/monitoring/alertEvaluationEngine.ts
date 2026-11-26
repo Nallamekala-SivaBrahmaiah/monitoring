@@ -132,14 +132,13 @@ export async function updateAlertThresholds(
 export async function getNotificationPreferences() {
   const isEmailDisabled = process.env.ENABLE_EMAIL_ALERTS === 'false';
 
-  const devOpsRecipients = await getEnabledDevOpsRecipients();
-  const effectiveRecipients = devOpsRecipients.length > 0 ? devOpsRecipients : ['nallasiva552@gmail.com'];
-
   if (isEmailDisabled) {
     return {
       emailNotificationsEnabled: false,
       inAppNotificationsEnabled: true,
+      incidentDispatcherConnected: false,
       alertRecipients: [],
+      ignoredServers: ['vm01siva-mon'],
       notifyOnResolved: false,
       reminderIntervalMinutes: 60,
       minSeverity: 'warning' as const,
@@ -148,25 +147,59 @@ export async function getNotificationPreferences() {
 
   try {
     await connectToDatabase();
-    const prefs = await NotificationPreferences.findOne({ userId: 'admin' }).lean();
-    if (prefs) {
-      const dbRecipients = Array.isArray(prefs.alertRecipients) && prefs.alertRecipients.length > 0
-        ? prefs.alertRecipients
-        : effectiveRecipients;
 
-      return {
-        emailNotificationsEnabled: prefs.emailNotificationsEnabled !== false,
-        inAppNotificationsEnabled: prefs.inAppNotificationsEnabled !== false,
-        incidentDispatcherConnected: Boolean((prefs as any).incidentDispatcherConnected),
-        alertRecipients: dbRecipients,
-        ignoredServers: Array.isArray(prefs.ignoredServers) && prefs.ignoredServers.length > 0
-          ? prefs.ignoredServers
-          : ['vm01siva-mon'],
-        notifyOnResolved: prefs.notifyOnResolved !== false,
-        reminderIntervalMinutes: prefs.reminderIntervalMinutes || 60,
-        minSeverity: prefs.minSeverity || 'warning',
-      };
+    // 1. All enabled DevOps recipients from the table (DevOpsRecipient collection)
+    const enabledDocs = await DevOpsRecipient.find({ enabled: { $ne: false } }).lean();
+    const enabledEmails = enabledDocs.map((d: any) => (d.email || '').toLowerCase().trim()).filter(Boolean);
+
+    // 2. Disabled recipients to guarantee they never get alerts
+    const disabledDocs = await DevOpsRecipient.find({ enabled: false }).lean();
+    const disabledSet = new Set(disabledDocs.map((d: any) => (d.email || '').toLowerCase().trim()));
+
+    // 3. Preferences from database
+    const prefs = await NotificationPreferences.findOne({ userId: 'admin' }).lean();
+
+    // 4. Primary admin email fallback
+    const adminEmail = (process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER || 'nallasiva552@gmail.com').toLowerCase().trim();
+
+    const recipientSet = new Set<string>();
+
+    // Add all enabled recipients from the UI table (e.g. nallamekalasivabrahmaiah7@gmail.com)
+    enabledEmails.forEach((email) => {
+      if (!disabledSet.has(email)) {
+        recipientSet.add(email);
+      }
+    });
+
+    // Also include admin if not explicitly disabled
+    if (!disabledSet.has(adminEmail)) {
+      recipientSet.add(adminEmail);
     }
+
+    // Also include any alertRecipients from prefs if not disabled
+    if (prefs && Array.isArray(prefs.alertRecipients)) {
+      prefs.alertRecipients.forEach((email: string) => {
+        const clean = (email || '').toLowerCase().trim();
+        if (clean && !disabledSet.has(clean)) {
+          recipientSet.add(clean);
+        }
+      });
+    }
+
+    const effectiveRecipients = Array.from(recipientSet);
+
+    return {
+      emailNotificationsEnabled: prefs?.emailNotificationsEnabled !== false,
+      inAppNotificationsEnabled: prefs?.inAppNotificationsEnabled !== false,
+      incidentDispatcherConnected: Boolean((prefs as any)?.incidentDispatcherConnected),
+      alertRecipients: effectiveRecipients.length > 0 ? effectiveRecipients : [adminEmail],
+      ignoredServers: Array.isArray(prefs?.ignoredServers) && prefs.ignoredServers.length > 0
+        ? prefs.ignoredServers
+        : ['vm01siva-mon'],
+      notifyOnResolved: prefs?.notifyOnResolved !== false,
+      reminderIntervalMinutes: prefs?.reminderIntervalMinutes || 60,
+      minSeverity: prefs?.minSeverity || 'warning',
+    };
   } catch (err) {
     console.warn('[AlertEngine] Preferences note:', err);
   }
@@ -175,7 +208,7 @@ export async function getNotificationPreferences() {
     emailNotificationsEnabled: true,
     inAppNotificationsEnabled: true,
     incidentDispatcherConnected: false,
-    alertRecipients: effectiveRecipients,
+    alertRecipients: ['nallasiva552@gmail.com'],
     ignoredServers: ['vm01siva-mon'],
     notifyOnResolved: true,
     reminderIntervalMinutes: 60,

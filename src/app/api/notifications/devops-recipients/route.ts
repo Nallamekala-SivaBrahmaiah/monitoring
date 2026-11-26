@@ -180,6 +180,19 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Synchronize enabled/disabled status into NotificationPreferences
+    if (updated.enabled) {
+      await NotificationPreferences.updateMany(
+        {},
+        { $addToSet: { alertRecipients: updated.email } }
+      );
+    } else {
+      await NotificationPreferences.updateMany(
+        {},
+        { $pull: { alertRecipients: updated.email } }
+      );
+    }
+
     return NextResponse.json(
       {
         success: true,

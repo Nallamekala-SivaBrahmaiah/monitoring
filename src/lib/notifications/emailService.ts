@@ -145,25 +145,58 @@ function getTransporter() {
  * and finally to ALERT_EMAIL_TO / GMAIL_USER.
  */
 export async function resolveRecipients(customRecipients?: string[]): Promise<string[]> {
-  if (Array.isArray(customRecipients) && customRecipients.length > 0) {
-    const valid = customRecipients.filter((e) => typeof e === 'string' && e.trim().length > 0);
-    if (valid.length > 0) return valid;
-  }
   try {
     const DevOpsRecipient = (await import('@/models/DevOpsRecipient')).default;
-    const docs = await DevOpsRecipient.find({ enabled: { $ne: false } }).lean();
-    const recipients = docs.map((d: any) => d.email).filter(Boolean);
-    if (recipients.length > 0) {
-      return recipients;
+    const [enabledDocs, disabledDocs] = await Promise.all([
+      DevOpsRecipient.find({ enabled: { $ne: false } }).lean(),
+      DevOpsRecipient.find({ enabled: false }).lean(),
+    ]);
+
+    const disabledSet = new Set(
+      disabledDocs.map((d: any) => (d.email || '').toLowerCase().trim())
+    );
+    const enabledList = enabledDocs
+      .map((d: any) => (d.email || '').toLowerCase().trim())
+      .filter(Boolean);
+
+    const resultSet = new Set<string>();
+
+    // 1. If customRecipients provided, add valid non-disabled ones
+    if (Array.isArray(customRecipients) && customRecipients.length > 0) {
+      customRecipients.forEach((e) => {
+        const clean = (e || '').toLowerCase().trim();
+        if (clean && !disabledSet.has(clean)) {
+          resultSet.add(clean);
+        }
+      });
     }
+
+    // 2. Always ensure all enabled DevOps recipients from the UI table receive the alert
+    enabledList.forEach((e) => {
+      if (!disabledSet.has(e)) {
+        resultSet.add(e);
+      }
+    });
+
+    // 3. Fallback to default admin if set is empty
+    if (resultSet.size === 0) {
+      const defaultTo = process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER || 'nallasiva552@gmail.com';
+      defaultTo
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter((e) => e && !disabledSet.has(e))
+        .forEach((e) => resultSet.add(e));
+    }
+
+    return Array.from(resultSet);
   } catch (err) {
     // If DB error, fallback
+    const defaultTo = process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER || 'nallasiva552@gmail.com';
+    return defaultTo
+      .split(',')
+      .map((e) => e.trim())
+      .filter(Boolean);
   }
-  const defaultTo = process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER || '';
-  return defaultTo
-    .split(',')
-    .map((e) => e.trim())
-    .filter(Boolean);
 }
 
 /**
