@@ -287,6 +287,25 @@ export async function sendAlertEmail(
   const isDisk = payload.metricType === 'Disk';
   const mountPoint = payload.diskMount || '/';
 
+  // Dynamic Root Cause & Troubleshooting Guide based on Metric Type
+  let troubleshootingTitle = '';
+  let troubleshootingCauses = '';
+  let troubleshootingCommands = '';
+
+  if (payload.metricType === 'CPU') {
+    troubleshootingTitle = 'High CPU Utilization Analysis';
+    troubleshootingCauses = 'Next.js/Node.js build or TypeScript compilation, runaway background processes, infinite loop, or heavy unindexed database queries.';
+    troubleshootingCommands = 'ps aux --sort=-%cpu | head -10\npm2 restart monitoring-app\npm2 logs monitoring-app --lines 50';
+  } else if (payload.metricType === 'Memory') {
+    troubleshootingTitle = 'High Memory (RAM) Analysis';
+    troubleshootingCauses = 'Application heap memory leak, unreleased object buffers, or Docker containers consuming host memory.';
+    troubleshootingCommands = 'free -h\nps aux --sort=-%mem | head -10\npm2 restart all --max-memory-restart 1G\ndocker stats --no-stream';
+  } else {
+    troubleshootingTitle = 'High Disk Usage Analysis';
+    troubleshootingCauses = 'Log files accumulating in ~/.pm2/logs or /var/log, Docker build caches/unused images, or temp directory fill-up.';
+    troubleshootingCommands = 'df -h\npm2 flush\ndocker system prune -af --volumes\njournalctl --vacuum-time=3d';
+  }
+
   // Plain-text formatted email
   const textContent = `
 ${severityUpper} ALERT — Multi-Cloud Monitoring
@@ -307,6 +326,12 @@ ${isDisk ? `| Disk Mount | ${mountPoint} |\n` : ''}| Cloud Provider | ${provider
 | Alert Status | Active |
 | Triggered Time | ${formattedTime} |
 
+---
+💡 ROOT CAUSE & REMEDIATION GUIDE:
+• Potential Cause: ${troubleshootingCauses}
+• Quick Diagnostic & Fix Commands:
+${troubleshootingCommands}
+
 [Inspect Resource in Monitoring Console →](${directLink})
 
 You are receiving this email because you are a configured DevOps alert recipient.
@@ -322,6 +347,30 @@ Multi-Cloud Infrastructure Monitoring Platform • Automated Real-Time Alerting
         <td style="padding: 10px 16px; color: #FFFFFF; font-weight: 600; font-family: monospace;">${mountPoint}</td>
       </tr>`
     : '';
+
+  const troubleshootingHtml = `
+    <!-- DevOps Troubleshooting & Remediation Guide -->
+    <table width="100%" cellspacing="0" cellpadding="0" style="background-color: #0A1324; border: 1px solid #1E3A8A; border-radius: 8px; margin-bottom: 24px; overflow: hidden;">
+      <tr>
+        <td style="padding: 16px 18px; border-bottom: 1px solid #1E293B; background-color: #0F1D38;">
+          <span style="font-size: 13px; font-weight: 700; color: #60A5FA; text-transform: uppercase; letter-spacing: 0.5px;">
+            &#128295; Root Cause &amp; Remediation Guide (${troubleshootingTitle})
+          </span>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 14px 18px; font-size: 13px; line-height: 1.6; color: #CBD5E1;">
+          <p style="margin: 0 0 10px 0;">
+            <strong style="color: #93C5FD;">Probable Cause:</strong> ${troubleshootingCauses}
+          </p>
+          <p style="margin: 0 0 6px 0;">
+            <strong style="color: #93C5FD;">Recommended SSH Commands to Fix:</strong>
+          </p>
+          <pre style="margin: 0; padding: 10px 12px; background-color: #020617; border: 1px solid #1E293B; border-radius: 6px; font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #38BDF8; overflow-x: auto; white-space: pre-wrap;">${troubleshootingCommands}</pre>
+        </td>
+      </tr>
+    </table>
+  `;
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -412,6 +461,8 @@ Multi-Cloud Infrastructure Monitoring Platform • Automated Real-Time Alerting
                   </tr>
                 </tbody>
               </table>
+
+              ${troubleshootingHtml}
 
               <!-- Action Button -->
               <table width="100%" cellspacing="0" cellpadding="0">
