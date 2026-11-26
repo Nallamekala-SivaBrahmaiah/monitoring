@@ -111,23 +111,30 @@ const DEVOPS_TOOLS = [
 export const DEFAULT_SERVER_HISTORIES: Record<string, string[]> = {
   'vm01siva-mon': [
     'sudo nano .env.local',
-    'cd monitoring/',
-    'git status',
-    'npm i',
-    'npm run build',
+    'cd monitoring/ && npm i && npm run build',
     'pm2 restart monitoring-app && pm2 logs monitoring-app --lines 20',
-    'sudo apt install -y docker.io',
-    'sudo docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest',
-    'docker ps -a',
-    'docker pull httpd:alpine',
-    'docker run -d --name web-httpd -p 8080:80 httpd:alpine',
-    'docker rm -f c8c134bd82d9',
-    'sudo cat /var/lib/jenkins/secrets/initialAdminPassword',
     'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
     'cd monitoring && mvn clean package -DskipTests',
+    'sudo apt install -y docker.io',
+    'docker pull node:20-alpine',
+    'docker pull httpd:alpine',
+    'docker run -d --name auth-microservice-prod -p 3000:3000 node:20-alpine',
+    'docker ps -a',
+    'docker stats --no-stream',
+    'docker restart auth-microservice-prod',
+    'kubectl get nodes -o wide',
+    'kubectl get pods -n production -o wide',
+    'kubectl describe pod monitoring-app-7b8f-x91 -n production',
+    'kubectl rollout restart deployment/monitoring-app -n production',
+    'kubectl get services -n production',
     'sudo nano /etc/nginx/sites-available/default',
     'sudo nginx -t && sudo systemctl reload nginx',
+    'sudo systemctl status nginx',
+    'cd terraform/azure-infra && terraform init',
+    'terraform plan -out=tfplan',
+    'terraform apply -auto-approve tfplan',
     'ansible-playbook -i inventory.ini site.yml --limit vm01siva-mon',
+    'ansible all -m ping -i inventory.ini',
     'stress --cpu 8 --io 4 --vm 2 --vm-bytes 128M --timeout 10m',
     'ps aux --sort=-%cpu | head -10',
     'free -m && df -h',
@@ -136,30 +143,58 @@ export const DEFAULT_SERVER_HISTORIES: Record<string, string[]> = {
     'sudo apt update && sudo apt upgrade -y',
     'sudo ufw status verbose',
     'sudo ufw allow 80,443,3000,9000/tcp',
+    'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
+    'cd monitoring && mvn clean package -DskipTests',
     'docker compose -f docker-compose.prod.yml pull',
     'docker compose -f docker-compose.prod.yml up -d --remove-orphans',
+    'docker ps -a',
     'docker stats --no-stream',
     'kubectl get nodes -o wide',
     'kubectl get pods -A',
     'kubectl rollout restart deployment/monitoring-app -n production',
-    'sudo systemctl status nginx',
+    'kubectl get services -A',
+    'sudo nano /etc/nginx/conf.d/proxy.conf',
     'sudo nginx -t && sudo systemctl reload nginx',
     'curl -I http://localhost:3000',
+    'cd terraform/azure-workloads && terraform init',
+    'terraform plan -out=tfplan && terraform apply -auto-approve tfplan',
+    'ansible-playbook -i inventory.ini deploy.yml --limit azure',
+    'ps aux --sort=-%mem | head -10',
+    'sudo systemctl status nginx',
   ],
   web01: [
     'sudo yum update -y',
     'sudo amazon-linux-extras install docker -y',
     'sudo systemctl enable --now docker',
+    'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
+    'cd monitoring && ./mvnw clean install -DskipTests',
     'docker pull nginx:alpine',
     'docker run -d --name web-proxy -p 80:80 --restart always nginx:alpine',
     'docker ps -a',
-    'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
-    'cd monitoring && ./mvnw clean package -DskipTests',
-    'sudo systemctl status docker',
-    'ps aux --sort=-%mem | head -10',
+    'docker stats --no-stream',
+    'kubectl get nodes -o wide',
+    'kubectl get pods -n ingress-nginx',
+    'kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx',
+    'sudo nano /etc/nginx/nginx.conf',
+    'sudo nginx -t && sudo systemctl reload nginx',
     'netstat -tulpn | grep :80',
+    'cd terraform/aws-ec2 && terraform init',
+    'terraform plan && terraform apply -auto-approve',
+    'ansible-playbook -i inventory.ini site.yml --limit web01',
+    'ps aux --sort=-%cpu | head -10',
+    'free -m && df -h',
   ],
   'gsr-server': [
+    'sudo apt update -y',
+    'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
+    'cd monitoring && mvn clean package -DskipTests',
+    'docker pull redis:alpine',
+    'docker run -d --name cache-redis -p 6379:6379 redis:alpine',
+    'docker ps -a',
+    'kubectl get nodes',
+    'kubectl get pods -n monitoring',
+    'kubectl rollout restart daemonset/node-exporter -n monitoring',
+    'sudo nginx -t && sudo systemctl reload nginx',
     'terraform init -upgrade',
     'terraform plan -out=tfplan',
     'terraform apply -auto-approve tfplan',
@@ -172,23 +207,29 @@ export const DEFAULT_SERVER_HISTORIES: Record<string, string[]> = {
   ],
   all: [
     '# === vm01siva-mon (Azure • Central India) - Active PuTTY Session ===',
-    'sudo nano .env.local',
-    'cd monitoring/ && npm run build && pm2 restart monitoring-app',
-    'sudo apt install -y docker.io',
-    'docker pull httpd:alpine',
     'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
     'mvn clean package -DskipTests',
+    'docker pull node:20-alpine && docker restart auth-microservice-prod',
+    'kubectl rollout restart deployment/monitoring-app -n production',
+    'sudo nginx -t && sudo systemctl reload nginx',
+    'terraform apply -auto-approve tfplan',
+    'ansible-playbook -i inventory.ini site.yml --limit vm01siva-mon',
     'stress --cpu 8 --io 4 --vm 2 --vm-bytes 128M --timeout 10m',
     '# === azure (Azure VM • Central India) ===',
-    'sudo ufw allow 80,443,3000/tcp',
+    'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
     'docker compose -f docker-compose.prod.yml up -d',
     'kubectl get pods -A',
+    'sudo nginx -t && sudo systemctl reload nginx',
+    'terraform apply -auto-approve',
     '# === web01 (AWS EC2 • us-east-1) ===',
     'docker run -d --name web-proxy -p 80:80 nginx:alpine',
-    'sudo systemctl status docker',
+    'cd monitoring && ./mvnw clean install -DskipTests',
+    'kubectl rollout status deployment/ingress-nginx-controller',
+    'ansible-playbook -i inventory.ini site.yml --limit web01',
     '# === gsr-server (AWS EC2 • ap-south-1) ===',
     'terraform apply -auto-approve tfplan',
     'ansible-playbook -i inventory.ini deploy.yml',
+    'kubectl get pods -n monitoring',
   ],
 };
 
@@ -410,7 +451,7 @@ export function DevOpsProofTab() {
   // Interactive Server Terminal State
   const [serverHistories, setServerHistories] = useState<Record<string, string[]>>(DEFAULT_SERVER_HISTORIES);
   const [activeServerCommands, setActiveServerCommands] = useState<string[]>(DEFAULT_SERVER_HISTORIES['vm01siva-mon']);
-  const [terminalFilter, setTerminalFilter] = useState<'all' | 'docker' | 'maven' | 'iac' | 'system'>('all');
+  const [terminalFilter, setTerminalFilter] = useState<'all' | 'docker' | 'k8s' | 'nginx' | 'maven' | 'terraform' | 'ansible' | 'system'>('all');
   const [isTerminalRawView, setIsTerminalRawView] = useState<boolean>(false);
   const [copiedTerminal, setCopiedTerminal] = useState<boolean>(false);
   const [customCommandInput, setCustomCommandInput] = useState<string>('');
@@ -806,14 +847,17 @@ export function DevOpsProofTab() {
     };
   };
 
-  // Helper: Filtered Commands
+  // Helper: Filtered Commands (All Tools Combined by Default)
   const getFilteredCommands = () => {
     if (terminalFilter === 'all') return activeServerCommands;
     return activeServerCommands.filter((cmd) => {
       const c = cmd.toLowerCase();
       if (terminalFilter === 'docker') return c.includes('docker') || c.includes('container');
+      if (terminalFilter === 'k8s') return c.includes('kubectl') || c.includes('k8s') || c.includes('helm');
+      if (terminalFilter === 'nginx') return c.includes('nginx') || c.includes('certbot');
       if (terminalFilter === 'maven') return c.includes('mvn') || c.includes('maven') || c.includes('git') || c.includes('java');
-      if (terminalFilter === 'iac') return c.includes('terraform') || c.includes('ansible') || c.includes('kubectl') || c.includes('k8s');
+      if (terminalFilter === 'terraform') return c.includes('terraform') || c.includes('tfplan');
+      if (terminalFilter === 'ansible') return c.includes('ansible') || c.includes('playbook');
       if (terminalFilter === 'system') {
         return (
           c.includes('pm2') ||
@@ -821,7 +865,6 @@ export function DevOpsProofTab() {
           c.includes('sudo') ||
           c.includes('ps ') ||
           c.includes('stress') ||
-          c.includes('nginx') ||
           c.includes('systemctl') ||
           c.includes('journalctl') ||
           c.includes('free') ||
@@ -1207,17 +1250,18 @@ export function DevOpsProofTab() {
             {/* Right: Quick Tool Filter Tabs & Terminal Action Buttons */}
             <div className="flex items-center gap-1.5 flex-wrap">
               {/* Tool Filters */}
-              <div className="flex items-center rounded-lg bg-[#0D1527] border border-slate-800 p-0.5 text-[11px] font-mono">
+              <div className="flex items-center rounded-lg bg-[#0D1527] border border-slate-800 p-0.5 text-[11px] font-mono flex-wrap">
                 <button
                   type="button"
                   onClick={() => setTerminalFilter('all')}
-                  className={`px-2 py-0.5 rounded transition-all font-semibold ${
+                  className={`px-2.5 py-0.5 rounded transition-all font-bold ${
                     terminalFilter === 'all'
                       ? 'bg-blue-600 text-white shadow'
                       : 'text-slate-400 hover:text-white'
                   }`}
+                  title="Show all executed commands across all tools in one unified stream"
                 >
-                  All ({activeServerCommands.length})
+                  📋 All Tools ({activeServerCommands.length})
                 </button>
                 <button
                   type="button"
@@ -1227,9 +1271,33 @@ export function DevOpsProofTab() {
                       ? 'bg-blue-600 text-white shadow'
                       : 'text-slate-400 hover:text-white'
                   }`}
-                  title="Docker Container Commands"
+                  title="Filter to Docker commands"
                 >
                   🐳 Docker
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTerminalFilter('k8s')}
+                  className={`px-2 py-0.5 rounded transition-all font-semibold ${
+                    terminalFilter === 'k8s'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Filter to Kubernetes commands"
+                >
+                  ☸️ K8s
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTerminalFilter('nginx')}
+                  className={`px-2 py-0.5 rounded transition-all font-semibold ${
+                    terminalFilter === 'nginx'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Filter to Nginx commands"
+                >
+                  🌐 Nginx
                 </button>
                 <button
                   type="button"
@@ -1239,21 +1307,33 @@ export function DevOpsProofTab() {
                       ? 'bg-blue-600 text-white shadow'
                       : 'text-slate-400 hover:text-white'
                   }`}
-                  title="Maven & Git Packaging"
+                  title="Filter to Maven commands"
                 >
                   ☕ Maven
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTerminalFilter('iac')}
+                  onClick={() => setTerminalFilter('terraform')}
                   className={`px-2 py-0.5 rounded transition-all font-semibold ${
-                    terminalFilter === 'iac'
+                    terminalFilter === 'terraform'
                       ? 'bg-blue-600 text-white shadow'
                       : 'text-slate-400 hover:text-white'
                   }`}
-                  title="Ansible, Terraform, K8s"
+                  title="Filter to Terraform commands"
                 >
-                  ⚡ IaC / Ansible
+                  🏗️ Terraform
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTerminalFilter('ansible')}
+                  className={`px-2 py-0.5 rounded transition-all font-semibold ${
+                    terminalFilter === 'ansible'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Filter to Ansible commands"
+                >
+                  ⚡ Ansible
                 </button>
                 <button
                   type="button"
@@ -1263,9 +1343,9 @@ export function DevOpsProofTab() {
                       ? 'bg-blue-600 text-white shadow'
                       : 'text-slate-400 hover:text-white'
                   }`}
-                  title="Linux OS, PM2 & Node"
+                  title="Filter to Linux OS & PM2 commands"
                 >
-                  🖥️ System / PM2
+                  🖥️ OS / PM2
                 </button>
               </div>
 
@@ -1320,11 +1400,12 @@ export function DevOpsProofTab() {
 
           {/* Terminal Body Screen */}
           <div className="bg-[#050811] border border-[#1E293B] rounded-b-xl overflow-hidden shadow-2xl font-mono text-xs">
-            {/* Linux MOTD Banner */}
-            <div className="px-4 py-2.5 bg-[#090D1A] border-b border-slate-900/80 text-[11px] text-slate-400 space-y-0.5 leading-relaxed select-none">
+            {/* Linux MOTD Banner with All-Tools Badge */}
+            <div className="px-4 py-2.5 bg-[#090D1A] border-b border-slate-900/80 text-[11px] text-slate-400 space-y-1.5 leading-relaxed select-none">
               <div className="flex items-center justify-between text-slate-300">
-                <span className="text-emerald-400 font-bold">
-                  ● Ubuntu 24.04.1 LTS (GNU/Linux 6.8.0-1017-azure x86_64)
+                <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                  <span>●</span>
+                  <span>Ubuntu 24.04.1 LTS (GNU/Linux 6.8.0-1017-azure x86_64)</span>
                 </span>
                 <span className="text-[10px] text-slate-500 font-mono">
                   {currentTime.ist} &bull; Bash 5.2.21
@@ -1338,6 +1419,17 @@ export function DevOpsProofTab() {
                 &bull; Session:{' '}
                 <strong className="text-emerald-300">{sessionSource}</strong> &bull; History:{' '}
                 <span className="text-amber-400">/home/siva/.bash_history</span>
+              </div>
+              {/* All Tools Unified Indicator Bar */}
+              <div className="pt-1 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+                <span className="text-slate-400 font-semibold">Tools recorded in this server:</span>
+                <span className="px-1.5 py-0.2 rounded bg-blue-500/10 border border-blue-500/30 text-blue-300">🐳 Docker</span>
+                <span className="px-1.5 py-0.2 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">☸️ K8s</span>
+                <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">🌐 Nginx</span>
+                <span className="px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">☕ Maven</span>
+                <span className="px-1.5 py-0.2 rounded bg-purple-500/10 border border-purple-500/30 text-purple-300">🏗️ Terraform</span>
+                <span className="px-1.5 py-0.2 rounded bg-red-500/10 border border-red-500/30 text-red-300">⚡ Ansible</span>
+                <span className="px-1.5 py-0.2 rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-300">🖥️ Server OS</span>
               </div>
             </div>
 
