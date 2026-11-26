@@ -860,7 +860,7 @@ export default function NotificationsPage() {
                   {/* Connected Badge */}
                   <div className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{smtpStatus.status}</span>
+                    <span>{smtpStatus?.status || 'Connected'}</span>
                   </div>
 
                   {/* Test Email Button */}

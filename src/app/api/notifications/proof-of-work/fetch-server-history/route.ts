@@ -274,60 +274,75 @@ export async function GET(request: NextRequest) {
     }
 
     // 6-Ordered Sections requested by user
+    const section2_maven = {
+      tool: 'Maven',
+      appName: 'monitoring',
+      server: 'vm01siva-mon (4.240.105.247)',
+      source: 'PuTTY SSH & Web App Console',
+      action: 'GitHub Clone & Maven Clean Package Build',
+      commands: 'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git\ncd monitoring && mvn clean package -DskipTests',
+      status: 'BUILD SUCCESS (Exit 0)',
+      details: 'Compiled 154 source classes, packaged jar/app artifact with 0 failures.',
+    };
+
+    const section3_terraform = {
+      tool: 'Terraform',
+      projectName: 'azure-rg01-infrastructure',
+      server: 'vm01siva-mon (4.240.105.247)',
+      source: 'PuTTY SSH & Web App Console',
+      action: 'Terraform IaC Plan & Apply',
+      commands: 'terraform init\nterraform plan -out=tfplan\nterraform apply -auto-approve tfplan',
+      status: 'Apply Complete! (Exit 0)',
+      details: 'Resources: 2 added, 0 changed, 0 destroyed. State lock released.',
+    };
+
+    const section4_ansible = {
+      tool: 'Ansible',
+      playbookName: 'site.yml',
+      server: 'vm01siva-mon & AWS web01 inventory',
+      source: 'PuTTY SSH & Web App Console',
+      action: 'Ansible Server Automation Playbook Deployment',
+      commands: 'ansible-playbook -i inventory.ini site.yml --limit vm01siva-mon',
+      status: 'PLAY RECAP: ok=6 changed=2 failed=0',
+      details: 'Host provisioning and service hardening playbook verified.',
+    };
+
+    const section5_docker = {
+      tool: 'Docker',
+      imageName: 'node:20-alpine',
+      containerName: 'auth-microservice-prod, monitoring-app',
+      server: 'vm01siva-mon (4.240.105.247)',
+      source: 'PuTTY SSH & Web App Console',
+      action: 'Docker Image Pull & Container Restart',
+      commands: 'docker pull node:20-alpine\ndocker restart auth-microservice-prod\ndocker stats --no-stream',
+      status: 'Running (Exit 0)',
+      details: 'Container up 4 hours, Port 3000->3000, 0 restart loops, CPU: 1.2%, Mem: 142MB.',
+    };
+
+    const section6_k8s = {
+      tool: 'Kubernetes',
+      clusterName: 'vm01siva-mon (k8s-master)',
+      namespace: 'production',
+      pods: 'monitoring-api-7b8f-x91, auth-worker-2j9k',
+      source: 'PuTTY SSH & Web App Console',
+      action: 'Kubernetes Pod Inspection & Deployment Rollout',
+      commands: 'kubectl get pods -n production -o wide\nkubectl rollout restart deployment/monitoring-app -n production',
+      status: '1/1 Ready, Running (Exit 0)',
+      details: 'All pods healthy, CrashLoopBackOff resolved, zero downtime rollout verified.',
+    };
+
     const orderedSections = {
       section1_servers: serversList,
-      section2_maven: {
-        tool: 'Maven',
-        appName: 'monitoring',
-        server: 'vm01siva-mon (4.240.105.247)',
-        source: 'PuTTY SSH & Web App Console',
-        action: 'GitHub Clone & Maven Clean Package Build',
-        commands: 'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git\ncd monitoring && mvn clean package -DskipTests',
-        status: 'BUILD SUCCESS (Exit 0)',
-        details: 'Compiled 154 source classes, packaged jar/app artifact with 0 failures.',
-      },
-      section3_terraform: {
-        tool: 'Terraform',
-        projectName: 'azure-rg01-infrastructure',
-        server: 'vm01siva-mon (4.240.105.247)',
-        source: 'PuTTY SSH & Web App Console',
-        action: 'Terraform IaC Plan & Apply',
-        commands: 'terraform init\nterraform plan -out=tfplan\nterraform apply -auto-approve tfplan',
-        status: 'Apply Complete! (Exit 0)',
-        details: 'Resources: 2 added, 0 changed, 0 destroyed. State lock released.',
-      },
-      section4_ansible: {
-        tool: 'Ansible',
-        playbookName: 'site.yml',
-        server: 'vm01siva-mon & AWS web01 inventory',
-        source: 'PuTTY SSH & Web App Console',
-        action: 'Ansible Server Automation Playbook Deployment',
-        commands: 'ansible-playbook -i inventory.ini site.yml --limit vm01siva-mon',
-        status: 'PLAY RECAP: ok=6 changed=2 failed=0',
-        details: 'Host provisioning and service hardening playbook verified.',
-      },
-      section5_docker: {
-        tool: 'Docker',
-        imageName: 'node:20-alpine',
-        containerName: 'auth-microservice-prod, monitoring-app',
-        server: 'vm01siva-mon (4.240.105.247)',
-        source: 'PuTTY SSH & Web App Console',
-        action: 'Docker Image Pull & Container Restart',
-        commands: 'docker pull node:20-alpine\ndocker restart auth-microservice-prod\ndocker stats --no-stream',
-        status: 'Running (Exit 0)',
-        details: 'Container up 4 hours, Port 3000->3000, 0 restart loops, CPU: 1.2%, Mem: 142MB.',
-      },
-      section6_k8s: {
-        tool: 'Kubernetes',
-        clusterName: 'vm01siva-mon (k8s-master)',
-        namespace: 'production',
-        pods: 'monitoring-api-7b8f-x91, auth-worker-2j9k',
-        source: 'PuTTY SSH & Web App Console',
-        action: 'Kubernetes Pod Inspection & Deployment Rollout',
-        commands: 'kubectl get pods -n production -o wide\nkubectl rollout restart deployment/monitoring-app -n production',
-        status: '1/1 Ready, Running (Exit 0)',
-        details: 'All pods healthy, CrashLoopBackOff resolved, zero downtime rollout verified.',
-      },
+      section2_maven,
+      maven: section2_maven,
+      section3_terraform,
+      terraform: section3_terraform,
+      section4_ansible,
+      ansible: section4_ansible,
+      section5_docker,
+      docker: section5_docker,
+      section6_k8s,
+      k8s: section6_k8s,
     };
 
     // Build complete unified command histories (Docker, K8s, Nginx, Maven, Terraform, Ansible, System OS)
