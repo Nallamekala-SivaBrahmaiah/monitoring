@@ -701,8 +701,13 @@ export function DevOpsProofTab() {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
           setCloudAccounts(data);
-          const first = data[0];
-          setSelectedCloudAccount(first.accountName || first.subscriptionId || first.accountId || 'Cloud Account');
+          const az = data.find((a: any) => a.provider === 'azure');
+          if (az) {
+            setSelectedCloudAccount(`${az.accountName} (${az.subscriptionId || az.accountId})`);
+          } else {
+            const first = data[0];
+            setSelectedCloudAccount(first.accountName || first.subscriptionId || first.accountId || 'Cloud Account');
+          }
         }
       }
     } catch {}
@@ -857,7 +862,15 @@ export function DevOpsProofTab() {
 
     setSelectedServerId(srv.id);
     setTargetServer(`${srv.name} (${srv.publicIp || srv.host}) • ${srv.region}`);
-    setSelectedCloudProvider(srv.cloudProvider === 'aws' ? 'aws' : 'azure');
+    const isAws = srv.cloudProvider === 'aws';
+    setSelectedCloudProvider(isAws ? 'aws' : 'azure');
+    if (isAws) {
+      const awsAcc = cloudAccounts.find((a) => a.provider === 'aws');
+      setSelectedCloudAccount(awsAcc ? `${awsAcc.accountName} (${awsAcc.accountId})` : 'Proof of Concept (112859066600)');
+    } else {
+      const azAcc = cloudAccounts.find((a) => a.provider === 'azure');
+      setSelectedCloudAccount(azAcc ? `${azAcc.accountName} (${azAcc.subscriptionId || azAcc.accountId})` : 'Azure for Students (318988bd-2179-4733-86ae-b13603b4a1e7)');
+    }
     if (srv.activeSession) {
       setSessionSource(`PuTTY SSH: ${srv.activeSession}`);
     } else {
@@ -1264,9 +1277,20 @@ export function DevOpsProofTab() {
                 </span>
               </div>
               <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                <span>{srv.publicIp || srv.host}</span>
-                <span className={srv.cloudProvider === 'azure' ? 'text-[#60A5FA]' : 'text-[#F59E0B]'}>
-                  {srv.cloudProvider?.toUpperCase()}
+                <span className="truncate max-w-[110px]">{srv.publicIp || srv.host}</span>
+                <span
+                  className={`inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded text-[9px] ${
+                    srv.cloudProvider === 'azure'
+                      ? 'bg-[#0078D4]/20 text-[#60A5FA] border border-[#0078D4]/40'
+                      : 'bg-[#FF9900]/20 text-[#F59E0B] border border-[#FF9900]/40'
+                  }`}
+                >
+                  {srv.cloudProvider === 'azure' ? (
+                    <AzureLogo className="w-2.5 h-2.5" />
+                  ) : (
+                    <AwsLogo className="w-2.5 h-2.5" />
+                  )}
+                  <span>{srv.cloudProvider?.toUpperCase()}</span>
                 </span>
               </div>
               {srv.activeSession && (
@@ -1990,7 +2014,8 @@ export function DevOpsProofTab() {
               type="button"
               onClick={() => {
                 setSelectedCloudProvider('azure');
-                setSelectedCloudAccount('Azure Production Subscription (Visual Studio Enterprise)');
+                const azAcc = cloudAccounts.find((a) => a.provider === 'azure');
+                setSelectedCloudAccount(azAcc ? `${azAcc.accountName} (${azAcc.subscriptionId || azAcc.accountId})` : 'Azure for Students (318988bd-2179-4733-86ae-b13603b4a1e7)');
                 setTargetServer('vm01siva-mon (4.240.105.247) • Central India');
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
@@ -2007,8 +2032,9 @@ export function DevOpsProofTab() {
               type="button"
               onClick={() => {
                 setSelectedCloudProvider('aws');
-                setSelectedCloudAccount('AWS Production Account (590184029281 - VPC)');
-                setTargetServer('i-09ab12cd34ef56789 (prod-api-cluster) • us-east-1');
+                const awsAcc = cloudAccounts.find((a) => a.provider === 'aws');
+                setSelectedCloudAccount(awsAcc ? `${awsAcc.accountName} (${awsAcc.accountId})` : 'Proof of Concept (112859066600)');
+                setTargetServer('web01 (15.135.74.255) • ap-southeast-2');
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
                 selectedCloudProvider === 'aws'
@@ -2024,8 +2050,8 @@ export function DevOpsProofTab() {
               type="button"
               onClick={() => {
                 setSelectedCloudProvider('hybrid');
-                setSelectedCloudAccount('On-Premise / Hybrid Infrastructure');
-                setTargetServer('srv-onprem-dc1 (192.168.1.100)');
+                setSelectedCloudAccount('Multi-Cloud Infrastructure (Azure & AWS Fleet)');
+                setTargetServer('All Multi-Cloud Servers (Azure & AWS Fleet)');
               }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
                 selectedCloudProvider === 'hybrid'
@@ -2033,7 +2059,7 @@ export function DevOpsProofTab() {
                   : 'bg-[#090E1A] text-slate-400 border-[#1E293B] hover:text-white'
               }`}
             >
-              <span>Hybrid / On-Prem</span>
+              <span>Hybrid / Multi-Cloud</span>
             </button>
           </div>
         </div>
@@ -2057,11 +2083,19 @@ export function DevOpsProofTab() {
             <label className="text-[10px] font-mono uppercase text-slate-400">Target Host Server / Node Name &amp; IP</label>
             <input
               type="text"
+              list="servers-list-options"
               value={targetServer}
               onChange={(e) => setTargetServer(e.target.value)}
               className="w-full bg-[#090E1A] border border-[#1E293B] rounded-xl p-2.5 text-white font-mono focus:outline-none focus:border-blue-500"
               placeholder="e.g. vm01siva-mon (4.240.105.247)"
             />
+            <datalist id="servers-list-options">
+              {serversList.map((s) => (
+                <option key={s.id} value={`${s.name} (${s.publicIp || s.host}) • ${s.region}`}>
+                  {s.cloudProvider?.toUpperCase()} - {s.name} ({s.status})
+                </option>
+              ))}
+            </datalist>
           </div>
         </div>
       </div>

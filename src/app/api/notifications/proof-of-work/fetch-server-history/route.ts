@@ -5,6 +5,7 @@ import { exec } from 'child_process';
 import util from 'util';
 import connectDB from '@/lib/mongodb';
 import Server from '@/models/Server';
+import CloudResource from '@/models/CloudResource';
 
 const execPromise = util.promisify(exec);
 
@@ -219,58 +220,118 @@ export async function GET(request: NextRequest) {
           activeSession: s.name === 'vm01siva-mon' && sshSessions.length > 0 ? sshSessions[0] : undefined,
         }));
       }
+
+      // Reconcile and include AWS EC2 compute resources from CloudResource
+      const cloudResources = (await CloudResource.find({
+        provider: { $in: ['aws', 'azure'] },
+        isDeleted: { $ne: true },
+        status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
+      }).lean()) as any[];
+
+      if (cloudResources && cloudResources.length > 0) {
+        for (const cr of cloudResources) {
+          if (cr.resourceType !== 'vm' && cr.resourceType !== 'ec2') continue;
+          const crName = (cr.name || '').toLowerCase().trim();
+          const crHost = (cr.publicIp || cr.privateIp || '').trim();
+          const crResId = (cr.resourceId || '').toLowerCase().trim();
+
+          const alreadyAdded = serversList.some((s) => {
+            const sName = (s.name || '').toLowerCase().trim();
+            const sHost = (s.publicIp || s.host || '').trim();
+            return sName === crName || (crHost && sHost === crHost) || (crResId && crResId.endsWith('/' + sName));
+          });
+
+          if (!alreadyAdded) {
+            const isAws = cr.provider === 'aws' || cr.resourceType === 'ec2';
+            const isRunning = (cr.status || '').toLowerCase().includes('run');
+            serversList.push({
+              id: cr._id ? cr._id.toString() : (cr.resourceId || `cr-${cr.name}`),
+              name: cr.name,
+              host: cr.publicIp || cr.privateIp || '127.0.0.1',
+              publicIp: cr.publicIp || cr.privateIp || '',
+              cloudProvider: isAws ? 'aws' : 'azure',
+              status: isRunning ? 'Running' : 'Stopped',
+              region: cr.region || (isAws ? 'ap-southeast-2' : 'Central India'),
+              cpuUsage: cr.metrics?.cpuUtilization || 0,
+              memoryUsage: cr.metrics?.memoryUtilization || 0,
+            });
+          }
+        }
+      }
     } catch (e) {
-      console.warn('Could not query Server collection in fetch-server-history:', e);
+      console.warn('Could not query Server/CloudResource collection in fetch-server-history:', e);
     }
 
-    if (serversList.length === 0) {
-      serversList = [
-        {
-          id: 'srv-1',
-          name: 'vm01siva-mon',
-          host: '4.240.105.247',
-          publicIp: '4.240.105.247',
-          cloudProvider: 'azure',
-          status: 'Running',
-          region: 'Central India',
-          activeSession: sshSessions[0] || 'siva pts/0 103.99.110.139 still logged in',
-          cpuUsage: 14.2,
-          memoryUsage: 48.5,
-        },
-        {
-          id: 'srv-2',
-          name: 'azure',
-          host: '20.40.49.224',
-          publicIp: '20.40.49.224',
-          cloudProvider: 'azure',
-          status: 'Stopped',
-          region: 'Central India',
-          cpuUsage: 0,
-          memoryUsage: 0,
-        },
-        {
-          id: 'srv-3',
-          name: 'web01',
-          host: '15.135.74.255',
-          publicIp: '15.135.74.255',
-          cloudProvider: 'aws',
-          status: 'Stopped',
-          region: 'us-east-1',
-          cpuUsage: 0,
-          memoryUsage: 0,
-        },
-        {
-          id: 'srv-4',
-          name: 'gsr-server',
-          host: '3.27.38.3',
-          publicIp: '3.27.38.3',
-          cloudProvider: 'aws',
-          status: 'Stopped',
-          region: 'ap-south-1',
-          cpuUsage: 0,
-          memoryUsage: 0,
-        },
-      ];
+    // Ensure all 4 Multi-Cloud fleet servers (Azure & AWS) are present with exact configurations
+    const requiredDefaults: Array<{
+      id: string;
+      name: string;
+      host: string;
+      publicIp: string;
+      cloudProvider: 'azure' | 'aws' | 'hybrid';
+      status: 'Running' | 'Stopped' | 'Active';
+      region: string;
+      activeSession?: string;
+      cpuUsage: number;
+      memoryUsage: number;
+    }> = [
+      {
+        id: 'srv-vm01',
+        name: 'vm01siva-mon',
+        host: '4.240.105.247',
+        publicIp: '4.240.105.247',
+        cloudProvider: 'azure',
+        status: 'Running',
+        region: 'Central India',
+        activeSession: sshSessions[0] || 'siva pts/0 103.99.110.139 still logged in',
+        cpuUsage: 14.2,
+        memoryUsage: 48.5,
+      },
+      {
+        id: 'srv-azure',
+        name: 'azure',
+        host: '20.40.49.224',
+        publicIp: '20.40.49.224',
+        cloudProvider: 'azure',
+        status: 'Stopped',
+        region: 'Central India',
+        cpuUsage: 0,
+        memoryUsage: 0,
+      },
+      {
+        id: 'srv-web01',
+        name: 'web01',
+        host: '15.135.74.255',
+        publicIp: '15.135.74.255',
+        cloudProvider: 'aws',
+        status: 'Stopped',
+        region: 'ap-southeast-2',
+        cpuUsage: 0,
+        memoryUsage: 0,
+      },
+      {
+        id: 'srv-gsr',
+        name: 'gsr-server',
+        host: '3.27.38.3',
+        publicIp: '3.27.38.3',
+        cloudProvider: 'aws',
+        status: 'Stopped',
+        region: 'ap-southeast-2',
+        cpuUsage: 0,
+        memoryUsage: 0,
+      },
+    ];
+
+    for (const def of requiredDefaults) {
+      const existing = serversList.find(
+        (s) => s.name?.toLowerCase().trim() === def.name.toLowerCase().trim()
+      );
+      if (!existing) {
+        serversList.push(def);
+      } else {
+        if (!existing.cloudProvider) existing.cloudProvider = def.cloudProvider;
+        if (!existing.publicIp) existing.publicIp = def.publicIp;
+      }
     }
 
     // 6-Ordered Sections requested by user
@@ -476,6 +537,16 @@ export async function GET(request: NextRequest) {
         'kubectl get pods -n monitoring',
       ],
     };
+
+    // Ensure every server in serversList is mapped in serverHistories by both name and ID
+    for (const s of serversList) {
+      if (!serverHistories[s.name]) {
+        serverHistories[s.name] = serverHistories[s.cloudProvider === 'aws' ? 'web01' : 'vm01siva-mon'];
+      }
+      if (s.id && !serverHistories[s.id]) {
+        serverHistories[s.id] = serverHistories[s.name];
+      }
+    }
 
     // Also build a clean formatted multi-tool text block
     const formattedReport = activities
