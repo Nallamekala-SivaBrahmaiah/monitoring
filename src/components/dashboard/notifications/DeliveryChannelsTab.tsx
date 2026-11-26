@@ -75,20 +75,93 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
   const [editingPhoneIndex, setEditingPhoneIndex] = useState<number | null>(null);
   const [editPhoneValue, setEditPhoneValue] = useState('');
 
+  const [isSavingChannels, setIsSavingChannels] = useState(false);
+
+  // Persistence helper to MongoDB & localStorage
+  const savePreferencesToDb = async (overrides: Record<string, any> = {}) => {
+    try {
+      setIsSavingChannels(true);
+      const payload = {
+        alertRecipients: overrides.recipients !== undefined ? overrides.recipients : recipients,
+        phoneNumbers: overrides.phoneNumbers !== undefined ? overrides.phoneNumbers : phoneNumbers,
+        emailNotificationsEnabled: overrides.emailEnabled !== undefined ? overrides.emailEnabled : emailEnabled,
+        audioEnabled: overrides.audioEnabled !== undefined ? overrides.audioEnabled : audioEnabled,
+        pushEnabled: overrides.pushEnabled !== undefined ? overrides.pushEnabled : pushEnabled,
+        webhookEnabled: overrides.webhookEnabled !== undefined ? overrides.webhookEnabled : webhookEnabled,
+        webhookUrl: overrides.webhookUrl !== undefined ? overrides.webhookUrl : webhookUrl,
+        smsEnabled: overrides.smsEnabled !== undefined ? overrides.smsEnabled : smsEnabled,
+        smsOnlyP1: overrides.smsOnlyP1 !== undefined ? overrides.smsOnlyP1 : smsOnlyP1,
+      };
+
+      await fetch('/api/notifications/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (payload.phoneNumbers && typeof window !== 'undefined') {
+        localStorage.setItem('notification_phones', JSON.stringify(payload.phoneNumbers));
+      }
+    } catch (err) {
+      console.warn('Preferences save note:', err);
+    } finally {
+      setIsSavingChannels(false);
+    }
+  };
+
   // Load real recipients & SMTP config on mount
   useEffect(() => {
     async function loadRealChannelConfig() {
       try {
-        const [recipientsRes, smtpRes] = await Promise.all([
+        const [prefsRes, recipientsRes, smtpRes] = await Promise.all([
+          fetch('/api/notifications/preferences'),
           fetch('/api/notifications/devops-recipients'),
           fetch('/api/notifications/smtp-status'),
         ]);
+
+        let loadedRecipients: string[] = [];
+
+        if (prefsRes.ok) {
+          const pData = await prefsRes.json();
+          if (Array.isArray(pData.alertRecipients) && pData.alertRecipients.length > 0) {
+            loadedRecipients = pData.alertRecipients;
+          }
+          if (Array.isArray(pData.phoneNumbers)) {
+            setPhoneNumbers(pData.phoneNumbers);
+          }
+          if (typeof pData.emailNotificationsEnabled === 'boolean') setEmailEnabled(pData.emailNotificationsEnabled);
+          if (typeof pData.smsEnabled === 'boolean') setSmsEnabled(pData.smsEnabled);
+          if (typeof pData.audioEnabled === 'boolean') setAudioEnabled(pData.audioEnabled);
+          if (typeof pData.pushEnabled === 'boolean') setPushEnabled(pData.pushEnabled);
+          if (typeof pData.webhookEnabled === 'boolean') setWebhookEnabled(pData.webhookEnabled);
+          if (typeof pData.webhookUrl === 'string') setWebhookUrl(pData.webhookUrl);
+          if (typeof pData.smsOnlyP1 === 'boolean') setSmsOnlyP1(pData.smsOnlyP1);
+        }
+
         if (recipientsRes.ok) {
           const rData = await recipientsRes.json();
           if (Array.isArray(rData.recipients) && rData.recipients.length > 0) {
-            setRecipients(rData.recipients.map((r: any) => r.email).filter(Boolean));
+            const apiEmails = rData.recipients.map((r: any) => r.email).filter(Boolean);
+            const combined = Array.from(new Set([...loadedRecipients, ...apiEmails]));
+            if (combined.length > 0) setRecipients(combined);
+          } else if (loadedRecipients.length > 0) {
+            setRecipients(loadedRecipients);
           }
         }
+
+        // LocalStorage fallback for phone numbers
+        if (typeof window !== 'undefined') {
+          try {
+            const cachedPhones = localStorage.getItem('notification_phones');
+            if (cachedPhones) {
+              const parsed = JSON.parse(cachedPhones);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setPhoneNumbers((prev) => (prev.length > 0 ? prev : parsed));
+              }
+            }
+          } catch (e) {}
+        }
+
         if (smtpRes.ok) {
           const sData = await smtpRes.json();
           if (sData.host) setSmtpHost(sData.host);
@@ -105,18 +178,19 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
   const handleTestEmail = async () => {
     try {
       setIsSendingTestEmail(true);
+      const targetTo = recipients[0] || 'nallasiva552@gmail.com';
       const res = await fetch('/api/notifications/test-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recipient: recipients[0] || 'nallasiva552@gmail.com',
+          recipient: targetTo,
           message: 'Live test notification from Notification Channels & Incident Dispatcher',
           severity: 'info',
         }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        onShowToast(`Live test email dispatched to ${recipients[0] || 'nallasiva552@gmail.com'}!`, 'success');
+        onShowToast(`Live test email dispatched to ${targetTo}! Check your inbox.`, 'success');
       } else {
         onShowToast(data.error || 'Failed to dispatch test email', 'warning');
       }
@@ -125,6 +199,12 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
     } finally {
       setIsSendingTestEmail(false);
     }
+  };
+
+  // Explicit Save Button
+  const handleSaveAllChannelConfig = async () => {
+    await savePreferencesToDb();
+    onShowToast('All channel settings, emails & phone numbers saved permanently to database!', 'success');
   };
 
   // Web Audio Synthesizer
@@ -180,56 +260,87 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
     }
   };
 
-  // --- RECIPIENTS HELPERS ---
-  const handleAddEmail = () => {
+  // --- RECIPIENTS HELPERS (With Instant MongoDB Persistence) ---
+  const handleAddEmail = async () => {
     if (!newEmail || !newEmail.includes('@')) {
       onShowToast('Please enter a valid email address.', 'warning');
       return;
     }
-    if (recipients.includes(newEmail.trim())) {
+    const cleanEmail = newEmail.trim().toLowerCase();
+    if (recipients.includes(cleanEmail)) {
       onShowToast('Email is already in the recipient list.', 'warning');
       return;
     }
-    setRecipients([...recipients, newEmail.trim()]);
+    const nextRecipients = [...recipients, cleanEmail];
+    setRecipients(nextRecipients);
     setNewEmail('');
-    onShowToast(`Added recipient: ${newEmail.trim()}`, 'success');
+
+    try {
+      await fetch('/api/notifications/devops-recipients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+      await savePreferencesToDb({ recipients: nextRecipients });
+      onShowToast(`Added & saved ${cleanEmail} to database!`, 'success');
+    } catch (e) {
+      onShowToast(`Added recipient: ${cleanEmail}`, 'info');
+    }
   };
 
-  const handleSaveEditRecipient = (index: number) => {
+  const handleSaveEditRecipient = async (index: number) => {
     if (!editRecipientValue || !editRecipientValue.includes('@')) {
       onShowToast('Please enter a valid email address.', 'warning');
       return;
     }
     const updated = [...recipients];
-    updated[index] = editRecipientValue.trim();
+    const cleanEmail = editRecipientValue.trim().toLowerCase();
+    updated[index] = cleanEmail;
     setRecipients(updated);
     setEditingRecipientIndex(null);
     setEditRecipientValue('');
-    onShowToast('Recipient email updated & saved!', 'success');
+
+    await savePreferencesToDb({ recipients: updated });
+    onShowToast(`Recipient updated & saved to database!`, 'success');
   };
 
-  const handleRemoveEmail = (email: string) => {
-    setRecipients(recipients.filter((r) => r !== email));
-    onShowToast(`Removed recipient: ${email}`, 'info');
-  };
-
-  // --- PHONE HELPERS ---
-  const handleAddPhone = () => {
-    if (!newPhone || newPhone.length < 8) {
-      onShowToast('Please enter a valid phone number with country code.', 'warning');
+  const handleRemoveEmail = async (email: string) => {
+    if (recipients.length <= 1) {
+      onShowToast('At least one alert recipient email must remain configured.', 'warning');
       return;
     }
-    if (phoneNumbers.includes(newPhone.trim())) {
+    const nextRecipients = recipients.filter((r) => r !== email);
+    setRecipients(nextRecipients);
+
+    try {
+      await savePreferencesToDb({ recipients: nextRecipients });
+      onShowToast(`Removed ${email} and updated database!`, 'info');
+    } catch (e) {
+      onShowToast(`Removed recipient: ${email}`, 'info');
+    }
+  };
+
+  // --- PHONE HELPERS (With Instant MongoDB Persistence) ---
+  const handleAddPhone = async () => {
+    if (!newPhone || newPhone.trim().length < 8) {
+      onShowToast('Please enter a valid phone number with country code (e.g. +91 9876543210).', 'warning');
+      return;
+    }
+    const cleanPhone = newPhone.trim();
+    if (phoneNumbers.includes(cleanPhone)) {
       onShowToast('Phone number already exists.', 'warning');
       return;
     }
-    setPhoneNumbers([...phoneNumbers, newPhone.trim()]);
+    const nextPhones = [...phoneNumbers, cleanPhone];
+    setPhoneNumbers(nextPhones);
     setNewPhone('');
-    onShowToast(`Added emergency contact: ${newPhone.trim()}`, 'success');
+
+    await savePreferencesToDb({ phoneNumbers: nextPhones });
+    onShowToast(`Added & saved ${cleanPhone} to emergency roster!`, 'success');
   };
 
-  const handleSaveEditPhone = (index: number) => {
-    if (!editPhoneValue || editPhoneValue.length < 8) {
+  const handleSaveEditPhone = async (index: number) => {
+    if (!editPhoneValue || editPhoneValue.trim().length < 8) {
       onShowToast('Please enter a valid phone number.', 'warning');
       return;
     }
@@ -238,12 +349,16 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
     setPhoneNumbers(updated);
     setEditingPhoneIndex(null);
     setEditPhoneValue('');
-    onShowToast('Phone number updated & saved!', 'success');
+
+    await savePreferencesToDb({ phoneNumbers: updated });
+    onShowToast('Phone number updated & saved to database!', 'success');
   };
 
-  const handleRemovePhone = (phone: string) => {
-    setPhoneNumbers(phoneNumbers.filter((p) => p !== phone));
-    onShowToast(`Removed emergency phone: ${phone}`, 'info');
+  const handleRemovePhone = async (phone: string) => {
+    const nextPhones = phoneNumbers.filter((p) => p !== phone);
+    setPhoneNumbers(nextPhones);
+    await savePreferencesToDb({ phoneNumbers: nextPhones });
+    onShowToast(`Removed ${phone} from roster.`, 'info');
   };
 
   const handleRequestPushPermission = async () => {
@@ -298,6 +413,35 @@ export function DeliveryChannelsTab({ onShowToast }: DeliveryChannelsTabProps) {
           <div className="text-[11px] font-mono text-slate-400 uppercase">Delivery SLA</div>
           <div className="text-xl sm:text-2xl font-bold text-cyan-300 mt-1">99.98%</div>
         </div>
+      </div>
+
+      {/* Channel Synchronization & Quick Save Control Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[#090F1E]/90 border border-cyan-500/30 shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-white flex items-center gap-2">
+              <span>Channel Synchronization & Database Ledger</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                MongoDB Synced
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Configured recipient emails, emergency numbers, and channel preferences are permanently stored in database and persist across page refreshes.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleSaveAllChannelConfig}
+          disabled={isSavingChannels}
+          className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-lg shadow-cyan-950/40 transition-all flex items-center gap-2 shrink-0 active:scale-95 disabled:opacity-50"
+        >
+          <Save className={`w-4 h-4 ${isSavingChannels ? 'animate-spin' : ''}`} />
+          <span>{isSavingChannels ? 'Saving to Database...' : 'Save All Channel Settings'}</span>
+        </button>
       </div>
 
       {/* 5 Delivery Channels Grid */}

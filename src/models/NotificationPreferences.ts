@@ -5,6 +5,13 @@ export interface INotificationPreferences extends Document {
   emailNotificationsEnabled: boolean;
   inAppNotificationsEnabled: boolean;
   alertRecipients: string[];
+  phoneNumbers: string[];
+  smsEnabled: boolean;
+  audioEnabled: boolean;
+  pushEnabled: boolean;
+  webhookEnabled: boolean;
+  webhookUrl: string;
+  smsOnlyP1: boolean;
   notifyOnResolved: boolean;
   reminderIntervalMinutes: number;
   minSeverity: 'critical' | 'warning' | 'info';
@@ -31,6 +38,34 @@ const NotificationPreferencesSchema: Schema<INotificationPreferences> = new Sche
     alertRecipients: {
       type: [String],
       default: ['nallasiva552@gmail.com'],
+    },
+    phoneNumbers: {
+      type: [String],
+      default: [],
+    },
+    smsEnabled: {
+      type: Boolean,
+      default: true,
+    },
+    audioEnabled: {
+      type: Boolean,
+      default: true,
+    },
+    pushEnabled: {
+      type: Boolean,
+      default: true,
+    },
+    webhookEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    webhookUrl: {
+      type: String,
+      default: '',
+    },
+    smsOnlyP1: {
+      type: Boolean,
+      default: true,
     },
     notifyOnResolved: {
       type: Boolean,

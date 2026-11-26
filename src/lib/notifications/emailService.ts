@@ -215,12 +215,8 @@ export async function sendAlertEmail(
   payload: EmailAlertPayload,
   recipients?: string[]
 ): Promise<EmailResult> {
-  if (
-    process.env.ENABLE_EMAIL_ALERTS === 'false' ||
-    process.env.DISABLE_EMAIL_NOTIFICATIONS === 'true' ||
-    process.env.DISABLE_DEPLOYMENT_EMAILS === 'true'
-  ) {
-    console.log('[EmailService] 🔕 Email sending is disabled by configuration.');
+  if (process.env.ENABLE_EMAIL_ALERTS === 'false') {
+    console.log('[EmailService] 🔕 Email sending is disabled by configuration (ENABLE_EMAIL_ALERTS=false).');
     return {
       success: false,
       error: 'Email sending is disabled by configuration (ENABLE_EMAIL_ALERTS=false).',

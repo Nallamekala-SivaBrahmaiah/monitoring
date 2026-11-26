@@ -130,9 +130,10 @@ export async function updateAlertThresholds(
  * Retrieve current notification preferences (Email & In-App)
  */
 export async function getNotificationPreferences() {
-  const isEmailDisabled =
-    process.env.ENABLE_EMAIL_ALERTS === 'false' ||
-    process.env.DISABLE_EMAIL_NOTIFICATIONS === 'true';
+  const isEmailDisabled = process.env.ENABLE_EMAIL_ALERTS === 'false';
+
+  const devOpsRecipients = await getEnabledDevOpsRecipients();
+  const effectiveRecipients = devOpsRecipients.length > 0 ? devOpsRecipients : ['nallasiva552@gmail.com'];
 
   if (isEmailDisabled) {
     return {
@@ -141,20 +142,22 @@ export async function getNotificationPreferences() {
       alertRecipients: [],
       notifyOnResolved: false,
       reminderIntervalMinutes: 60,
-      minSeverity: 'warning',
+      minSeverity: 'warning' as const,
     };
   }
-
-  const devOpsRecipients = await getEnabledDevOpsRecipients();
 
   try {
     await connectToDatabase();
     const prefs = await NotificationPreferences.findOne({ userId: 'admin' }).lean();
     if (prefs) {
+      const dbRecipients = Array.isArray(prefs.alertRecipients) && prefs.alertRecipients.length > 0
+        ? prefs.alertRecipients
+        : effectiveRecipients;
+
       return {
         emailNotificationsEnabled: prefs.emailNotificationsEnabled !== false,
         inAppNotificationsEnabled: prefs.inAppNotificationsEnabled !== false,
-        alertRecipients: devOpsRecipients,
+        alertRecipients: dbRecipients,
         notifyOnResolved: prefs.notifyOnResolved !== false,
         reminderIntervalMinutes: prefs.reminderIntervalMinutes || 60,
         minSeverity: prefs.minSeverity || 'warning',
@@ -167,7 +170,7 @@ export async function getNotificationPreferences() {
   return {
     emailNotificationsEnabled: true,
     inAppNotificationsEnabled: true,
-    alertRecipients: devOpsRecipients,
+    alertRecipients: effectiveRecipients,
     notifyOnResolved: true,
     reminderIntervalMinutes: 60,
     minSeverity: 'warning' as const,
