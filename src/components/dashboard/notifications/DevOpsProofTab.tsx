@@ -293,6 +293,25 @@ export function classifyToolForCommand(cmd: string): { tool: string; icon: strin
   return { tool: 'Server OS', icon: '🖥️', color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/30' };
 }
 
+const DEFAULT_PROOF_RECIPIENTS: ProofRecipient[] = [
+  {
+    id: 'recip-siva-1',
+    email: 'nallasiva552@gmail.com',
+    name: 'Siva (DevOps Lead)',
+    role: 'Personal Audit Trail',
+    enabled: true,
+    addedOn: new Date().toISOString(),
+  },
+  {
+    id: 'recip-cto-2',
+    email: 'nallamekalasivabrahmaiah7@gmail.com',
+    name: 'Executive / CTO Desk',
+    role: 'CTO',
+    enabled: true,
+    addedOn: new Date().toISOString(),
+  },
+];
+
 export function DevOpsProofTab() {
   // Live ticking clock state
   const [currentTime, setCurrentTime] = useState<{ ist: string; utc: string }>({
@@ -346,9 +365,9 @@ export function DevOpsProofTab() {
     return `${String(h).padStart(2, '0')}:${minute}`;
   };
 
-  // Recipient state
-  const [recipients, setRecipients] = useState<ProofRecipient[]>([]);
-  const [loadingRecipients, setLoadingRecipients] = useState(true);
+  // Recipient state - initialize with default real company emails to prevent layout flicker
+  const [recipients, setRecipients] = useState<ProofRecipient[]>(DEFAULT_PROOF_RECIPIENTS);
+  const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState('CTO');
@@ -696,7 +715,9 @@ export function DevOpsProofTab() {
       const res = await fetch('/api/notifications/proof-of-work/recipients', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
-        setRecipients(data.recipients || []);
+        if (Array.isArray(data.recipients) && data.recipients.length > 0) {
+          setRecipients(data.recipients);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -740,7 +761,7 @@ export function DevOpsProofTab() {
   }, []);
 
   // LIVE SERVER PUTTY / SSH COMMANDS AUTO-FETCHER
-  const handleFetchServerHistory = useCallback(async () => {
+  const handleFetchServerHistory = useCallback(async (isManual = false) => {
     setFetchingServerHistory(true);
     try {
       const res = await fetch('/api/notifications/proof-of-work/fetch-server-history?limit=50', {
@@ -766,7 +787,8 @@ export function DevOpsProofTab() {
         if (data.serverHistories) {
           setServerHistories((prev) => ({ ...prev, ...data.serverHistories }));
           // If a server is selected, update its commands
-          const currentServer = serversList.find((s) => s.id === selectedServerId);
+          const serverPool = Array.isArray(data.servers) && data.servers.length > 0 ? data.servers : [];
+          const currentServer = serverPool.find((s: any) => s.id === selectedServerId);
           const serverKey = selectedServerId === 'all' ? 'all' : (currentServer ? currentServer.name : 'vm01siva-mon');
           const updatedCmds = data.serverHistories[serverKey] || data.serverHistories['vm01siva-mon'];
           if (updatedCmds && updatedCmds.length > 0) {
@@ -794,24 +816,29 @@ export function DevOpsProofTab() {
           setSessionSource(`PuTTY SSH: ${data.sshSessions[0]}`);
         }
         setResultOutcome('All tool commands completed and verified via server terminal with status 0.');
-        showToast(`Auto-fetched live commands directly from server ~/.bash_history!`, 'success');
-      } else {
+        if (isManual) {
+          showToast(`Auto-fetched live commands directly from server ~/.bash_history!`, 'success');
+        }
+      } else if (isManual) {
         showToast(data.error || 'Failed to fetch server bash history', 'error');
       }
     } catch (err: any) {
-      showToast(err.message, 'error');
+      if (isManual) {
+        showToast(err.message, 'error');
+      }
     } finally {
       setFetchingServerHistory(false);
     }
-  }, [selectedServerId, serversList]);
+  }, [selectedServerId]);
 
   useEffect(() => {
     fetchRecipients();
     fetchConfig();
     fetchLogs();
     fetchCloudAccounts();
-    handleFetchServerHistory();
-  }, [fetchRecipients, fetchConfig, fetchLogs, fetchCloudAccounts, handleFetchServerHistory]);
+    handleFetchServerHistory(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Handle Server Selection from Top Fleet Cards
   const handleSelectServer = (srv: ServerFleetItem | 'all') => {
@@ -1079,6 +1106,9 @@ export function DevOpsProofTab() {
       const data = await res.json();
       if (res.ok) {
         showToast(data.message || 'Proof of work audit email successfully dispatched!', 'success');
+        if (data.log) {
+          setAuditLogs((prev) => [data.log, ...prev.filter((l) => l.auditId !== data.log.auditId)]);
+        }
         fetchLogs();
       } else {
         showToast(data.error || 'Failed to dispatch proof email', 'error');
@@ -1428,7 +1458,7 @@ export function DevOpsProofTab() {
               {/* Auto-Sync PuTTY history */}
               <button
                 type="button"
-                onClick={handleFetchServerHistory}
+                onClick={() => handleFetchServerHistory(true)}
                 disabled={fetchingServerHistory}
                 className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-mono text-[11px] font-semibold flex items-center gap-1 transition-all"
                 title="Sync latest live commands from server ~/.bash_history"
@@ -1814,14 +1844,14 @@ export function DevOpsProofTab() {
                   </button>
                 )}
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                  {recipients.filter((r) => r.enabled).length} Active
+                  {recipients.filter((r) => r.enabled !== false).length} Active
                 </span>
               </div>
             </div>
 
             {/* Recipient List */}
             <div className="space-y-2 pt-3 max-h-[190px] overflow-y-auto pr-1">
-              {loadingRecipients ? (
+              {loadingRecipients && recipients.length === 0 ? (
                 <div className="text-center py-6 text-xs text-slate-500 font-mono">Loading recipients...</div>
               ) : recipients.length === 0 ? (
                 <div className="p-4 rounded-xl bg-[#090E1A] border border-dashed border-slate-700 text-center text-xs text-slate-400 space-y-1">
@@ -2067,7 +2097,7 @@ export function DevOpsProofTab() {
 
           <button
             type="button"
-            onClick={handleFetchServerHistory}
+            onClick={() => handleFetchServerHistory(true)}
             disabled={fetchingServerHistory}
             className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/30 shrink-0 transition-all active:scale-95 disabled:opacity-50"
           >
@@ -2590,7 +2620,7 @@ export function DevOpsProofTab() {
             <Info className="w-4 h-4 text-blue-400 shrink-0" />
             <span>
               Dispatches with clock stamp: <strong className="text-cyan-300 font-mono">{currentTime.ist}</strong> to{' '}
-              <strong className="text-white">{recipients.filter((r) => r.enabled).length} recipients</strong>.
+              <strong className="text-white">{recipients.filter((r) => r.enabled !== false).length} recipients</strong>.
             </span>
           </div>
 
@@ -2623,7 +2653,7 @@ export function DevOpsProofTab() {
         </div>
 
         <div className="space-y-2">
-          {loadingLogs ? (
+          {loadingLogs && auditLogs.length === 0 ? (
             <div className="text-center py-6 text-xs text-slate-500 font-mono">Loading audit logs...</div>
           ) : auditLogs.length === 0 ? (
             <div className="p-4 rounded-xl bg-[#090E1A] border border-slate-800 text-center text-xs text-slate-400">
