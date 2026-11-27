@@ -31,6 +31,10 @@ import {
   ChevronDown,
   Layers,
   Save,
+  Download,
+  FileDown,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import { useMonitoring } from '@/context/MonitoringContext';
 
@@ -169,6 +173,11 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
   // Dedicated server selection for targeted diagnosis
   const [selectedServer, setSelectedServer] = useState<{ id?: string; name?: string; host?: string; provider?: string } | null>(null);
 
+  // Speech-to-text voice recognition state
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [speechSupported, setSpeechSupported] = useState<boolean>(false);
+  const recognitionRef = useRef<any>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -176,6 +185,12 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
 
   useEffect(() => {
     setMounted(true);
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        setSpeechSupported(true);
+      }
+    }
     // Load saved model preference if available and valid
     try {
       const savedModel = localStorage.getItem('gemini_preferred_model');
@@ -642,6 +657,123 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
     setMessages([INITIAL_WELCOME_MESSAGE]);
   };
 
+  /**
+   * Toggle Speech-to-Text Voice Dictation
+   */
+  const toggleListening = () => {
+    if (!speechSupported) {
+      alert('Speech Recognition is not supported by your browser. Please use Google Chrome or Microsoft Edge.');
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-IN'; // Clean recognition for English & Telugu accents
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results?.[0]?.[0]?.transcript;
+        if (transcript) {
+          setInputPrompt((prev) => (prev ? `${prev.trim()} ${transcript}` : transcript));
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn('[Speech Recognition Error]:', event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+    } catch (err) {
+      console.warn('[Speech Recognition Start Error]:', err);
+      setIsListening(false);
+    }
+  };
+
+  /**
+   * Export Full Chat Session as formatted Markdown (.md)
+   */
+  const handleExportChatSession = () => {
+    const activeModelObj = AVAILABLE_MODELS.find((m) => m.id === selectedModel) || AVAILABLE_MODELS[0];
+    const serverIdentifier = selectedServer?.name || selectedServer?.host || 'Multi-Cloud Infrastructure Fleet';
+    const timestampStr = new Date().toLocaleString();
+
+    let md = `# Gemini AI DevOps Copilot - Incident & Troubleshooting Session\n\n`;
+    md += `> **Generated At:** ${timestampStr}\n`;
+    md += `> **Active AI Model Engine:** ${activeModelObj.name} (\`${activeModelObj.id}\`)\n`;
+    md += `> **Target Scope:** ${serverIdentifier}\n`;
+    md += `> **Total Messages:** ${messages.length}\n\n`;
+    md += `---\n\n`;
+
+    messages.forEach((msg) => {
+      const isUser = msg.role === 'user';
+      const roleTitle = isUser ? '👤 DevOps Engineer (User)' : `🤖 Gemini DevOps Copilot (${msg.model || activeModelObj.name})`;
+      md += `### ${roleTitle} - *${msg.timestamp}*\n\n`;
+
+      // Clean message content of action proposal blocks for clear reading
+      const cleaned = msg.text.replace(/```(?:json:action_proposal|json)\s*[\s\S]*?```/g, '').trim();
+      md += `${cleaned}\n\n`;
+
+      if (msg.actionProposal) {
+        md += `#### 🛡️ Remediation Action Proposal\n`;
+        md += `- **Title:** ${msg.actionProposal.title}\n`;
+        md += `- **Tool Affected:** ${msg.actionProposal.tool}\n`;
+        md += `- **Problem:** ${msg.actionProposal.problem}\n`;
+        if (msg.actionProposal.root_cause) {
+          md += `- **Root Cause:** ${msg.actionProposal.root_cause}\n`;
+        }
+        md += `- **Fix Command:**\n\`\`\`bash\n${msg.actionProposal.fix_command}\n\`\`\`\n`;
+        md += `- **Verify Command:**\n\`\`\`bash\n${msg.actionProposal.verify_command}\n\`\`\`\n`;
+        md += `- **Auto-Rollback Command:**\n\`\`\`bash\n${msg.actionProposal.rollback_command}\n\`\`\`\n`;
+        md += `- **Execution Status:** \`${(msg.actionStatus || 'pending').toUpperCase()}\`\n\n`;
+
+        if (msg.actionOutput) {
+          md += `**Fix Execution Output:**\n\`\`\`text\n${msg.actionOutput}\n\`\`\`\n\n`;
+        }
+        if (msg.verifyOutput) {
+          md += `**Verify Output:**\n\`\`\`text\n${msg.verifyOutput}\n\`\`\`\n\n`;
+        }
+        if (msg.rollbackOutput) {
+          md += `**Rollback Output:**\n\`\`\`text\n${msg.rollbackOutput}\n\`\`\`\n\n`;
+        }
+      }
+
+      md += `---\n\n`;
+    });
+
+    md += `*Exported by Gemini AI DevOps Copilot • MultiCloud Monitoring Platform*\n`;
+
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeDate = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    link.href = url;
+    link.download = `Gemini-DevOps-Session-${safeDate}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   if (!mounted || !effectiveIsOpen) return null;
 
   const currentModelObj = AVAILABLE_MODELS.find((m) => m.id === selectedModel) || AVAILABLE_MODELS[0];
@@ -905,6 +1037,17 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
                 )}
               </div>
 
+              {/* Export Full Chat Session as Markdown */}
+              <button
+                type="button"
+                onClick={handleExportChatSession}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-cyan-950/60 text-slate-300 hover:text-cyan-300 transition border border-slate-700/60 hover:border-cyan-500/50 cursor-pointer text-xs font-semibold shadow-sm"
+                title="Download Entire Chat Session as Markdown (.md)"
+              >
+                <Download className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="hidden sm:inline text-[11px] font-bold text-cyan-300">Export Chat</span>
+              </button>
+
               {/* Maximize / Restore Toggle */}
               <button
                 type="button"
@@ -1025,6 +1168,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
                       actionOutput={msg.actionOutput}
                       verifyOutput={msg.verifyOutput}
                       rollbackOutput={msg.rollbackOutput}
+                      targetServerName={selectedServer?.name || selectedServer?.host}
                       onExecute={(action, cmd) => handleExecuteAction(msg.id, msg.logId!, action, cmd)}
                       onModifyPrompt={(promptToEdit) => {
                         setInputPrompt(promptToEdit);
@@ -1136,15 +1280,47 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  disabled={!inputPrompt.trim() || isLoading}
-                  onClick={() => handleSendMessage()}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-bold text-xs transition shadow-md shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Send</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Voice Mic Input */}
+                  <button
+                    type="button"
+                    onClick={toggleListening}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition cursor-pointer shadow-sm ${
+                      isListening
+                        ? 'bg-rose-500/30 text-rose-300 border-rose-500 animate-pulse shadow-rose-500/30'
+                        : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 border-slate-700/60'
+                    }`}
+                    title={
+                      isListening
+                        ? 'Listening to voice... Click to stop'
+                        : speechSupported
+                        ? 'Voice Input (Mic) - Speak in English or Telugu'
+                        : 'Speech recognition requires Chrome or Edge'
+                    }
+                  >
+                    {isListening ? (
+                      <>
+                        <MicOff className="w-3.5 h-3.5 text-rose-400 animate-bounce" />
+                        <span className="text-[11px] font-bold text-rose-300">Listening...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-3.5 h-3.5 text-slate-300 group-hover:text-cyan-300" />
+                        <span className="hidden sm:inline text-[11px]">Voice</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!inputPrompt.trim() || isLoading}
+                    onClick={() => handleSendMessage()}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-bold text-xs transition shadow-md shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Send</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1166,6 +1342,7 @@ function ActionApprovalCard({
   actionOutput,
   verifyOutput,
   rollbackOutput,
+  targetServerName,
   onExecute,
   onModifyPrompt,
 }: {
@@ -1176,10 +1353,75 @@ function ActionApprovalCard({
   actionOutput?: string;
   verifyOutput?: string;
   rollbackOutput?: string;
+  targetServerName?: string;
   onExecute: (action: 'approve' | 'rollback' | 'reject', customCmd?: string) => void;
   onModifyPrompt: (promptToEdit: string) => void;
 }) {
   const [showTerminalLogs, setShowTerminalLogs] = useState(false);
+
+  // Export professional Markdown Root Cause Analysis (RCA) Incident Report
+  const handleExportRCA = () => {
+    const timestampStr = new Date().toLocaleString();
+    const serverName = targetServerName || 'Multi-Cloud Infrastructure Host';
+
+    let rca = `# DevOps Incident Root Cause Analysis (RCA) & Remediation Report\n\n`;
+    rca += `| Parameter | Value |\n`;
+    rca += `| :--- | :--- |\n`;
+    rca += `| **Incident Title** | ${proposal.title} |\n`;
+    rca += `| **Target Infrastructure Host** | ${serverName} |\n`;
+    rca += `| **Affected Component / Service** | ${proposal.tool.toUpperCase()} |\n`;
+    rca += `| **Remediation Status** | ${status.toUpperCase()} |\n`;
+    rca += `| **Audit Log Reference ID** | \`${logId}\` |\n`;
+    rca += `| **Report Timestamp** | ${timestampStr} |\n\n`;
+    rca += `---\n\n`;
+
+    rca += `## 1. Problem Statement\n`;
+    rca += `${proposal.problem}\n\n`;
+
+    if (proposal.root_cause) {
+      rca += `## 2. Technical Root Cause\n`;
+      rca += `${proposal.root_cause}\n\n`;
+    }
+
+    rca += `## 3. Remediation & Verification Plan\n`;
+    rca += `### Proposed Fix Command\n\`\`\`bash\n${proposal.fix_command}\n\`\`\`\n\n`;
+    rca += `### Health Verification Command\n\`\`\`bash\n${proposal.verify_command}\n\`\`\`\n\n`;
+    rca += `### Auto-Rollback Command\n\`\`\`bash\n${proposal.rollback_command}\n\`\`\`\n\n`;
+
+    rca += `## 4. Live Terminal Execution & Verification Logs\n`;
+    if (actionOutput) {
+      rca += `### Fix Execution Output\n\`\`\`text\n${actionOutput}\n\`\`\`\n\n`;
+    } else {
+      rca += `*No fix execution logs recorded yet (Current status: ${status}).*\n\n`;
+    }
+
+    if (verifyOutput) {
+      rca += `### Verification Output\n\`\`\`text\n${verifyOutput}\n\`\`\`\n\n`;
+    }
+
+    if (rollbackOutput) {
+      rca += `### Rollback Output\n\`\`\`text\n${rollbackOutput}\n\`\`\`\n\n`;
+    }
+
+    rca += `## 5. Security & Safety Compliance\n`;
+    rca += `- **Human-in-the-Loop Approval:** Mandated before modifying system state.\n`;
+    rca += `- **Verification Check:** Automatically executed post-remediation.\n`;
+    rca += `- **Rollback Readiness:** Verified rollback command cached for instant reversion.\n\n`;
+    rca += `---\n`;
+    rca += `*Generated by Gemini AI DevOps Auto-Remediation Engine • MultiCloud Monitoring Platform*\n`;
+
+    const blob = new Blob([rca], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeTool = proposal.tool.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeDate = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `RCA-${safeTool}-${safeDate}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   // Badge styling according to tool
   const getToolBadgeColor = (tool: string) => {
@@ -1194,16 +1436,28 @@ function ActionApprovalCard({
   return (
     <div className="mt-3 rounded-xl bg-[#060A16] border-2 border-cyan-500/40 overflow-hidden shadow-2xl">
       {/* Card Header */}
-      <div className="px-3.5 py-2.5 bg-gradient-to-r from-purple-950/40 via-cyan-950/40 to-blue-950/40 border-b border-cyan-500/30 flex items-center justify-between">
+      <div className="px-3.5 py-2.5 bg-gradient-to-r from-purple-950/40 via-cyan-950/40 to-blue-950/40 border-b border-cyan-500/30 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-amber-400" />
+          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
           <span className="font-extrabold text-white text-xs tracking-tight">
             Remediation Action Proposal
           </span>
         </div>
-        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getToolBadgeColor(proposal.tool)}`}>
-          {proposal.tool}
-        </span>
+        <div className="flex items-center gap-2">
+          {/* Export RCA Report Button */}
+          <button
+            type="button"
+            onClick={handleExportRCA}
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 hover:text-white border border-cyan-500/40 text-[10px] font-bold transition cursor-pointer shadow-sm shadow-cyan-500/10"
+            title="Download Incident RCA Report (Markdown)"
+          >
+            <FileDown className="w-3 h-3 text-cyan-300" />
+            <span>Export RCA</span>
+          </button>
+          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getToolBadgeColor(proposal.tool)}`}>
+            {proposal.tool}
+          </span>
+        </div>
       </div>
 
       {/* Card Body */}
