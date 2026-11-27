@@ -77,21 +77,21 @@ export interface GeminiDevOpsDrawerProps {
 
 const AVAILABLE_MODELS = [
   {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    shortName: 'Flash 2.5',
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    shortName: 'Flash 3.5',
     badge: 'Ultra Fast',
     icon: Zap,
     desc: 'Real-time telemetry & lowest latency',
     color: 'from-amber-400 to-yellow-500',
   },
   {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash',
-    shortName: 'Flash 2.0',
-    badge: 'Fast & Solid',
+    id: 'gemini-3.1-flash-lite',
+    name: 'Gemini 3.1 Flash-Lite',
+    shortName: 'Flash-Lite',
+    badge: 'Instant',
     icon: Sparkles,
-    desc: 'Balanced speed and DevOps reasoning',
+    desc: 'Lightweight & instant DevOps replies',
     color: 'from-cyan-400 to-blue-500',
   },
   {
@@ -102,6 +102,15 @@ const AVAILABLE_MODELS = [
     icon: Brain,
     desc: 'Deep multi-cloud root cause analysis',
     color: 'from-purple-400 to-indigo-500',
+  },
+  {
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    shortName: 'Flash 3.8',
+    badge: 'Next-Gen',
+    icon: Zap,
+    desc: 'Latest high-performance generation',
+    color: 'from-emerald-400 to-teal-500',
   },
 ];
 
@@ -149,7 +158,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
   const [showHistorySidebar, setShowHistorySidebar] = useState<boolean>(true);
 
   // Model selection state
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.5-flash');
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState<boolean>(false);
 
   // Chat Sessions state
@@ -167,13 +176,18 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
 
   useEffect(() => {
     setMounted(true);
-    // Load saved model preference if available
+    // Load saved model preference if available and valid
     try {
       const savedModel = localStorage.getItem('gemini_preferred_model');
       if (savedModel && AVAILABLE_MODELS.some((m) => m.id === savedModel)) {
         setSelectedModel(savedModel);
+      } else {
+        setSelectedModel('gemini-3.5-flash');
+        localStorage.setItem('gemini_preferred_model', 'gemini-3.5-flash');
       }
-    } catch {}
+    } catch {
+      setSelectedModel('gemini-3.5-flash');
+    }
   }, []);
 
   // Sync selectedServer when effectiveServer changes

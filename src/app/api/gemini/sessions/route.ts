@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       sessions: sessions.map((s: any) => ({
         id: s._id.toString(),
         title: s.title || 'DevOps Conversation',
-        model: s.aiModel || s.model || 'gemini-2.5-flash',
+        model: s.aiModel || s.model || 'gemini-3.5-flash',
         serverName: s.serverName,
         messageCount: Array.isArray(s.messages) ? s.messages.length : 0,
         messages: s.messages || [],
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     } else {
       sessionDoc = await AiChatSession.create({
         title: defaultTitle,
-        aiModel: model || 'gemini-2.5-flash',
+        aiModel: model || 'gemini-3.5-flash',
         serverName,
         messages,
       });
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       session: {
         id: sessionDoc._id.toString(),
         title: sessionDoc.title,
-        model: sessionDoc.aiModel || 'gemini-2.5-flash',
+        model: sessionDoc.aiModel || 'gemini-3.5-flash',
         serverName: sessionDoc.serverName,
         messageCount: sessionDoc.messages.length,
         messages: sessionDoc.messages,

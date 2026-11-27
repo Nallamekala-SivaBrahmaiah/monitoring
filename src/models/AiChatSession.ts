@@ -27,7 +27,7 @@ export interface IAiChatSession extends Document {
 const AiChatSessionSchema: Schema = new Schema(
   {
     title: { type: String, required: true },
-    aiModel: { type: String, default: 'gemini-2.5-flash' },
+    aiModel: { type: String, default: 'gemini-3.5-flash' },
     serverName: { type: String },
     messages: { type: Schema.Types.Mixed, default: [] },
   },

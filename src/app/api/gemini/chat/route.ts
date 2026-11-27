@@ -236,36 +236,42 @@ CONVERSATIONAL WORKFLOW RULES:
       parts: [{ text: prompt.trim() }],
     });
 
-    const targetModel = model || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const targetModel = model || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
     let responseText = '';
     let finalModel = targetModel;
 
-    try {
-      const result = await ai.models.generateContent({
-        model: targetModel,
-        contents,
-        config: { systemInstruction },
-      });
-      responseText = result.text || '';
-    } catch (primaryErr: any) {
-      console.warn(`[Gemini API] Primary model ${targetModel} encountered:`, primaryErr?.message || primaryErr);
-      if (
-        primaryErr?.message?.includes('not found') ||
-        primaryErr?.status === 404 ||
-        targetModel === 'gemini-4-hydrogen'
-      ) {
-        const fallbackModel = 'gemini-2.5-flash';
-        console.log(`[Gemini API] Retrying with high-speed fallback model: ${fallbackModel}`);
-        const fallbackResult = await ai.models.generateContent({
-          model: fallbackModel,
+    // Bulletproof candidate fallback list of verified models
+    const candidateModels = Array.from(new Set([
+      targetModel,
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-4-hydrogen',
+      'gemini-3.8-flash',
+    ]));
+
+    let lastError: any = null;
+
+    for (const tryModel of candidateModels) {
+      try {
+        const result = await ai.models.generateContent({
+          model: tryModel,
           contents,
           config: { systemInstruction },
         });
-        responseText = fallbackResult.text || '';
-        finalModel = fallbackModel;
-      } else {
-        throw primaryErr;
+        if (result && result.text) {
+          responseText = result.text;
+          finalModel = tryModel;
+          lastError = null;
+          break;
+        }
+      } catch (err: any) {
+        console.warn(`[Gemini API] Model ${tryModel} attempt failed:`, err?.message || err);
+        lastError = err;
       }
+    }
+
+    if (!responseText) {
+      throw lastError || new Error('All Gemini model candidates failed to generate content.');
     }
 
     // Parse action proposal JSON if present
