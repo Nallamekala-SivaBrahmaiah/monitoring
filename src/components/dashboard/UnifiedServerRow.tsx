@@ -12,6 +12,7 @@ import {
   Trash2,
   Play,
   Power,
+  Sparkles,
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 
@@ -117,6 +118,7 @@ interface UnifiedServerRowProps {
   onRefreshServer?: (server: UnifiedServerItem) => void;
   onDeleteServer?: (server: UnifiedServerItem) => void;
   onCopyIp?: (ip: string) => void;
+  onDiagnoseWithGemini?: (server: UnifiedServerItem) => void;
 }
 
 export function UnifiedServerRow({
@@ -130,6 +132,7 @@ export function UnifiedServerRow({
   onRefreshServer,
   onDeleteServer,
   onCopyIp,
+  onDiagnoseWithGemini,
 }: UnifiedServerRowProps) {
   // Provider detection
   const prov = (server.cloudProvider || 'other').toLowerCase();
@@ -437,6 +440,19 @@ export function UnifiedServerRow({
             <Terminal className="w-3.5 h-3.5 text-emerald-400" />
             <span>Login</span>
           </button>
+
+          {/* Diagnose Server with Gemini AI */}
+          {onDiagnoseWithGemini && (
+            <button
+              type="button"
+              onClick={() => onDiagnoseWithGemini(server)}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-gradient-to-r from-purple-600/25 via-indigo-600/25 to-cyan-500/25 hover:from-purple-600/40 hover:to-cyan-500/40 text-cyan-300 hover:text-white border border-cyan-500/35 rounded-md transition-all shadow-sm shrink-0 cursor-pointer whitespace-nowrap"
+              title="Diagnose Server with Gemini AI Copilot"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-300 animate-pulse" />
+              <span>Gemini AI</span>
+            </button>
+          )}
 
           {/* SSH Key configuration */}
           <button

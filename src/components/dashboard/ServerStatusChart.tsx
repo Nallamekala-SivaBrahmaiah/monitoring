@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Zap, Server as ServerIcon, AlertTriangle, CheckCircle, ExternalLink, Clock, Plus } from 'lucide-react';
+import { Zap, Server as ServerIcon, AlertTriangle, CheckCircle, ExternalLink, Clock, Plus, Sparkles } from 'lucide-react';
 import { useMonitoring } from '@/context/MonitoringContext';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 import { ModuleCustomizeButton } from '@/components/dashboard/style-studio/ModuleCustomizeButton';
@@ -30,7 +30,7 @@ export interface ActualServerNode {
 
 export function ServerStatusChart({}: ServerStatusChartProps) {
   const router = useRouter();
-  const { cloudProvider, filteredEC2Instances, filteredAzureVMs, customServers, selectedRegion } = useMonitoring();
+  const { cloudProvider, filteredEC2Instances, filteredAzureVMs, customServers, selectedRegion, openGeminiDrawer } = useMonitoring();
   const [filter, setFilter] = useState<'all' | 'healthy' | 'warning' | 'critical'>('all');
   const [hoveredNode, setHoveredNode] = useState<ActualServerNode | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -411,13 +411,31 @@ export function ServerStatusChart({}: ServerStatusChartProps) {
                     <Clock className="w-2.5 h-2.5 text-slate-500" />
                     <span>Telemetry: {activeNode.lastConnected}</span>
                   </span>
-                  <Link
-                    href={activeNode.detailUrl}
-                    className="text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-0.5"
-                  >
-                    <span>Inspect</span>
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openGeminiDrawer({
+                          id: activeNode.id,
+                          name: activeNode.name,
+                          host: activeNode.ip,
+                          provider: activeNode.provider,
+                        })
+                      }
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-gradient-to-r from-purple-600/30 via-indigo-600/30 to-cyan-500/30 hover:from-purple-600/50 hover:to-cyan-500/50 text-cyan-300 hover:text-white border border-cyan-500/40 text-[10px] font-bold transition shadow-sm cursor-pointer"
+                      title="Diagnose this server with Gemini AI Copilot"
+                    >
+                      <Sparkles className="w-3 h-3 text-cyan-300 animate-pulse" />
+                      <span>Diagnose with Gemini AI</span>
+                    </button>
+                    <Link
+                      href={activeNode.detailUrl}
+                      className="text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-0.5"
+                    >
+                      <span>Inspect</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </Link>
+                  </div>
                 </div>
               </div>
             )}

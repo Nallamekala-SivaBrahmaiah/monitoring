@@ -132,7 +132,7 @@ interface RegisteredServer {
 }
 
 export default function ServersPage() {
-  const { cloudProvider, isRefreshing } = useMonitoring();
+  const { cloudProvider, isRefreshing, openGeminiDrawer } = useMonitoring();
 
   // State
   const [servers, setServers] = useState<RegisteredServer[]>([]);
@@ -574,6 +574,14 @@ export default function ServersPage() {
           onOpenSSHModal={() => handleOpenSSHModal(server)}
           onRefreshServer={() => handleRefreshServer(server._id)}
           onDeleteServer={() => setDeleteTarget(server)}
+          onDiagnoseWithGemini={() =>
+            openGeminiDrawer({
+              id: server._id,
+              name: server.name,
+              host: server.host,
+              provider: server.cloudProvider,
+            })
+          }
           onCopyIp={(ip) => {
             navigator.clipboard.writeText(ip);
             showNotification('info', 'Copied', 'Public IP address copied to clipboard');

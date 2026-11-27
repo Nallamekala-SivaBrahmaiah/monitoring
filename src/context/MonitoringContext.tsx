@@ -63,6 +63,12 @@ interface MonitoringContextType {
   filteredAlerts: AlertItem[];
   customServers: any[];
   overviewMetrics: OverviewMetrics;
+
+  // Gemini AI DevOps Copilot State
+  isGeminiDrawerOpen: boolean;
+  geminiTargetServer: { id?: string; name?: string; host?: string; provider?: string } | null;
+  openGeminiDrawer: (server?: { id?: string; name?: string; host?: string; provider?: string } | null) => void;
+  closeGeminiDrawer: () => void;
 }
 
 const MonitoringContext = createContext<MonitoringContextType | undefined>(undefined);
@@ -131,6 +137,19 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   const [k8sPods, setK8sPods] = useState<K8sPod[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [customServers, setCustomServers] = useState<any[]>([]);
+
+  // Gemini AI DevOps Copilot state
+  const [isGeminiDrawerOpen, setIsGeminiDrawerOpen] = useState<boolean>(false);
+  const [geminiTargetServer, setGeminiTargetServer] = useState<{ id?: string; name?: string; host?: string; provider?: string } | null>(null);
+
+  const openGeminiDrawer = useCallback((server?: { id?: string; name?: string; host?: string; provider?: string } | null) => {
+    setGeminiTargetServer(server || null);
+    setIsGeminiDrawerOpen(true);
+  }, []);
+
+  const closeGeminiDrawer = useCallback(() => {
+    setIsGeminiDrawerOpen(false);
+  }, []);
 
   // Load real subscriptions, AWS accounts, real VMs, and real alerts from Next.js Route Handlers
   const loadRealData = useCallback(async (silent = false) => {
@@ -715,6 +734,10 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
         filteredAlerts,
         customServers,
         overviewMetrics,
+        isGeminiDrawerOpen,
+        geminiTargetServer,
+        openGeminiDrawer,
+        closeGeminiDrawer,
       }}
     >
       {children}

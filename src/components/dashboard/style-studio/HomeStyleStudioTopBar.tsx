@@ -19,8 +19,8 @@ import {
   Box,
 } from 'lucide-react';
 import { useTheme, THEME_PRESETS } from '@/context/ThemeContext';
+import { useMonitoring } from '@/context/MonitoringContext';
 import { ModuleStyleEditorModal } from './ModuleStyleEditorModal';
-import { GeminiDevOpsDrawer } from '../gemini/GeminiDevOpsDrawer';
 
 export function HomeStyleStudioTopBar() {
   const {
@@ -46,11 +46,12 @@ export function HomeStyleStudioTopBar() {
     openModuleCustomizer,
   } = useTheme();
 
+  const { openGeminiDrawer } = useMonitoring();
+
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [isModuleModalOpen, setIsModuleModalOpen] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [isThemeSelectOpen, setIsThemeSelectOpen] = useState<boolean>(false);
-  const [isGeminiOpen, setIsGeminiOpen] = useState<boolean>(false);
   const themeDropdownRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -168,7 +169,7 @@ export function HomeStyleStudioTopBar() {
           {/* Ask Gemini AI Button */}
           <button
             type="button"
-            onClick={() => setIsGeminiOpen(true)}
+            onClick={() => openGeminiDrawer()}
             className="relative group overflow-hidden px-3.5 py-2 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 bg-gradient-to-r from-purple-600/90 via-indigo-600/90 to-cyan-600/90 hover:from-purple-500 hover:via-indigo-500 hover:to-cyan-500 text-white shadow-lg shadow-purple-500/25 border-2 border-purple-400/70 hover:border-cyan-300 hover:shadow-cyan-500/30 cursor-pointer active:scale-95 shrink-0"
             title="Ask Gemini AI DevOps Assistant"
           >
@@ -403,14 +404,6 @@ export function HomeStyleStudioTopBar() {
         isOpen={isModuleModalOpen}
         onClose={() => setIsModuleModalOpen(false)}
       />
-
-      {/* Gemini AI DevOps Assistant Slide-over Drawer */}
-      <React.Suspense fallback={null}>
-        <GeminiDevOpsDrawer
-          isOpen={isGeminiOpen}
-          onClose={() => setIsGeminiOpen(false)}
-        />
-      </React.Suspense>
     </div>
   );
 }

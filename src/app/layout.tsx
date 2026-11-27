@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import { Background3DCanvas } from '@/components/dashboard/Background3DCanvas';
 import { NavigationScrollManager } from '@/components/navigation/NavigationScrollManager';
 import { IndividualModuleStudioModal } from '@/components/dashboard/style-studio/IndividualModuleStudioModal';
+import { GeminiDevOpsDrawer } from '@/components/dashboard/gemini/GeminiDevOpsDrawer';
 
 export const metadata: Metadata = {
   title: 'Multi-Cloud Monitoring Platform | AWS & Azure Infrastructure',
@@ -56,7 +57,12 @@ export default function RootLayout({
         <ThemeProvider>
           <Background3DCanvas />
           <IndividualModuleStudioModal />
-          <MonitoringProvider>{children}</MonitoringProvider>
+          <MonitoringProvider>
+            {children}
+            <Suspense fallback={null}>
+              <GeminiDevOpsDrawer />
+            </Suspense>
+          </MonitoringProvider>
         </ThemeProvider>
       </body>
     </html>
