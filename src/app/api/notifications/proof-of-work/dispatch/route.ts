@@ -323,12 +323,15 @@ export async function POST(request: NextRequest) {
     `;
 
     // Fetch enabled proof recipients
-    let recipientsDocs = await DevOpsProofRecipient.find({ enabled: { $ne: false } }).lean();
-    let recipientsList: string[] = recipientsDocs.map((r: any) => r.email.toLowerCase().trim());
-
-    if (recipientsList.length === 0) {
-      recipientsList = ['nallasiva552@gmail.com'];
+    let recipientsList: string[] = [];
+    if (Array.isArray(body.recipients) && body.recipients.length > 0) {
+      recipientsList = body.recipients.map((r: any) => (typeof r === 'string' ? r : r.email).toLowerCase().trim()).filter(Boolean);
+    } else {
+      const recipientsDocs = await DevOpsProofRecipient.find({ enabled: { $ne: false } }).lean();
+      recipientsList = recipientsDocs.map((r: any) => r.email.toLowerCase().trim()).filter(Boolean);
     }
+
+    const emailDispatchEnabled = body.emailDispatchEnabled !== false;
 
     const auditId = `DW-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`;
 
@@ -492,6 +495,47 @@ export async function POST(request: NextRequest) {
 </html>
     `;
 
+    // Check if email dispatch is toggled OFF or if no recipients are configured
+    if (!emailDispatchEnabled || recipientsList.length === 0) {
+      const statusReason = !emailDispatchEnabled
+        ? 'Audit Logged (Email OFF)'
+        : 'Audit Logged (No Email Recipients)';
+
+      const messageReason = !emailDispatchEnabled
+        ? 'Proof of Work saved to Audit Logs (Email Dispatch is toggled OFF).'
+        : 'Proof of Work saved to Audit Logs. (No email recipients configured).';
+
+      const logDoc = await DevOpsProofLog.create({
+        auditId,
+        engineerName,
+        actionType,
+        tool,
+        summary,
+        serverOrHost,
+        commandsExecuted,
+        resultOutcome,
+        durationMinutes,
+        recipients: recipientsList,
+        clockTimeIST,
+        clockTimeUTC,
+        status: statusReason,
+        messageId: !emailDispatchEnabled ? 'Muted (Email OFF)' : 'No Recipients Configured',
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: messageReason,
+          auditId,
+          recipients: recipientsList,
+          log: logDoc,
+          emailDispatched: false,
+          emailDispatchEnabled,
+        },
+        { headers: NO_CACHE_HEADERS }
+      );
+    }
+
     const transporter = getTransporter();
     const sender = process.env.GMAIL_USER || 'nallasiva552@gmail.com';
 
@@ -535,6 +579,8 @@ export async function POST(request: NextRequest) {
         messageId: firstMessageId,
         recipients: recipientsList,
         log: logDoc,
+        emailDispatched: true,
+        emailDispatchEnabled: true,
       },
       { headers: NO_CACHE_HEADERS }
     );

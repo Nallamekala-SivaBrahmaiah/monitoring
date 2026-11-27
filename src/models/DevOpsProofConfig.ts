@@ -5,6 +5,7 @@ export interface IDevOpsProofConfig extends Document {
   engineerRole: string;
   autoDispatchOnAction: boolean;
   scheduledDispatchEnabled: boolean;
+  emailDispatchEnabled: boolean;
   scheduledTime: string; // "18:00"
   timezone: string; // "Asia/Kolkata"
   toolsMonitored: string[]; // ["docker", "kubernetes", "maven", "ansible", "terraform", "jenkins", "sonarqube", "trivy", "server"]
@@ -18,6 +19,7 @@ const DevOpsProofConfigSchema: Schema<IDevOpsProofConfig> = new Schema(
     engineerRole: { type: String, default: 'Lead DevOps Engineer', trim: true },
     autoDispatchOnAction: { type: Boolean, default: true },
     scheduledDispatchEnabled: { type: Boolean, default: true },
+    emailDispatchEnabled: { type: Boolean, default: true },
     scheduledTime: { type: String, default: '18:00' },
     timezone: { type: String, default: 'Asia/Kolkata' },
     toolsMonitored: {

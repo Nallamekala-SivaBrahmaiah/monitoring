@@ -143,33 +143,11 @@ const DEVOPS_TOOLS = [
 export const DEFAULT_SERVER_HISTORIES: Record<string, string[]> = {
   'vm01siva-mon': [
     'sudo nano .env.local',
-    'cd monitoring/ && npm i && npm run build',
-    'pm2 restart monitoring-app && pm2 logs monitoring-app --lines 20',
-    'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
-    'cd monitoring && mvn clean package -DskipTests',
-    'sudo apt install -y docker.io',
-    'docker pull node:20-alpine',
-    'docker pull httpd:alpine',
-    'docker run -d --name auth-microservice-prod -p 3000:3000 node:20-alpine',
-    'docker ps -a',
-    'docker stats --no-stream',
-    'docker restart auth-microservice-prod',
-    'kubectl get nodes -o wide',
-    'kubectl get pods -n production -o wide',
-    'kubectl describe pod monitoring-app-7b8f-x91 -n production',
-    'kubectl rollout restart deployment/monitoring-app -n production',
-    'kubectl get services -n production',
-    'sudo nano /etc/nginx/sites-available/default',
-    'sudo nginx -t && sudo systemctl reload nginx',
-    'sudo systemctl status nginx',
-    'cd terraform/azure-infra && terraform init',
-    'terraform plan -out=tfplan',
-    'terraform apply -auto-approve tfplan',
-    'ansible-playbook -i inventory.ini site.yml --limit vm01siva-mon',
-    'ansible all -m ping -i inventory.ini',
-    'stress --cpu 8 --io 4 --vm 2 --vm-bytes 128M --timeout 10m',
-    'ps aux --sort=-%cpu | head -10',
-    'free -m && df -h',
+    'cd monitoring/',
+    'npm i',
+    'npm run build',
+    'pm2 restart 0',
+    'pm2 logs monitoring-app --lines 20',
   ],
   azure: [
     'sudo apt update && sudo apt upgrade -y',
@@ -293,24 +271,7 @@ export function classifyToolForCommand(cmd: string): { tool: string; icon: strin
   return { tool: 'Server OS', icon: '🖥️', color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/30' };
 }
 
-const DEFAULT_PROOF_RECIPIENTS: ProofRecipient[] = [
-  {
-    id: 'recip-siva-1',
-    email: 'nallasiva552@gmail.com',
-    name: 'Siva (DevOps Lead)',
-    role: 'Personal Audit Trail',
-    enabled: true,
-    addedOn: new Date().toISOString(),
-  },
-  {
-    id: 'recip-cto-2',
-    email: 'nallamekalasivabrahmaiah7@gmail.com',
-    name: 'Executive / CTO Desk',
-    role: 'CTO',
-    enabled: true,
-    addedOn: new Date().toISOString(),
-  },
-];
+const DEFAULT_PROOF_RECIPIENTS: ProofRecipient[] = [];
 
 export function DevOpsProofTab() {
   // Live ticking clock state
@@ -365,8 +326,9 @@ export function DevOpsProofTab() {
     return `${String(h).padStart(2, '0')}:${minute}`;
   };
 
-  // Recipient state - initialize with default real company emails to prevent layout flicker
-  const [recipients, setRecipients] = useState<ProofRecipient[]>(DEFAULT_PROOF_RECIPIENTS);
+  // Recipient state - initialized empty (no hardcoded emails)
+  const [recipients, setRecipients] = useState<ProofRecipient[]>([]);
+  const [emailDispatchEnabled, setEmailDispatchEnabled] = useState<boolean>(true);
   const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
@@ -720,7 +682,7 @@ export function DevOpsProofTab() {
       const res = await fetch('/api/notifications/proof-of-work/recipients', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.recipients) && data.recipients.length > 0) {
+        if (Array.isArray(data.recipients)) {
           setRecipients(data.recipients);
         }
       }
@@ -739,6 +701,9 @@ export function DevOpsProofTab() {
         const data = await res.json();
         if (data.config) {
           setConfig(data.config);
+          if (typeof data.config.emailDispatchEnabled === 'boolean') {
+            setEmailDispatchEnabled(data.config.emailDispatchEnabled);
+          }
           if (data.config.scheduledTime) {
             parse24hTo12h(data.config.scheduledTime);
           }
@@ -748,6 +713,24 @@ export function DevOpsProofTab() {
       console.error(e);
     }
   }, []);
+
+  // Handle Toggle Email Dispatch ON/OFF
+  const handleToggleEmailDispatch = async (enabled: boolean) => {
+    setEmailDispatchEnabled(enabled);
+    showToast(
+      `Email Dispatch turned ${enabled ? 'ON (Active SMTP)' : 'OFF (Muted / Audit Mode)'}`,
+      enabled ? 'success' : 'info'
+    );
+    try {
+      await fetch('/api/notifications/proof-of-work/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailDispatchEnabled: enabled }),
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Fetch logs
   const fetchLogs = useCallback(async () => {
@@ -791,6 +774,11 @@ export function DevOpsProofTab() {
         }
         if (data.serverHistories) {
           setServerHistories((prev) => ({ ...prev, ...data.serverHistories }));
+        }
+        if (data.executedCommands && (selectedServerId === 'vm01siva-mon' || selectedServerId === 'srv-vm01' || selectedServerId === 'all')) {
+          setActiveServerCommands(data.executedCommands.split('\n'));
+          setCommandsExecuted(data.executedCommands);
+        } else if (data.serverHistories) {
           // If a server is selected, update its commands
           const serverPool = Array.isArray(data.servers) && data.servers.length > 0 ? data.servers : [];
           const currentServer = serverPool.find((s: any) => s.id === selectedServerId);
@@ -1108,7 +1096,9 @@ export function DevOpsProofTab() {
           serverOrHost: selectedServerId === 'all' ? 'All Multi-Cloud Servers (Azure & AWS Fleet)' : targetServer,
           sessionSource,
           summary: summary || `Executed step-by-step multi-tool deployment & troubleshooting across ${targetServer}.`,
-          commandsExecuted: aggregatedCommands,
+          commandsExecuted: aggregatedCommands || commandsExecuted,
+          emailDispatchEnabled,
+          recipients: recipients.filter((r) => r.enabled !== false).map((r) => r.email),
           activities,
           servers: serversList,
           orderedSections,
@@ -1668,22 +1658,61 @@ export function DevOpsProofTab() {
           </div>
 
           {/* Direct Proof Dispatch Action Bar under Terminal */}
-          <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-[#090E1A] border border-blue-500/30">
-            <div className="text-xs text-slate-400 flex items-center gap-2">
-              <Info className="w-4 h-4 text-blue-400 shrink-0" />
-              <span>
-                Dispatches with clock stamp: <strong className="text-cyan-300 font-mono">{currentTime.ist}</strong> to{' '}
-                <strong className="text-white">{recipients.filter((r) => r.enabled !== false).length} leadership recipients</strong>.
-              </span>
+          <div className="pt-2 flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl bg-[#090E1A] border border-blue-500/30 shadow-lg">
+            {/* Left: Email Dispatch ON / OFF Toggle & Status Info */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <button
+                type="button"
+                onClick={() => handleToggleEmailDispatch(!emailDispatchEnabled)}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold font-mono transition-all border shadow-sm ${
+                  emailDispatchEnabled
+                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50 hover:bg-emerald-900/60 shadow-emerald-500/10'
+                    : 'bg-rose-950/80 text-rose-300 border-rose-500/50 hover:bg-rose-900/60 shadow-rose-500/10'
+                }`}
+                title="Click to toggle email sending ON or OFF"
+              >
+                <span className={`w-2.5 h-2.5 rounded-full ${emailDispatchEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+                <span>EMAIL DISPATCH:</span>
+                <span className={`px-2 py-0.5 rounded text-[11px] font-black ${emailDispatchEnabled ? 'bg-emerald-500 text-black' : 'bg-rose-500 text-white'}`}>
+                  {emailDispatchEnabled ? 'ON' : 'OFF'}
+                </span>
+              </button>
+
+              <div className="text-xs text-slate-300">
+                {emailDispatchEnabled ? (
+                  <span>
+                    Dispatches with clock stamp: <strong className="text-cyan-300 font-mono">{currentTime.ist}</strong> to{' '}
+                    <strong className="text-white">{recipients.filter((r) => r.enabled !== false).length} recipients</strong>.
+                  </span>
+                ) : (
+                  <span className="text-amber-300 font-medium">
+                    Email dispatch is <strong>OFF</strong>. Proof will be recorded to <strong>Audit Logs only</strong> (no emails sent).
+                  </span>
+                )}
+              </div>
             </div>
 
+            {/* Right: Dispatch / Save Button */}
             <button
               onClick={handleDispatchProof}
               disabled={isDispatching}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-extrabold shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition-all transform active:scale-95 disabled:opacity-50"
+              className={`px-6 py-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition-all transform active:scale-95 disabled:opacity-50 shadow-lg ${
+                emailDispatchEnabled
+                  ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/30'
+                  : 'bg-gradient-to-r from-slate-700 via-slate-800 to-slate-700 hover:from-slate-600 hover:to-slate-700 text-slate-100 border border-slate-600 shadow-slate-900/50'
+              }`}
             >
-              <Send className="w-4 h-4" />
-              <span>{isDispatching ? 'Dispatching Proof...' : 'Dispatch Proof of Work to CTO & Leadership'}</span>
+              {emailDispatchEnabled ? (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>{isDispatching ? 'Dispatching Proof...' : 'Dispatch Proof of Work to CTO & Leadership'}</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                  <span>{isDispatching ? 'Saving Audit...' : 'Save Proof to Audit Logs (Email Muted)'}</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -1733,6 +1762,36 @@ export function DevOpsProofTab() {
                     placeholder="Lead DevOps Engineer"
                   />
                 </div>
+              </div>
+
+              {/* Master Email Dispatch ON / OFF Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#090E1A] border border-[#1E293B]">
+                <div className="pr-2">
+                  <div className="font-semibold text-white flex items-center gap-2">
+                    <span>Email Dispatch Master Switch</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${emailDispatchEnabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'}`}>
+                      {emailDispatchEnabled ? 'ON (ACTIVE)' : 'OFF (MUTED)'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    {emailDispatchEnabled
+                      ? 'Live emails will be dispatched to recipients via SMTP.'
+                      : 'Email sending is OFF. Work proofs will be saved to Audit Logs only.'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleToggleEmailDispatch(!emailDispatchEnabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                    emailDispatchEnabled ? 'bg-emerald-600' : 'bg-slate-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                      emailDispatchEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
 
               {/* Instant Auto-Dispatch on Action Toggle */}

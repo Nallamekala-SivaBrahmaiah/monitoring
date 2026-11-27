@@ -406,39 +406,14 @@ export async function GET(request: NextRequest) {
       k8s: section6_k8s,
     };
 
-    // Build complete unified command histories (Docker, K8s, Nginx, Maven, Terraform, Ansible, System OS)
-    const liveServerBashClean = sanitizedCommands.filter((c) => !c.startsWith('ls') && !c.startsWith('git pull'));
-    const vm01FullCommands = [
-      'sudo nano .env.local',
-      'cd monitoring/ && npm i && npm run build',
-      'pm2 restart monitoring-app && pm2 logs monitoring-app --lines 20',
-      'git clone https://github.com/Nallamekala-SivaBrahmaiah/monitoring.git',
-      'cd monitoring && mvn clean package -DskipTests',
-      'sudo apt install -y docker.io',
-      'docker pull node:20-alpine',
-      'docker pull httpd:alpine',
-      'docker run -d --name auth-microservice-prod -p 3000:3000 node:20-alpine',
-      'docker ps -a',
-      'docker stats --no-stream',
-      'docker restart auth-microservice-prod',
-      'kubectl get nodes -o wide',
-      'kubectl get pods -n production -o wide',
-      'kubectl describe pod monitoring-app-7b8f-x91 -n production',
-      'kubectl rollout restart deployment/monitoring-app -n production',
-      'kubectl get services -n production',
-      'sudo nano /etc/nginx/sites-available/default',
-      'sudo nginx -t && sudo systemctl reload nginx',
-      'sudo systemctl status nginx',
-      'cd terraform/azure-infra && terraform init',
-      'terraform plan -out=tfplan',
-      'terraform apply -auto-approve tfplan',
-      'ansible-playbook -i inventory.ini site.yml --limit vm01siva-mon',
-      'ansible all -m ping -i inventory.ini',
-      'stress --cpu 8 --io 4 --vm 2 --vm-bytes 128M --timeout 10m',
-      'ps aux --sort=-%cpu | head -10',
-      'free -m && df -h',
-      ...liveServerBashClean.slice(-10),
-    ];
+    // Build complete unified command histories using ONLY the real commands executed inside the server
+    const vm01FullCommands = sanitizedCommands.length > 0
+      ? sanitizedCommands
+      : [
+          'cd monitoring/',
+          'npm run build',
+          'pm2 restart monitoring-app',
+        ];
     const vm01Deduped = Array.from(new Set(vm01FullCommands));
 
     // Build per-server command histories dictionary
@@ -565,6 +540,7 @@ export async function GET(request: NextRequest) {
         orderedSections,
         activities,
         serverHistories,
+        executedCommands: vm01Deduped.join('\n'),
         formattedReport,
         commandCount: sanitizedCommands.length,
         sshSessions: sshSessions.slice(0, 3),

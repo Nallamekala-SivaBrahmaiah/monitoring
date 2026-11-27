@@ -13,7 +13,7 @@ export interface IDevOpsProofLog extends Document {
   recipients: string[];
   clockTimeIST: string;
   clockTimeUTC: string;
-  status: 'Delivered' | 'Pending' | 'Failed';
+  status: 'Delivered' | 'Pending' | 'Failed' | 'Muted' | 'Audit Logged' | string;
   messageId?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -37,7 +37,7 @@ const DevOpsProofLogSchema: Schema<IDevOpsProofLog> = new Schema(
     recipients: { type: [String], default: [] },
     clockTimeIST: { type: String, required: true },
     clockTimeUTC: { type: String, required: true },
-    status: { type: String, enum: ['Delivered', 'Pending', 'Failed'], default: 'Delivered' },
+    status: { type: String, default: 'Delivered' },
     messageId: { type: String, default: '' },
   },
   {

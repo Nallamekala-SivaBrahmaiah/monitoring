@@ -19,6 +19,7 @@ export async function GET() {
         engineerRole: 'Lead DevOps Engineer',
         autoDispatchOnAction: true,
         scheduledDispatchEnabled: true,
+        emailDispatchEnabled: true,
         scheduledTime: '18:00',
         timezone: 'Asia/Kolkata',
         toolsMonitored: [
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
     if (typeof body.engineerRole === 'string') update.engineerRole = body.engineerRole.trim();
     if (typeof body.autoDispatchOnAction === 'boolean') update.autoDispatchOnAction = body.autoDispatchOnAction;
     if (typeof body.scheduledDispatchEnabled === 'boolean') update.scheduledDispatchEnabled = body.scheduledDispatchEnabled;
+    if (typeof body.emailDispatchEnabled === 'boolean') update.emailDispatchEnabled = body.emailDispatchEnabled;
     if (typeof body.scheduledTime === 'string') update.scheduledTime = body.scheduledTime.trim();
     if (typeof body.timezone === 'string') update.timezone = body.timezone.trim();
     if (Array.isArray(body.toolsMonitored)) update.toolsMonitored = body.toolsMonitored;

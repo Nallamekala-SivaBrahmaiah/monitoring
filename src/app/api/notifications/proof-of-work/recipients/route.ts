@@ -13,43 +13,6 @@ export async function GET() {
     await connectToDatabase();
     const recipients = await DevOpsProofRecipient.find().sort({ createdAt: 1 }).lean();
 
-    if (recipients.length === 0) {
-      const defaultRecipients = [
-        {
-          email: 'nallasiva552@gmail.com',
-          name: 'Siva (DevOps Lead)',
-          role: 'Personal Audit Trail',
-          enabled: true,
-          addedOn: new Date(),
-        },
-        {
-          email: 'nallamekalasivabrahmaiah7@gmail.com',
-          name: 'Executive / CTO Desk',
-          role: 'CTO',
-          enabled: true,
-          addedOn: new Date(),
-        },
-      ];
-      try {
-        await DevOpsProofRecipient.insertMany(defaultRecipients);
-      } catch (insertErr) {
-        console.warn('Recipients seeding note:', insertErr);
-      }
-      const seeded = await DevOpsProofRecipient.find().sort({ createdAt: 1 }).lean();
-      const formatted = (seeded.length > 0 ? seeded : defaultRecipients).map((r: any, idx: number) => ({
-        id: r._id ? r._id.toString() : `default-${idx}`,
-        email: r.email,
-        name: r.name || '',
-        role: r.role || 'CTO',
-        enabled: r.enabled !== false,
-        addedOn: r.addedOn || r.createdAt || new Date(),
-      }));
-      return NextResponse.json(
-        { success: true, recipients: formatted, count: formatted.length },
-        { headers: NO_CACHE_HEADERS }
-      );
-    }
-
     const formatted = recipients.map((r: any) => ({
       id: r._id.toString(),
       email: r.email,
