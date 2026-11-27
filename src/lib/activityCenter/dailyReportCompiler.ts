@@ -507,16 +507,34 @@ export async function checkAndDispatchDailyReportIfDue(): Promise<{
     // Compile report
     const { reportData, htmlContent } = await compile25SectionDailyReport(now);
 
+    // Query disabled recipients to strictly honor user preferences
+    let disabledSet = new Set<string>();
+    try {
+      const { default: DevOpsRecipient } = await import('@/models/DevOpsRecipient');
+      const disabledDocs = await DevOpsRecipient.find({ enabled: false }).lean();
+      disabledSet = new Set(disabledDocs.map((d: any) => (d.email || '').toLowerCase().trim()));
+    } catch {}
+
     // Fetch recipients
-    const activeRecipients = await ReportRecipient.find({ status: 'active' }).lean();
+    const activeRecipients = await ReportRecipient.find({
+      $and: [
+        { $or: [{ status: 'active' }, { isActive: true }] },
+        { isArchived: { $ne: true } },
+      ],
+    }).lean();
+
     const emails = new Set<string>();
     for (const r of activeRecipients) {
-      if (r.email) emails.add(r.email.trim());
+      const clean = (r.email || '').toLowerCase().trim();
+      if (clean && !disabledSet.has(clean)) {
+        emails.add(clean);
+      }
     }
 
-    // Also include default admin/lead emails if empty
+    // If all recipients are disabled or list is empty, DO NOT SEND!
     if (emails.size === 0) {
-      emails.add('nallasiva552@gmail.com');
+      console.log('[DailyReport] 🔕 All report recipients are disabled. Skipping daily report dispatch.');
+      return { triggered: false, reason: 'All report recipients are disabled or empty' };
     }
 
     const emailList = Array.from(emails);

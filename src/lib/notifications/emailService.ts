@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import connectToDatabase from '@/lib/mongodb';
 
 export interface EmailAlertPayload {
   serverName: string;
@@ -146,6 +147,7 @@ function getTransporter() {
  */
 export async function resolveRecipients(customRecipients?: string[]): Promise<string[]> {
   try {
+    await connectToDatabase();
     const DevOpsRecipient = (await import('@/models/DevOpsRecipient')).default;
     const [enabledDocs, disabledDocs] = await Promise.all([
       DevOpsRecipient.find({ enabled: { $ne: false } }).lean(),
@@ -157,11 +159,11 @@ export async function resolveRecipients(customRecipients?: string[]): Promise<st
     );
     const enabledList = enabledDocs
       .map((d: any) => (d.email || '').toLowerCase().trim())
-      .filter(Boolean);
+      .filter((e: string) => Boolean(e) && !disabledSet.has(e));
 
     const resultSet = new Set<string>();
 
-    // 1. If customRecipients provided, add valid non-disabled ones
+    // 1. If customRecipients provided, add only valid non-disabled ones
     if (Array.isArray(customRecipients) && customRecipients.length > 0) {
       customRecipients.forEach((e) => {
         const clean = (e || '').toLowerCase().trim();
@@ -178,9 +180,10 @@ export async function resolveRecipients(customRecipients?: string[]): Promise<st
       }
     });
 
-    // 3. Fallback to default admin if set is empty
-    if (resultSet.size === 0) {
-      const defaultTo = process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER || 'nallasiva552@gmail.com';
+    // 3. Fallback to default admin ONLY if ZERO recipients are configured in DB AND admin is NOT in disabledSet
+    const totalConfigured = await DevOpsRecipient.countDocuments({});
+    if (resultSet.size === 0 && totalConfigured === 0) {
+      const defaultTo = process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER || '';
       defaultTo
         .split(',')
         .map((e) => e.trim().toLowerCase())
@@ -188,14 +191,11 @@ export async function resolveRecipients(customRecipients?: string[]): Promise<st
         .forEach((e) => resultSet.add(e));
     }
 
-    return Array.from(resultSet);
+    // STRICT FILTER: Absolutely guarantee no disabled email receives alerts
+    return Array.from(resultSet).filter((e) => !disabledSet.has(e));
   } catch (err) {
-    // If DB error, fallback
-    const defaultTo = process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER || 'nallasiva552@gmail.com';
-    return defaultTo
-      .split(',')
-      .map((e) => e.trim())
-      .filter(Boolean);
+    console.warn('[EmailService] Error resolving recipients:', err);
+    return [];
   }
 }
 

@@ -43,21 +43,35 @@ export function getUsageTier(value: number): number {
 
 /**
  * Retrieve enabled DevOps engineer email recipients from database.
- * Never seeds fake/dummy emails. Falls back to environment recipient if empty.
+ * Never seeds fake/dummy emails. Strictly respects disabled recipients.
  */
 export async function getEnabledDevOpsRecipients(): Promise<string[]> {
   try {
     await connectToDatabase();
-    const docs = await DevOpsRecipient.find({ enabled: { $ne: false } }).lean();
-    const recipients = docs.map((d: any) => d.email).filter(Boolean);
+    const [enabledDocs, disabledDocs] = await Promise.all([
+      DevOpsRecipient.find({ enabled: { $ne: false } }).lean(),
+      DevOpsRecipient.find({ enabled: false }).lean(),
+    ]);
+
+    const disabledSet = new Set(
+      disabledDocs.map((d: any) => (d.email || '').toLowerCase().trim())
+    );
+
+    const recipients = enabledDocs
+      .map((d: any) => (d.email || '').toLowerCase().trim())
+      .filter((email: string) => Boolean(email) && !disabledSet.has(email));
+
     if (recipients.length > 0) {
       return recipients;
     }
 
-    // Fallback to configured ALERT_EMAIL_TO or GMAIL_USER if no recipients in DB
-    const envRecipient = process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER;
-    if (envRecipient) {
-      return [envRecipient.trim()];
+    // Only fallback if NO recipients configured at all in DB, and fallback is not disabled
+    const totalCount = await DevOpsRecipient.countDocuments({});
+    if (totalCount === 0) {
+      const envRecipient = (process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER || '').toLowerCase().trim();
+      if (envRecipient && !disabledSet.has(envRecipient)) {
+        return [envRecipient];
+      }
     }
     return [];
   } catch (err) {
@@ -152,7 +166,7 @@ export async function getNotificationPreferences() {
     const enabledDocs = await DevOpsRecipient.find({ enabled: { $ne: false } }).lean();
     const enabledEmails = enabledDocs.map((d: any) => (d.email || '').toLowerCase().trim()).filter(Boolean);
 
-    // 2. Disabled recipients to guarantee they never get alerts
+    // 2. Disabled recipients to guarantee they NEVER get alerts
     const disabledDocs = await DevOpsRecipient.find({ enabled: false }).lean();
     const disabledSet = new Set(disabledDocs.map((d: any) => (d.email || '').toLowerCase().trim()));
 
@@ -164,15 +178,16 @@ export async function getNotificationPreferences() {
 
     const recipientSet = new Set<string>();
 
-    // Add all enabled recipients from the UI table (e.g. nallamekalasivabrahmaiah7@gmail.com)
+    // Add only non-disabled enabled recipients from UI table
     enabledEmails.forEach((email) => {
       if (!disabledSet.has(email)) {
         recipientSet.add(email);
       }
     });
 
-    // Also include admin if not explicitly disabled
-    if (!disabledSet.has(adminEmail)) {
+    // ONLY fallback to adminEmail if ZERO recipients are configured in DB AND admin is not in disabledSet
+    const totalRecipientsCount = await DevOpsRecipient.countDocuments({});
+    if (totalRecipientsCount === 0 && !disabledSet.has(adminEmail)) {
       recipientSet.add(adminEmail);
     }
 
@@ -186,13 +201,17 @@ export async function getNotificationPreferences() {
       });
     }
 
-    const effectiveRecipients = Array.from(recipientSet);
+    // STRICT FILTER: Absolutely guarantee no email in disabledSet receives notifications
+    const effectiveRecipients = Array.from(recipientSet).filter((e) => !disabledSet.has(e));
+
+    // If all recipients are disabled, disable email sending completely
+    const isEmailGloballyEnabled = (prefs?.emailNotificationsEnabled !== false) && (effectiveRecipients.length > 0);
 
     return {
-      emailNotificationsEnabled: prefs?.emailNotificationsEnabled !== false,
+      emailNotificationsEnabled: isEmailGloballyEnabled,
       inAppNotificationsEnabled: prefs?.inAppNotificationsEnabled !== false,
       incidentDispatcherConnected: Boolean((prefs as any)?.incidentDispatcherConnected),
-      alertRecipients: effectiveRecipients.length > 0 ? effectiveRecipients : [adminEmail],
+      alertRecipients: effectiveRecipients,
       ignoredServers: Array.isArray(prefs?.ignoredServers)
         ? prefs.ignoredServers
         : [],

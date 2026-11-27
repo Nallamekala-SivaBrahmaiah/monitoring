@@ -100,10 +100,17 @@ async function getEnabledRecipients(): Promise<string[]> {
       if (pList.length > 0) return Array.from(new Set(pList));
     }
 
-    const fallback = process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER || 'nallasiva552@gmail.com';
-    return [fallback.toLowerCase().trim()];
+    // Only fallback if NO recipients configured at all in DB, and fallback is not disabled
+    const totalCount = await DevOpsRecipient.countDocuments({});
+    if (totalCount === 0) {
+      const fallback = (process.env.ALERT_EMAIL_TO || process.env.GMAIL_USER || '').toLowerCase().trim();
+      if (fallback && !disabledSet.has(fallback)) {
+        return [fallback];
+      }
+    }
+    return [];
   } catch {
-    return ['nallasiva552@gmail.com'];
+    return [];
   }
 }
 

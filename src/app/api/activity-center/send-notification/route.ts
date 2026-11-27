@@ -55,16 +55,25 @@ export async function GET() {
       DevopsToolConfig.find().lean(),
     ]);
 
+    let disabledSet = new Set<string>();
+    try {
+      const { default: DevOpsRecipient } = await import('@/models/DevOpsRecipient');
+      const disabledDocs = await DevOpsRecipient.find({ enabled: false }).lean();
+      disabledSet = new Set(disabledDocs.map((d: any) => (d.email || '').toLowerCase().trim()));
+    } catch {}
+
     const configuredEmails = new Set<string>();
     reportRecipients.forEach((r: any) => {
-      if (r.email) configuredEmails.add(r.email.trim().toLowerCase());
+      const clean = (r.email || '').trim().toLowerCase();
+      if (clean && !disabledSet.has(clean)) configuredEmails.add(clean);
     });
 
     try {
       const { default: DevOpsRecipient } = await import('@/models/DevOpsRecipient');
       const devopsList = await DevOpsRecipient.find({ enabled: true }).lean();
       devopsList.forEach((d: any) => {
-        if (d.email) configuredEmails.add(d.email.trim().toLowerCase());
+        const clean = (d.email || '').trim().toLowerCase();
+        if (clean && !disabledSet.has(clean)) configuredEmails.add(clean);
       });
     } catch {}
 

@@ -180,7 +180,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Synchronize enabled/disabled status into NotificationPreferences
+    // Synchronize enabled/disabled status into NotificationPreferences and ReportRecipient
     if (updated.enabled) {
       await NotificationPreferences.updateMany(
         {},
@@ -190,6 +190,27 @@ export async function PATCH(request: NextRequest) {
       await NotificationPreferences.updateMany(
         {},
         { $pull: { alertRecipients: updated.email } }
+      );
+    }
+
+    try {
+      const { default: ReportRecipient } = await import('@/models/ReportRecipient');
+      await ReportRecipient.updateMany(
+        { email: { $regex: new RegExp(`^${updated.email}$`, 'i') } },
+        { $set: { isActive: updated.enabled, status: updated.enabled ? 'active' : 'disabled' } }
+      );
+    } catch {}
+
+    const enabledCount = await DevOpsRecipient.countDocuments({ enabled: { $ne: false } });
+    if (enabledCount === 0) {
+      await NotificationPreferences.updateMany(
+        {},
+        { $set: { emailNotificationsEnabled: false, alertRecipients: [] } }
+      );
+    } else {
+      await NotificationPreferences.updateMany(
+        {},
+        { $set: { emailNotificationsEnabled: true } }
       );
     }
 
