@@ -17,6 +17,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Trash2,
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
@@ -43,11 +44,38 @@ export default function CloudAccountsPage() {
     updateAzureSubscriptionRegions,
     disconnectAwsAccount,
     disconnectAzureSubscription,
+    removeAwsAccount,
+    removeAzureSubscription,
   } = useMonitoring();
 
   const [activeModal, setActiveModal] = useState<'none' | 'aws' | 'azure'>('none');
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDeleteAws = async (acc: AWSAccount) => {
+    const targetId = acc.id || acc.accountId;
+    if (window.confirm(`Are you sure you want to permanently delete AWS account "${acc.accountName}"?`)) {
+      setDeletingId(targetId);
+      try {
+        await removeAwsAccount(targetId);
+      } finally {
+        setDeletingId(null);
+      }
+    }
+  };
+
+  const handleDeleteAzure = async (sub: AzureSubscription) => {
+    const targetId = sub.id || sub.subscriptionId;
+    if (window.confirm(`Are you sure you want to permanently delete Azure subscription "${sub.subscriptionName}"?`)) {
+      setDeletingId(targetId);
+      try {
+        await removeAzureSubscription(targetId);
+      } finally {
+        setDeletingId(null);
+      }
+    }
+  };
 
   const [validating, setValidating] = useState(false);
   const [validationSuccess, setValidationSuccess] = useState<boolean | null>(null);
@@ -446,12 +474,26 @@ export default function CloudAccountsPage() {
                       {isConnected && (
                         <button
                           onClick={() => disconnectAwsAccount(acc.id)}
-                          className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-rose-500/10 hover:text-rose-400 text-slate-300 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1"
+                          className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-amber-500/10 hover:text-amber-400 text-slate-300 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1"
                         >
                           <Power className="w-3 h-3" />
                           <span>Disconnect</span>
                         </button>
                       )}
+
+                      <button
+                        disabled={deletingId === (acc.id || acc.accountId)}
+                        onClick={() => handleDeleteAws(acc)}
+                        className="px-2.5 py-1 text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 rounded-lg border border-rose-500/30 transition-colors flex items-center gap-1 disabled:opacity-50"
+                        title="Permanently delete this AWS Account"
+                      >
+                        {deletingId === (acc.id || acc.accountId) ? (
+                          <RotateCw className="w-3 h-3 animate-spin text-rose-400" />
+                        ) : (
+                          <Trash2 className="w-3 h-3 text-rose-400" />
+                        )}
+                        <span>{deletingId === (acc.id || acc.accountId) ? 'Deleting...' : 'Delete'}</span>
+                      </button>
                     </div>
                   </div>
                 );
@@ -589,12 +631,26 @@ export default function CloudAccountsPage() {
                       {isConnected && (
                         <button
                           onClick={() => disconnectAzureSubscription(sub.id)}
-                          className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-rose-500/10 hover:text-rose-400 text-slate-300 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1"
+                          className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-amber-500/10 hover:text-amber-400 text-slate-300 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1"
                         >
                           <Power className="w-3 h-3" />
                           <span>Disconnect</span>
                         </button>
                       )}
+
+                      <button
+                        disabled={deletingId === (sub.id || sub.subscriptionId)}
+                        onClick={() => handleDeleteAzure(sub)}
+                        className="px-2.5 py-1 text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 rounded-lg border border-rose-500/30 transition-colors flex items-center gap-1 disabled:opacity-50"
+                        title="Permanently delete this Azure Subscription"
+                      >
+                        {deletingId === (sub.id || sub.subscriptionId) ? (
+                          <RotateCw className="w-3 h-3 animate-spin text-rose-400" />
+                        ) : (
+                          <Trash2 className="w-3 h-3 text-rose-400" />
+                        )}
+                        <span>{deletingId === (sub.id || sub.subscriptionId) ? 'Deleting...' : 'Delete'}</span>
+                      </button>
                     </div>
                   </div>
                 );

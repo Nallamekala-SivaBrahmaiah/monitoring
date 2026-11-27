@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchAccounts, upsertAccount } from '@/lib/storage';
+import { fetchAccounts, upsertAccount, removeAccount, updateAccountStatus } from '@/lib/storage';
 import { saveAzureSubscription } from '@/lib/azure/subscriptions';
 import { validateAWSCredentials } from '@/lib/aws/credentials';
 import { discoverAWSRegions } from '@/lib/aws/regions';
@@ -112,5 +112,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unsupported cloud provider' }, { status: 400 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to save cloud account' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const provider = searchParams.get('provider') || 'all';
+    const id = searchParams.get('id') || searchParams.get('accountId') || searchParams.get('subscriptionId') || '';
+
+    if (!id) {
+      return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    }
+
+    await removeAccount(provider, id);
+    return NextResponse.json({ success: true, message: `Account ${id} removed successfully` });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Failed to remove account' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { provider = 'all', id, status = 'Disconnected' } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    }
+
+    await updateAccountStatus(provider, id, status);
+    return NextResponse.json({ success: true, message: `Account ${id} status updated to ${status}` });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Failed to update account status' }, { status: 500 });
   }
 }

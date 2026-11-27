@@ -53,6 +53,8 @@ interface MonitoringContextType {
   updateAzureSubscriptionRegions: (id: string, regions: string[]) => Promise<void>;
   disconnectAwsAccount: (id: string) => void;
   disconnectAzureSubscription: (id: string) => Promise<void>;
+  removeAwsAccount: (id: string) => Promise<void>;
+  removeAzureSubscription: (id: string) => Promise<void>;
 
   // Dynamic filtered real resources
   filteredEC2Instances: EC2InstanceDetail[];
@@ -128,6 +130,7 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
   // Concurrency and debounce guards
   const isFetchingRef = useRef<boolean>(false);
   const lastFetchTimestampRef = useRef<number>(0);
+  const deletedAccountIdsRef = useRef<Set<string>>(new Set());
 
   // Real discovered infrastructure
   const [azureVMs, setAzureVMs] = useState<AzureVirtualMachine[]>([]);
@@ -188,25 +191,49 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
 
       if (subsRes && subsRes.ok) {
         const subs = await subsRes.json();
-        if (Array.isArray(subs)) setAzureSubscriptions(subs);
+        if (Array.isArray(subs)) {
+          setAzureSubscriptions(
+            subs.filter(
+              (s: any) =>
+                !deletedAccountIdsRef.current.has(s.id) &&
+                !deletedAccountIdsRef.current.has(s.subscriptionId)
+            )
+          );
+        }
         hadSuccess = true;
       }
 
       if (awsRes && awsRes.ok) {
         const accs = await awsRes.json();
-        if (Array.isArray(accs)) setAwsAccounts(accs);
+        if (Array.isArray(accs)) {
+          setAwsAccounts(
+            accs.filter(
+              (a: any) =>
+                !deletedAccountIdsRef.current.has(a.id) &&
+                !deletedAccountIdsRef.current.has(a.accountId)
+            )
+          );
+        }
         hadSuccess = true;
       }
 
       if (azureVmsRes && azureVmsRes.ok) {
         const vms = await azureVmsRes.json();
-        if (Array.isArray(vms)) setAzureVMs(vms);
+        if (Array.isArray(vms)) {
+          setAzureVMs(
+            vms.filter((v: any) => !deletedAccountIdsRef.current.has(v.subscriptionId))
+          );
+        }
         hadSuccess = true;
       }
 
       if (ec2Res && ec2Res.ok) {
         const ec2 = await ec2Res.json();
-        if (Array.isArray(ec2)) setEc2Instances(ec2);
+        if (Array.isArray(ec2)) {
+          setEc2Instances(
+            ec2.filter((e: any) => !deletedAccountIdsRef.current.has(e.accountId))
+          );
+        }
         hadSuccess = true;
       }
 
@@ -463,10 +490,20 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     }
   };
 
-  const disconnectAwsAccount = (id: string) => {
+  const disconnectAwsAccount = async (id: string) => {
     setAwsAccounts((prev) =>
-      prev.map((acc) => (acc.id === id ? { ...acc, status: 'Disconnected' } : acc))
+      prev.map((acc) => (acc.id === id || acc.accountId === id ? { ...acc, status: 'Disconnected' } : acc))
     );
+    try {
+      await fetch(`/api/cloud-accounts`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'aws', id, status: 'Disconnected' }),
+      });
+      await loadRealData();
+    } catch (e) {
+      console.warn('Disconnect AWS note:', e);
+    }
   };
 
   const disconnectAzureSubscription = async (id: string) => {
@@ -475,10 +512,95 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
     );
 
     try {
-      await fetch(`/api/azure/subscriptions/${id}/disconnect`, { method: 'POST' });
+      await fetch(`/api/azure/subscriptions/${encodeURIComponent(id)}/disconnect`, { method: 'POST' });
+      await fetch(`/api/cloud-accounts`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'azure', id, status: 'Disconnected' }),
+      });
       await loadRealData();
     } catch (e) {
       console.warn('Disconnect note:', e);
+    }
+  };
+
+  const removeAwsAccount = async (id: string) => {
+    // 1. Instantly record in deleted set
+    deletedAccountIdsRef.current.add(id);
+    const target = awsAccounts.find((a) => a.id === id || a.accountId === id);
+    if (target?.accountId) deletedAccountIdsRef.current.add(target.accountId);
+    if (target?.id) deletedAccountIdsRef.current.add(target.id);
+
+    // 2. Instantly remove from React state (accounts + EC2)
+    setAwsAccounts((prev) =>
+      prev.filter(
+        (acc) =>
+          acc.id !== id &&
+          acc.accountId !== id &&
+          !deletedAccountIdsRef.current.has(acc.id) &&
+          !deletedAccountIdsRef.current.has(acc.accountId)
+      )
+    );
+    setEc2Instances((prev) =>
+      prev.filter(
+        (inst) =>
+          inst.accountId !== id &&
+          (!target || inst.accountId !== target.accountId) &&
+          !deletedAccountIdsRef.current.has(inst.accountId)
+      )
+    );
+
+    // 3. Persist deletion in backend
+    try {
+      await fetch(`/api/cloud-accounts?provider=aws&id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (target?.accountId && target.accountId !== id) {
+        await fetch(`/api/cloud-accounts?provider=aws&id=${encodeURIComponent(target.accountId)}`, { method: 'DELETE' });
+      }
+      await loadRealData();
+    } catch (e) {
+      console.warn('Remove AWS account note:', e);
+    }
+  };
+
+  const removeAzureSubscription = async (id: string) => {
+    // 1. Instantly record in deleted set
+    deletedAccountIdsRef.current.add(id);
+    const target = azureSubscriptions.find((s) => s.id === id || s.subscriptionId === id);
+    if (target?.subscriptionId) deletedAccountIdsRef.current.add(target.subscriptionId);
+    if (target?.id) deletedAccountIdsRef.current.add(target.id);
+
+    // 2. Instantly remove from React state (subscriptions + VMs)
+    setAzureSubscriptions((prev) =>
+      prev.filter(
+        (sub) =>
+          sub.id !== id &&
+          sub.subscriptionId !== id &&
+          !deletedAccountIdsRef.current.has(sub.id) &&
+          !deletedAccountIdsRef.current.has(sub.subscriptionId)
+      )
+    );
+    setAzureVMs((prev) =>
+      prev.filter(
+        (vm) =>
+          vm.subscriptionId !== id &&
+          (!target || vm.subscriptionId !== target.subscriptionId) &&
+          !deletedAccountIdsRef.current.has(vm.subscriptionId)
+      )
+    );
+
+    // 3. Persist deletion in backend
+    try {
+      await fetch(`/api/cloud-accounts?provider=azure&id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await fetch(`/api/azure/subscriptions?subscriptionId=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await fetch(`/api/azure/subscriptions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (target?.subscriptionId && target.subscriptionId !== id) {
+        await fetch(`/api/cloud-accounts?provider=azure&id=${encodeURIComponent(target.subscriptionId)}`, { method: 'DELETE' });
+        await fetch(`/api/azure/subscriptions?subscriptionId=${encodeURIComponent(target.subscriptionId)}`, { method: 'DELETE' });
+        await fetch(`/api/azure/subscriptions/${encodeURIComponent(target.subscriptionId)}`, { method: 'DELETE' });
+      }
+      await loadRealData();
+    } catch (e) {
+      console.warn('Remove Azure subscription note:', e);
     }
   };
 
@@ -726,6 +848,8 @@ export function MonitoringProvider({ children }: { children: React.ReactNode }) 
         updateAzureSubscriptionRegions,
         disconnectAwsAccount,
         disconnectAzureSubscription,
+        removeAwsAccount,
+        removeAzureSubscription,
         filteredEC2Instances,
         filteredAzureVMs,
         filteredDockerContainers,

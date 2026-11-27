@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import CloudAccount from '@/models/CloudAccount';
 import CloudResource from '@/models/CloudResource';
@@ -128,37 +129,126 @@ export async function fetchAccounts(provider?: string): Promise<any[]> {
 }
 
 export async function removeAccount(provider: string, identifier: string): Promise<void> {
+  const isMongoValidId = mongoose.Types.ObjectId.isValid(identifier);
+  
+  // 1. Resolve all aliases (subscriptionId, accountId, _id)
+  let subId = identifier;
+  let accId = identifier;
+  let objId: mongoose.Types.ObjectId | null = isMongoValidId ? new mongoose.Types.ObjectId(identifier) : null;
+
+  // Check file store to resolve all aliases
+  const store = getFileStore();
+  const existingAcc = store.accounts.find(
+    (a) =>
+      (provider === 'all' || a.provider === provider) &&
+      (a.subscriptionId === identifier || a.accountId === identifier || a._id === identifier || a.id === identifier)
+  );
+
+  if (existingAcc) {
+    if (existingAcc.subscriptionId) subId = existingAcc.subscriptionId;
+    if (existingAcc.accountId) accId = existingAcc.accountId;
+    if (existingAcc._id && mongoose.Types.ObjectId.isValid(existingAcc._id)) {
+      objId = new mongoose.Types.ObjectId(existingAcc._id);
+    }
+  }
+
+  // 2. Remove from MongoDB safely without CastError
   const hasMongo = await checkMongo();
   if (hasMongo) {
     try {
-      await CloudAccount.deleteMany({
-        provider: provider as any,
-        $or: [{ subscriptionId: identifier }, { accountId: identifier }, { _id: identifier as any }],
+      const orFind: any[] = [{ subscriptionId: identifier }, { accountId: identifier }];
+      if (isMongoValidId) orFind.push({ _id: objId });
+
+      const foundInMongo: any = await (CloudAccount as any).findOne({
+        ...(provider !== 'all' ? { provider: provider as any } : {}),
+        $or: orFind,
+      }).lean();
+
+      if (foundInMongo) {
+        if (foundInMongo.subscriptionId) subId = foundInMongo.subscriptionId;
+        if (foundInMongo.accountId) accId = foundInMongo.accountId;
+        if (foundInMongo._id && mongoose.Types.ObjectId.isValid(foundInMongo._id.toString())) {
+          objId = new mongoose.Types.ObjectId(foundInMongo._id.toString());
+        }
+      }
+
+      const orAccountDelete: any[] = [
+        { subscriptionId: subId },
+        { subscriptionId: identifier },
+        { accountId: accId },
+        { accountId: identifier },
+      ];
+      if (objId) {
+        orAccountDelete.push({ _id: objId });
+      }
+
+      await (CloudAccount as any).deleteMany({
+        ...(provider !== 'all' ? { provider: provider as any } : {}),
+        $or: orAccountDelete,
       });
-      await CloudResource.deleteMany({
-        provider: provider as any,
-        $or: [{ subscriptionId: identifier }, { accountId: identifier }],
+
+      await (CloudResource as any).deleteMany({
+        ...(provider !== 'all' ? { provider: provider as any } : {}),
+        $or: [
+          { subscriptionId: subId },
+          { subscriptionId: identifier },
+          { accountId: accId },
+          { accountId: identifier },
+        ],
       });
-    } catch {
-      //
+    } catch (err) {
+      console.error('[Storage] MongoDB removeAccount error:', err);
+    }
+  }
+
+  // 3. Remove from local file store
+  store.accounts = store.accounts.filter((a) => {
+    if (provider !== 'all' && a.provider !== provider) return true;
+    if (a.subscriptionId && (a.subscriptionId === subId || a.subscriptionId === identifier)) return false;
+    if (a.accountId && (a.accountId === accId || a.accountId === identifier)) return false;
+    if (a._id && (a._id === identifier || (objId && a._id === objId.toString()))) return false;
+    if (a.id && (a.id === identifier || (objId && a.id === objId.toString()))) return false;
+    return true;
+  });
+
+  store.resources = store.resources.filter((r) => {
+    if (provider !== 'all' && r.provider !== provider) return true;
+    if (r.subscriptionId && (r.subscriptionId === subId || r.subscriptionId === identifier)) return false;
+    if (r.accountId && (r.accountId === accId || r.accountId === identifier)) return false;
+    return true;
+  });
+
+  saveFileStore(store);
+}
+
+export async function updateAccountStatus(provider: string, identifier: string, status: string): Promise<void> {
+  const isMongoValidId = mongoose.Types.ObjectId.isValid(identifier);
+  const hasMongo = await checkMongo();
+  if (hasMongo) {
+    try {
+      const orFind: any[] = [{ subscriptionId: identifier }, { accountId: identifier }];
+      if (isMongoValidId) orFind.push({ _id: new mongoose.Types.ObjectId(identifier) });
+
+      await (CloudAccount as any).updateMany(
+        {
+          ...(provider !== 'all' ? { provider: provider as any } : {}),
+          $or: orFind,
+        },
+        { $set: { status, lastSyncAt: new Date() } }
+      );
+    } catch (err) {
+      console.error('[Storage] MongoDB updateAccountStatus error:', err);
     }
   }
 
   const store = getFileStore();
-  store.accounts = store.accounts.filter(
-    (a) =>
-      !(
-        a.provider === provider &&
-        (a.subscriptionId === identifier || a.accountId === identifier || a._id === identifier)
-      )
-  );
-  store.resources = store.resources.filter(
-    (r) =>
-      !(
-        r.provider === provider &&
-        (r.subscriptionId === identifier || r.accountId === identifier)
-      )
-  );
+  store.accounts = store.accounts.map((a) => {
+    if (provider !== 'all' && a.provider !== provider) return a;
+    if (a.subscriptionId === identifier || a.accountId === identifier || a._id === identifier || a.id === identifier) {
+      return { ...a, status, lastSyncAt: new Date().toISOString() };
+    }
+    return a;
+  });
   saveFileStore(store);
 }
 

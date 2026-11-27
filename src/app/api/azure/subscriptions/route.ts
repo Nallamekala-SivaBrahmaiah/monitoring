@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveAzureSubscription, getAzureSubscriptions, disconnectAzureSubscription } from '@/lib/azure/subscriptions';
-
-
+import { removeAccount } from '@/lib/storage';
 
 export async function GET() {
   try {
@@ -39,13 +38,14 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const subscriptionId = searchParams.get('subscriptionId');
+    const subscriptionId = searchParams.get('subscriptionId') || searchParams.get('id');
     if (!subscriptionId) {
       return NextResponse.json({ error: 'Subscription ID is required' }, { status: 400 });
     }
-    await disconnectAzureSubscription(subscriptionId);
-    return NextResponse.json({ success: true });
+    await removeAccount('azure', subscriptionId);
+    await disconnectAzureSubscription(subscriptionId).catch(() => {});
+    return NextResponse.json({ success: true, message: `Subscription ${subscriptionId} removed` });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to disconnect subscription' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to remove subscription' }, { status: 500 });
   }
 }

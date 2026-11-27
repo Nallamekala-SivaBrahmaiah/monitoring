@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
         .map((x) => x!.toLowerCase().trim())
     );
 
-    // 2. Automatically purge any orphaned alerts for deleted/decommissioned resources (e.g. old vm01, vm02, vm03)
+    // 2. Automatically purge any orphaned alerts for deleted/decommissioned resources
     if (inventory.length > 0) {
       await Alert.deleteMany({
         $and: [
@@ -51,6 +51,9 @@ export async function GET(request: NextRequest) {
           },
         ],
       });
+    } else {
+      // If there are zero monitored servers/resources, purge all orphan alerts
+      await Alert.deleteMany({});
     }
 
     const query: any = {};
@@ -222,5 +225,15 @@ export async function PATCH(request: NextRequest) {
   } catch (err: any) {
     console.error('Error updating alert status:', err);
     return NextResponse.json({ error: err.message || 'Failed to update alert' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    await connectToDatabase();
+    await Alert.deleteMany({});
+    return NextResponse.json({ success: true, message: 'All alerts purged' });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Failed to purge alerts' }, { status: 500 });
   }
 }
