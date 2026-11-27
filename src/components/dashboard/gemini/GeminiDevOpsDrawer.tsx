@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Sparkles,
   X,
@@ -69,6 +70,11 @@ export function GeminiDevOpsDrawer({ isOpen, onClose }: GeminiDevOpsDrawerProps)
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [activeAlertsCount, setActiveAlertsCount] = useState<number>(0);
+  const [mounted, setMounted] = useState<boolean>(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -229,13 +235,13 @@ export function GeminiDevOpsDrawer({ isOpen, onClose }: GeminiDevOpsDrawerProps)
     ]);
   };
 
-  if (!isOpen) return null;
+  if (!mounted || !isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
+  return createPortal(
+    <div className="fixed inset-0 z-[999999] overflow-hidden flex justify-end">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -243,7 +249,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose }: GeminiDevOpsDrawerProps)
       {/* Slide-over Drawer */}
       <div
         ref={drawerRef}
-        className="relative w-full max-w-2xl bg-[#090F1E] border-l-2 border-cyan-500/40 shadow-2xl shadow-cyan-500/20 text-slate-100 flex flex-col h-full z-10 animate-in slide-in-from-right duration-300 ease-out"
+        className="relative w-full max-w-2xl bg-[#090F1E] border-l-2 border-cyan-500/50 shadow-2xl shadow-cyan-500/30 text-slate-100 flex flex-col h-full z-10 animate-in slide-in-from-right duration-300 ease-out"
       >
         {/* Holographic glowing line at the top */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-purple-500 via-cyan-400 to-indigo-500 animate-pulse pointer-events-none" />
@@ -447,7 +453,8 @@ export function GeminiDevOpsDrawer({ isOpen, onClose }: GeminiDevOpsDrawerProps)
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
