@@ -43,13 +43,32 @@ export async function GET(request: NextRequest) {
       prefs.ignoredServers = [];
     }
 
-    // Synchronize recipients with DevOpsRecipient collection
-    const devOpsDocs = await DevOpsRecipient.find({ enabled: { $ne: false } }).lean();
-    const devOpsEmails = devOpsDocs.map((d: any) => d.email).filter(Boolean);
-    const existingRecipients = Array.isArray(prefs.alertRecipients) ? prefs.alertRecipients : [];
+    // Synchronize recipients with DevOpsRecipient collection & strictly respect disabled status
+    const [enabledDocs, disabledDocs] = await Promise.all([
+      DevOpsRecipient.find({ enabled: { $ne: false } }).lean(),
+      DevOpsRecipient.find({ enabled: false }).lean(),
+    ]);
+
+    const disabledSet = new Set(disabledDocs.map((d: any) => (d.email || '').toLowerCase().trim()));
+    const devOpsEmails = enabledDocs
+      .map((d: any) => (d.email || '').toLowerCase().trim())
+      .filter((e: string) => Boolean(e) && !disabledSet.has(e));
+
+    const existingRecipients = (Array.isArray(prefs.alertRecipients) ? prefs.alertRecipients : [])
+      .map((e: string) => (e || '').toLowerCase().trim())
+      .filter((e: string) => Boolean(e) && !disabledSet.has(e));
+
     const combinedRecipients = Array.from(new Set([...existingRecipients, ...devOpsEmails]));
 
-    prefs.alertRecipients = combinedRecipients.length > 0 ? combinedRecipients : ['nallasiva552@gmail.com'];
+    prefs.alertRecipients = combinedRecipients;
+    if (combinedRecipients.length === 0) {
+      prefs.emailNotificationsEnabled = false;
+    }
+
+    await NotificationPreferences.updateOne(
+      { userId: 'admin' },
+      { $set: { alertRecipients: combinedRecipients, emailNotificationsEnabled: combinedRecipients.length > 0 } }
+    );
 
     return NextResponse.json(prefs, { headers: NO_CACHE_HEADERS });
   } catch (err: any) {
