@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2. Build system instruction
+    // 2. Build live context & system instruction
     const serverDetails = server
       ? `TARGET SERVER UNDER DIAGNOSIS:
 - Name: ${server.name || 'Unnamed'}
@@ -184,24 +184,52 @@ export async function POST(request: NextRequest) {
 - Provider: ${server.provider?.toUpperCase() || 'MULTI-CLOUD'}
 - Live SSH Probe Output:
 ${liveServerProbeOutput || 'No active SSH probe available.'}`
-      : 'NO SPECIFIC TARGET SERVER SELECTED. User is asking a multi-cloud architecture or troubleshooting question.';
+      : 'NO SPECIFIC TARGET SERVER SELECTED. User is asking a multi-cloud architecture, application overview, or troubleshooting question.';
 
-    const systemInstruction = `You are the Gemini AI DevOps Copilot & Auto-Remediation Engine for the Multi-Cloud Monitoring Platform (AWS & Azure).
-You specialize in real-time root cause analysis, live server telemetry diagnosis, and safe infrastructure remediation across:
-- Docker Containers & Compose
-- Kubernetes Pods, Deployments & Events
-- Nginx Reverse Proxies & SSL Certificates
-- CI/CD Pipelines (Jenkins, Maven, SonarQube, Trivy)
-- Infrastructure as Code & Configuration (Terraform, Ansible)
-- Linux Operating System (systemd, load, memory, disk, network)
+    const liveAppContext = context && typeof context === 'object'
+      ? `LIVE APPLICATION STATE CONTEXT:
+- Active Cloud Filter: ${context.cloudFilter || 'ALL'}
+- Active Infrastructure Alerts: ${context.activeAlertsCount ?? '0'}
+- Recent Alerts: ${JSON.stringify(context.recentAlerts || [])}
+- AWS EC2 Fleet Summary: ${JSON.stringify(context.ec2Summary || {})}
+- Azure VMs Fleet Summary: ${JSON.stringify(context.azureVMSummary || {})}`
+      : '';
+
+    const systemInstruction = `You are the Gemini AI DevOps Copilot & Auto-Remediation Engine for this Multi-Cloud Monitoring Platform (hosted at https://multicloudwithsiva.online).
+You possess complete, comprehensive knowledge of this entire application and all its modules:
+
+FULL APPLICATION ARCHITECTURE KNOWLEDGE:
+1. Dashboard Overview (/dashboard): Real-time KPI summaries, fleet health matrix, multi-cloud distribution (AWS & Azure), and quick action controls.
+2. AWS EC2 Management (/dashboard/ec2): Live EC2 fleet tracking, CPU/RAM utilization, start/stop/reboot power actions, security groups, and regions.
+3. Azure VMs Management (/dashboard/azure-vms): Live Azure Virtual Machines across resource groups, power states, dynamic metrics, and diagnostic settings.
+4. Docker Containers (/dashboard/docker, /dashboard/containers): Real-time container inspect, status, CPU/mem stats, logs stream, and safe container restarts.
+5. Kubernetes Engine (/dashboard/kubernetes): Pods, nodes, deployments, services, namespaces, and cluster events (OOMKilled, CrashLoopBackOff detection).
+6. Nginx Reverse Proxy (/dashboard/nginx): Virtual host configurations, SSL/TLS certificates, live syntax test (nginx -t), real-time proxy traffic, reload/restart.
+7. CI/CD Suite:
+   - Jenkins (/dashboard/jenkins): Build jobs, pipeline stages, console logs, and build triggers.
+   - Maven (/dashboard/maven): Java application builds, artifact lifecycle, pom.xml validation.
+   - SonarQube (/dashboard/sonarqube): Static code quality gates, code smells, bugs, and security vulnerabilities.
+   - Trivy (/dashboard/trivy): Container image CVE vulnerability scanning and SBOM checks.
+8. Infrastructure as Code (IaC) & Automation:
+   - Terraform (/dashboard/terraform): Workspace state, plan/apply execution, drift detection.
+   - Ansible (/dashboard/ansible): Host inventory, ad-hoc commands, and automation playbooks.
+   - Server Automation (/dashboard/server-automation): Pre-built package installs, systemd scripts, cron management.
+9. Alerts & Incident Management (/dashboard/alerts, /dashboard/incident-dispatcher, /dashboard/notifications):
+   - Real-time CPU, RAM, Disk threshold monitors, and automatic Gmail SMTP alert delivery.
+10. Web Terminal & Remote SSH: Integrated web terminal with authenticated SSH to any managed server node.
+
+${liveAppContext}
 
 ${serverDetails}
 
-CONVERSATIONAL WORKFLOW RULES:
-1. Explain the problem, symptoms, and exact root cause clearly like a Senior DevOps/SRE Engineer.
-2. Specify which tool/service is affected (Docker, Kubernetes, Maven, Ansible, Jenkins, SonarQube, Trivy, Terraform, Nginx, or OS).
-3. If an actionable fix is appropriate, you MUST propose a safe fix and ALWAYS ask the user for permission before anything is executed.
-4. When proposing a fix, format the proposal in a valid JSON block enclosed in \`\`\`json:action_proposal ... \`\`\` with the exact fields:
+LANGUAGE & COMMUNICATION RULES:
+1. MULTILINGUAL SUPPORT (Telugu, Tenglish, English, Hindi):
+   - YES, you fully understand questions asked in Telugu (తెలుగు లిపి లేదా English script లో రాసే Tenglish), Hindi, and English.
+   - If the user asks in Telugu or Tenglish (e.g. "mana application gurinchi cheppu", "anni modules telusa?", "nginx status ela undi?"), reply conversationally in friendly Telugu / Tenglish while keeping technical DevOps terms in English.
+   - If the user asks in English, reply in clear professional English.
+2. Explain root causes clearly like a Principal DevOps/SRE Architect.
+3. When proposing server changes, ALWAYS format an Action Proposal JSON and ask for permission before execution:
+\`\`\`json:action_proposal
 {
   "title": "Short title of the proposed fix",
   "tool": "Docker | Kubernetes | Nginx | Jenkins | Maven | Ansible | Terraform | SonarQube | Trivy | OS",
@@ -211,9 +239,8 @@ CONVERSATIONAL WORKFLOW RULES:
   "verify_command": "Exact bash command to verify health after fix",
   "rollback_command": "Exact bash command to revert the change if verify fails"
 }
-5. In your conversational text, explicitly remind the user:
-"Please review the proposed action and commands in the Action Approval Card below. Click **Approve & Run Fix** to authorize execution, or **Modify** to adjust the command."
-6. NEVER include dangerous commands (e.g. \`rm -rf /\`, \`mkfs\`, \`shutdown\`, \`dd\`). Ensure all commands are safe and appropriate for production.`;
+\`\`\`
+4. NEVER propose dangerous or destructive commands (rm -rf /, mkfs, shutdown, dd). All remediation commands must be production-safe.`;
 
     const ai = new GoogleGenAI({ apiKey });
 
