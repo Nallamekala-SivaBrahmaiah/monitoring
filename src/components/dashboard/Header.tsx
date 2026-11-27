@@ -205,7 +205,7 @@ export function Header({ onOpenMobileSidebar }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-[#0B1120] border-b border-[#1E293B] px-4 lg:px-7 py-3 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 shadow-md">
+    <header className="sticky top-0 z-50 bg-[#080E1C]/90 backdrop-blur-xl border-b border-slate-800/80 px-4 lg:px-7 py-3 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 shadow-xl transition-colors duration-300">
       {/* Title & Mobile Toggle */}
       <div className="flex items-center gap-3 shrink-0">
         <button

@@ -67,9 +67,12 @@ export function MultiCloudModulesDeck({ onOpenTerminal }: MultiCloudModulesDeckP
   };
 
   return (
-    <div className="bg-[#0B1120] border border-[#162238] hover:border-cyan-500/40 rounded-2xl p-4 sm:p-5 shadow-2xl relative overflow-hidden transition-all duration-300 flex flex-col justify-between h-full">
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-[#0E172C]/95 via-[#0A1122]/95 to-[#070D1B]/95 backdrop-blur-xl border border-slate-700/50 hover:border-cyan-400/60 p-4 sm:p-5 shadow-2xl transition-all duration-300 flex flex-col justify-between h-full group/deck">
+      {/* Specular Top Rim Light */}
+      <div className="absolute top-0 inset-x-0 h-[1.5px] bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent pointer-events-none" />
+
       {/* Background Hologram Grid Overlay */}
-      <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-25 pointer-events-none"></div>
+      <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-20 pointer-events-none"></div>
 
       {/* Top Header */}
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-[#162238]">

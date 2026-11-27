@@ -158,7 +158,9 @@ export function CloudDistributionChart({}: CloudDistributionChartProps) {
   const azureStroke = total > 0 ? (azurePct / 100) * circumference : 0;
 
   return (
-    <div className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-4 sm:p-5 shadow-sm flex flex-col justify-between h-full relative overflow-hidden group hover:border-blue-500/40 transition-all">
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-[#0E172C]/95 via-[#0A1122]/95 to-[#070D1B]/95 backdrop-blur-xl border border-slate-700/50 hover:border-blue-400/60 p-4 sm:p-5 shadow-xl transition-all duration-300 flex flex-col justify-between h-full group">
+      {/* Specular Top Rim Light */}
+      <div className="absolute top-0 inset-x-0 h-[1.5px] bg-gradient-to-r from-transparent via-blue-400/35 to-transparent pointer-events-none" />
       {/* 1. Header */}
       <div className="flex items-center justify-between pb-3 border-b border-[#1E293B]/70 shrink-0">
         <div className="flex items-center gap-2">

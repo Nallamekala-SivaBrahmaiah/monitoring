@@ -79,15 +79,15 @@ export function HomeStyleStudioTopBar() {
   };
 
   return (
-    <div className="bg-[#0B1120] border-2 border-cyan-500/40 rounded-2xl shadow-2xl relative z-30 transition-all duration-300">
-      {/* Background Holographic Shimmer Line */}
-      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-pulse pointer-events-none rounded-t-2xl overflow-hidden"></div>
+    <div className="relative z-30 rounded-2xl bg-gradient-to-r from-[#0E162B]/95 via-[#080E1C]/95 to-[#0E162B]/95 backdrop-blur-xl border border-cyan-500/35 hover:border-cyan-400/60 shadow-2xl transition-all duration-300 overflow-hidden">
+      {/* Specular Top Rim Light */}
+      <div className="absolute top-0 inset-x-0 h-[1.5px] bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent pointer-events-none" />
 
       {/* Main Bar (Always Visible at the Very Top of Dashboard) */}
       <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         {/* Left: Branding & Studio Identity */}
         <div className="flex items-center gap-3.5 shrink-0">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-500/15 to-purple-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shadow-inner shrink-0">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-500/15 to-purple-500/20 border border-cyan-400/50 flex items-center justify-center text-cyan-300 shadow-lg shadow-cyan-500/15 shrink-0">
             <Sparkles className="w-6 h-6 animate-pulse" />
           </div>
           <div>
@@ -95,7 +95,7 @@ export function HomeStyleStudioTopBar() {
               <h2 className="text-base sm:text-lg font-black text-white tracking-tight whitespace-nowrap">
                 Home Style Studio
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/30 whitespace-nowrap">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-400/40 whitespace-nowrap shadow-sm">
                 LIVE UI CUSTOMIZER
               </span>
             </div>
@@ -112,7 +112,7 @@ export function HomeStyleStudioTopBar() {
             <button
               type="button"
               onClick={() => setIsThemeSelectOpen(!isThemeSelectOpen)}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-600/30 border-2 border-cyan-400 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-lg shadow-cyan-600/30 border border-cyan-400/60 cursor-pointer"
               title="Click to select dashboard theme option"
             >
               <span
@@ -125,7 +125,7 @@ export function HomeStyleStudioTopBar() {
 
             {/* Dropdown Menu Options Popover */}
             {isThemeSelectOpen && (
-              <div className="absolute top-full left-0 mt-2 w-64 bg-[#0B1120] border-2 border-cyan-500/50 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md">
+              <div className="absolute top-full left-0 mt-2 w-72 bg-[#070D1B]/95 border-2 border-cyan-500/50 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-2xl">
                 <div className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-cyan-400 border-b border-slate-800 mb-1 flex items-center justify-between">
                   <span>Select Theme Option</span>
                   <span className="text-slate-500 font-mono text-[9px]">{THEME_PRESETS.length} Options</span>
