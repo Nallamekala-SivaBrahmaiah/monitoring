@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useTheme, THEME_PRESETS } from '@/context/ThemeContext';
 import { ModuleStyleEditorModal } from './ModuleStyleEditorModal';
+import { GeminiDevOpsDrawer } from '../gemini/GeminiDevOpsDrawer';
 
 export function HomeStyleStudioTopBar() {
   const {
@@ -49,6 +50,7 @@ export function HomeStyleStudioTopBar() {
   const [isModuleModalOpen, setIsModuleModalOpen] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [isThemeSelectOpen, setIsThemeSelectOpen] = useState<boolean>(false);
+  const [isGeminiOpen, setIsGeminiOpen] = useState<boolean>(false);
   const themeDropdownRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -162,6 +164,26 @@ export function HomeStyleStudioTopBar() {
               </div>
             )}
           </div>
+
+          {/* Ask Gemini AI Button */}
+          <button
+            type="button"
+            onClick={() => setIsGeminiOpen(true)}
+            className="relative group overflow-hidden px-3.5 py-2 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 bg-gradient-to-r from-purple-600/90 via-indigo-600/90 to-cyan-600/90 hover:from-purple-500 hover:via-indigo-500 hover:to-cyan-500 text-white shadow-lg shadow-purple-500/25 border-2 border-purple-400/70 hover:border-cyan-300 hover:shadow-cyan-500/30 cursor-pointer active:scale-95 shrink-0"
+            title="Ask Gemini AI DevOps Assistant"
+          >
+            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out pointer-events-none" />
+            <div className="relative flex items-center justify-center">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-200 animate-pulse group-hover:rotate-12 transition-transform" />
+            </div>
+            <span className="tracking-wide bg-gradient-to-r from-white via-cyan-100 to-purple-100 bg-clip-text text-transparent font-extrabold">
+              Ask Gemini AI
+            </span>
+            <span className="flex h-1.5 w-1.5 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-300"></span>
+            </span>
+          </button>
         </div>
 
         {/* Right: Quick Actions & Expand Toggle */}
@@ -380,6 +402,12 @@ export function HomeStyleStudioTopBar() {
       <ModuleStyleEditorModal
         isOpen={isModuleModalOpen}
         onClose={() => setIsModuleModalOpen(false)}
+      />
+
+      {/* Gemini AI DevOps Assistant Slide-over Drawer */}
+      <GeminiDevOpsDrawer
+        isOpen={isGeminiOpen}
+        onClose={() => setIsGeminiOpen(false)}
       />
     </div>
   );

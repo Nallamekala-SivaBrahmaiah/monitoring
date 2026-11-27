@@ -64,7 +64,7 @@ export interface IDevopsModelMeta {
   layers: string[];
 }
 
-export const DEVOPS_MODELS: Record<DevopsModelId, IDevopsModelMeta> = {
+const DEVOPS_MODELS: Record<DevopsModelId, IDevopsModelMeta> = {
   1: {
     id: 1,
     name: 'Pipeline Stage Rail',

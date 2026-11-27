@@ -15,6 +15,7 @@
     "@azure/arm-compute": "^25.3.0",
     "@azure/arm-resources": "^8.0.0",
     "@azure/identity": "^4.14.1",
+    "@google/genai": "^3.6.1",
     "@types/nodemailer": "^8.0.2",
     "@types/ws": "^8.18.2",
     "@xterm/addon-fit": "^0.11.0",
