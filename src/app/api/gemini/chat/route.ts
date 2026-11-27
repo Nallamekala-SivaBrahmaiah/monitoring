@@ -4,6 +4,7 @@ import { Client } from 'ssh2';
 import connectToDatabase from '@/lib/mongodb';
 import { resolveServerCredentials } from '@/lib/terminal/serverResolver';
 import AiRemediationLog from '@/models/AiRemediationLog';
+import Server from '@/models/Server';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'model';
@@ -74,7 +75,7 @@ fi
 `;
 
     const timer = setTimeout(() => {
-      try { client.end(); } catch {}
+      try { client.end(); } catch { }
       resolve(output + '\n[NOTICE] Live SSH probe completed after 10s timeout.');
     }, 10000);
 
@@ -96,7 +97,7 @@ fi
         client.exec(inspectionScript, (err, stream) => {
           if (err) {
             clearTimeout(timer);
-            try { client.end(); } catch {}
+            try { client.end(); } catch { }
             return resolve(`SSH Exec Error: ${err.message}`);
           }
           stream
@@ -108,7 +109,7 @@ fi
             })
             .on('close', () => {
               clearTimeout(timer);
-              try { client.end(); } catch {}
+              try { client.end(); } catch { }
               resolve(output);
             });
         });
@@ -156,20 +157,56 @@ export async function POST(request: NextRequest) {
 
     let liveServerProbeOutput = '';
     let resolvedCreds: any = null;
+    let activeServerTarget = server;
 
-    // 1. If target server is specified, inspect it live over SSH
-    if (server && (server.id || server.host || server.name)) {
+    // Auto-discover target server if not explicitly selected from UI
+    if (!activeServerTarget || (!activeServerTarget.id && !activeServerTarget.host && !activeServerTarget.name)) {
+      try {
+        const ipMatch = prompt.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+        const serversList = await Server.find({}, 'name host publicIp status provider').limit(25).lean();
+
+        let matched: any = null;
+        if (ipMatch) {
+          const targetIp = ipMatch[0];
+          matched = serversList.find((s: any) => s.host === targetIp || s.publicIp === targetIp);
+        }
+
+        if (!matched && serversList.length > 0) {
+          const lowerPrompt = prompt.toLowerCase();
+          matched = serversList.find((s: any) => s.name && lowerPrompt.includes(s.name.toLowerCase()));
+
+          // If user specifically asks "server login ayyi chudu" / "check server", default to active server in inventory
+          if (!matched && (lowerPrompt.includes('server') || lowerPrompt.includes('vm') || lowerPrompt.includes('login') || lowerPrompt.includes('issue'))) {
+            matched = serversList[0];
+          }
+        }
+
+        if (matched) {
+          activeServerTarget = {
+            id: matched._id.toString(),
+            name: matched.name,
+            host: matched.host || matched.publicIp,
+            provider: matched.provider,
+          };
+        }
+      } catch (err) {
+        console.warn('[Auto-Server-Discovery]:', err);
+      }
+    }
+
+    // 1. If target server is specified or auto-discovered, inspect it live over SSH
+    if (activeServerTarget && (activeServerTarget.id || activeServerTarget.host || activeServerTarget.name)) {
       try {
         resolvedCreds = await resolveServerCredentials({
-          sshServerId: server.id,
-          host: server.host,
-          name: server.name,
+          sshServerId: activeServerTarget.id,
+          host: activeServerTarget.host,
+          name: activeServerTarget.name,
         });
 
         if (resolvedCreds) {
           liveServerProbeOutput = await inspectLiveServerOverSSH(resolvedCreds);
         } else {
-          liveServerProbeOutput = `Server credentials for "${server.name || server.host}" are not configured in inventory. Proceeding with general infrastructure analysis.`;
+          liveServerProbeOutput = `Server credentials for "${activeServerTarget.name || activeServerTarget.host}" are not configured in inventory. Proceeding with general infrastructure analysis.`;
         }
       } catch (err: any) {
         liveServerProbeOutput = `Live inspection attempt on server encountered: ${err.message}`;
@@ -177,11 +214,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Build live context & system instruction
-    const serverDetails = server
+    const serverDetails = activeServerTarget
       ? `TARGET SERVER UNDER DIAGNOSIS:
-- Name: ${server.name || 'Unnamed'}
-- Host / IP: ${server.host || 'N/A'}
-- Provider: ${server.provider?.toUpperCase() || 'MULTI-CLOUD'}
+- Name: ${activeServerTarget.name || 'Unnamed'}
+- Host / IP: ${activeServerTarget.host || 'N/A'}
+- Provider: ${activeServerTarget.provider?.toUpperCase() || 'MULTI-CLOUD'}
 - Live SSH Probe Output:
 ${liveServerProbeOutput || 'No active SSH probe available.'}`
       : 'NO SPECIFIC TARGET SERVER SELECTED. User is asking a multi-cloud architecture, application overview, or troubleshooting question.';
@@ -318,7 +355,7 @@ LANGUAGE & COMMUNICATION RULES:
             rollback_command: parsed.rollback_command || 'echo "No rollback required"',
           };
         }
-      } catch {}
+      } catch { }
     }
 
     // Create MongoDB Audit Log
