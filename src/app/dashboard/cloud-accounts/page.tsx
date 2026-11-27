@@ -341,10 +341,10 @@ export default function CloudAccountsPage() {
           </div>
 
           {/* Accounts Grid */}
-          <div className={`grid gap-5 ${cloudProvider === 'all' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+          <div className={`grid gap-5 ${cloudProvider === 'all' ? 'grid-cols-1 md:grid-cols-2 items-stretch' : 'grid-cols-1'}`}>
             {/* AWS Accounts Section */}
             {(cloudProvider === 'all' || cloudProvider === 'aws') && (
-              <div className="space-y-4">
+              <div className="flex flex-col space-y-4 h-full">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
                     <AwsLogo className="w-5 h-5" />
@@ -358,56 +358,72 @@ export default function CloudAccountsPage() {
                 return (
                   <div
                     key={acc.id}
-                    className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm space-y-3"
+                    className="relative flex flex-col justify-between rounded-2xl bg-gradient-to-b from-[#0E172C]/95 via-[#0A1122]/95 to-[#070D1B]/95 backdrop-blur-xl border border-slate-700/60 hover:border-amber-400/50 p-5 shadow-xl transition-all overflow-hidden group min-h-[220px]"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-[#FF9900]/15 text-[#FF9900] flex items-center justify-center flex-shrink-0">
-                          <AwsLogo className="w-6 h-6" />
+                    {/* Top specular rim light */}
+                    <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none" />
+                    {/* Ambient corner glow */}
+                    <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full bg-amber-500/5 blur-xl pointer-events-none group-hover:bg-amber-500/10 transition-colors" />
+
+                    <div className="space-y-3.5 relative z-10">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF9900]/20 to-[#FF9900]/5 border border-[#FF9900]/30 text-[#FF9900] flex items-center justify-center shrink-0 shadow-sm">
+                            <AwsLogo className="w-6 h-6" />
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-bold text-white tracking-tight truncate">
+                              {acc.accountName}
+                            </h4>
+                            <span className="text-xs font-mono text-slate-400 block truncate">
+                              ID: {acc.accountId}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-white">
-                            {acc.accountName}
-                          </h4>
-                          <span className="text-xs font-mono text-slate-400">
-                            ID: {acc.accountId}
+
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0 ${
+                            isConnected
+                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                          }`}
+                        >
+                          {isConnected ? (
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          ) : (
+                            <XCircle className="w-3.5 h-3.5" />
+                          )}
+                          <span>{acc.status}</span>
+                        </span>
+                      </div>
+
+                      <div className="pt-2.5 border-t border-[#1E293B]/80 space-y-2 text-xs">
+                        <div className="text-slate-400 font-mono truncate flex items-center justify-between">
+                          <span className="truncate">Account ID: <span className="text-slate-200">{acc.accountId}</span></span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold shrink-0">
+                            IAM Access Keys
                           </span>
                         </div>
-                      </div>
-
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                          isConnected
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                        }`}
-                      >
-                        {isConnected ? (
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                        ) : (
-                          <XCircle className="w-3.5 h-3.5" />
-                        )}
-                        <span>{acc.status}</span>
-                      </span>
-                    </div>
-
-                    <div className="pt-2 border-t border-[#1E293B] space-y-2 text-xs">
-                      <div className="text-slate-400 font-mono truncate flex items-center justify-between">
-                        <span>Account ID: <span className="text-slate-200">{acc.accountId}</span></span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 font-semibold">IAM Access Keys</span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-400">
-                        <div>
-                          Active Regions ({acc.enabledRegions.length}):{' '}
-                          <span className="text-white font-semibold">
-                            {acc.enabledRegions.join(', ')}
-                          </span>
+                        <div className="flex items-center justify-between text-slate-400">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-slate-400">Regions ({acc.enabledRegions.length}):</span>
+                            {acc.enabledRegions.slice(0, 2).map((r) => (
+                              <span key={r} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800/80 text-amber-300/90 border border-amber-500/20">
+                                {r}
+                              </span>
+                            ))}
+                            {acc.enabledRegions.length > 2 && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700">
+                                +{acc.enabledRegions.length - 2} more
+                              </span>
+                            )}
+                          </div>
+                          <div className="shrink-0 text-slate-400 text-[11px] font-mono">Sync: {acc.lastSync}</div>
                         </div>
-                        <div>Last Sync: {acc.lastSync}</div>
                       </div>
                     </div>
 
-                    <div className="pt-2 flex items-center justify-end gap-2">
+                    <div className="mt-4 pt-3 border-t border-[#1E293B]/70 flex items-center justify-end gap-2 relative z-10">
                       <button
                         onClick={() => {
                           setEditingAccountId(acc.id);
@@ -421,7 +437,7 @@ export default function CloudAccountsPage() {
                           setValidationSuccess(null);
                           setActiveModal('aws');
                         }}
-                        className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-sky-500/15 hover:text-sky-300 text-slate-300 rounded border border-[#1E293B] transition-colors flex items-center gap-1.5"
+                        className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-sky-500/15 hover:text-sky-300 text-slate-300 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1.5"
                       >
                         <Globe className="w-3.5 h-3.5 text-[#FF9900]" />
                         <span>Manage Regions</span>
@@ -430,7 +446,7 @@ export default function CloudAccountsPage() {
                       {isConnected && (
                         <button
                           onClick={() => disconnectAwsAccount(acc.id)}
-                          className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-rose-500/10 hover:text-rose-400 text-slate-300 rounded border border-[#1E293B] transition-colors flex items-center gap-1"
+                          className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-rose-500/10 hover:text-rose-400 text-slate-300 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1"
                         >
                           <Power className="w-3 h-3" />
                           <span>Disconnect</span>
@@ -442,7 +458,7 @@ export default function CloudAccountsPage() {
               })}
 
               {awsAccounts.length === 0 && (
-                <div className="p-8 text-center bg-[#111A2E] border border-[#1E293B] rounded-xl text-xs text-slate-400 space-y-3">
+                <div className="relative flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#0E172C]/90 to-[#070D1B]/90 border border-slate-700/60 rounded-2xl text-xs text-slate-400 space-y-3 min-h-[220px]">
                   <p>No AWS accounts connected.</p>
                   <button
                     onClick={() => {
@@ -469,7 +485,7 @@ export default function CloudAccountsPage() {
 
             {/* Azure Subscriptions Section */}
             {(cloudProvider === 'all' || cloudProvider === 'azure') && (
-              <div className="space-y-4">
+              <div className="flex flex-col space-y-4 h-full">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
                     <AzureLogo className="w-5 h-5" />
@@ -483,55 +499,72 @@ export default function CloudAccountsPage() {
                 return (
                   <div
                     key={sub.id}
-                    className="bg-[#111A2E] border border-[#1E293B] rounded-xl p-5 shadow-sm space-y-3"
+                    className="relative flex flex-col justify-between rounded-2xl bg-gradient-to-b from-[#0E172C]/95 via-[#0A1122]/95 to-[#070D1B]/95 backdrop-blur-xl border border-slate-700/60 hover:border-sky-400/50 p-5 shadow-xl transition-all overflow-hidden group min-h-[220px]"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-[#0089D6]/15 text-[#0089D6] flex items-center justify-center flex-shrink-0">
-                          <AzureLogo className="w-6 h-6" />
+                    {/* Top specular rim light */}
+                    <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-sky-400/40 to-transparent pointer-events-none" />
+                    {/* Ambient corner glow */}
+                    <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full bg-sky-500/5 blur-xl pointer-events-none group-hover:bg-sky-500/10 transition-colors" />
+
+                    <div className="space-y-3.5 relative z-10">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#0089D6]/20 to-[#0089D6]/5 border border-[#0089D6]/30 text-[#0089D6] flex items-center justify-center shrink-0 shadow-sm">
+                            <AzureLogo className="w-6 h-6" />
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-bold text-white tracking-tight truncate">
+                              {sub.subscriptionName}
+                            </h4>
+                            <span className="text-xs font-mono text-slate-400 block truncate" title={sub.subscriptionId}>
+                              ID: {sub.subscriptionId}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-white">
-                            {sub.subscriptionName}
-                          </h4>
-                          <span className="text-xs font-mono text-slate-400 truncate max-w-[200px] block">
-                            {sub.subscriptionId}
+
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0 ${
+                            isConnected
+                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                          }`}
+                        >
+                          {isConnected ? (
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          ) : (
+                            <XCircle className="w-3.5 h-3.5" />
+                          )}
+                          <span>{sub.status}</span>
+                        </span>
+                      </div>
+
+                      <div className="pt-2.5 border-t border-[#1E293B]/80 space-y-2 text-xs">
+                        <div className="text-slate-400 font-mono truncate flex items-center justify-between">
+                          <span className="truncate">Tenant ID: <span className="text-slate-200">{sub.tenantId}</span></span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30 font-semibold shrink-0">
+                            Service Principal
                           </span>
                         </div>
-                      </div>
-
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                          isConnected
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                        }`}
-                      >
-                        {isConnected ? (
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                        ) : (
-                          <XCircle className="w-3.5 h-3.5" />
-                        )}
-                        <span>{sub.status}</span>
-                      </span>
-                    </div>
-
-                    <div className="pt-2 border-t border-[#1E293B] space-y-2 text-xs">
-                      <div className="text-slate-400 font-mono truncate">
-                        Tenant ID: <span className="text-slate-200">{sub.tenantId}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-400">
-                        <div>
-                          Active Regions ({sub.enabledRegions.length}):{' '}
-                          <span className="text-white font-semibold">
-                            {sub.enabledRegions.join(', ')}
-                          </span>
+                        <div className="flex items-center justify-between text-slate-400">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-slate-400">Regions ({sub.enabledRegions.length}):</span>
+                            {sub.enabledRegions.slice(0, 2).map((r) => (
+                              <span key={r} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800/80 text-sky-300/90 border border-sky-500/20">
+                                {r}
+                              </span>
+                            ))}
+                            {sub.enabledRegions.length > 2 && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700">
+                                +{sub.enabledRegions.length - 2} more
+                              </span>
+                            )}
+                          </div>
+                          <div className="shrink-0 text-slate-400 text-[11px] font-mono">Sync: {sub.lastSync}</div>
                         </div>
-                        <div>Last Sync: {sub.lastSync}</div>
                       </div>
                     </div>
 
-                    <div className="pt-2 flex items-center justify-end gap-2">
+                    <div className="mt-4 pt-3 border-t border-[#1E293B]/70 flex items-center justify-end gap-2 relative z-10">
                       <button
                         onClick={() => {
                           setEditingSubId(sub.id);
@@ -547,7 +580,7 @@ export default function CloudAccountsPage() {
                           setValidationSuccess(null);
                           setActiveModal('azure');
                         }}
-                        className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-sky-500/15 hover:text-sky-300 text-slate-300 rounded border border-[#1E293B] transition-colors flex items-center gap-1.5"
+                        className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-sky-500/15 hover:text-sky-300 text-slate-300 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1.5"
                       >
                         <Globe className="w-3.5 h-3.5 text-[#0089D6]" />
                         <span>Manage Regions</span>
@@ -556,7 +589,7 @@ export default function CloudAccountsPage() {
                       {isConnected && (
                         <button
                           onClick={() => disconnectAzureSubscription(sub.id)}
-                          className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-rose-500/10 hover:text-rose-400 text-slate-300 rounded border border-[#1E293B] transition-colors flex items-center gap-1"
+                          className="px-2.5 py-1 text-xs font-semibold bg-[#18233C] hover:bg-rose-500/10 hover:text-rose-400 text-slate-300 rounded-lg border border-[#1E293B] transition-colors flex items-center gap-1"
                         >
                           <Power className="w-3 h-3" />
                           <span>Disconnect</span>
@@ -568,7 +601,7 @@ export default function CloudAccountsPage() {
               })}
 
               {azureSubscriptions.length === 0 && (
-                <div className="p-8 text-center bg-[#111A2E] border border-[#1E293B] rounded-xl text-xs text-slate-400 space-y-3">
+                <div className="relative flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#0E172C]/90 to-[#070D1B]/90 border border-slate-700/60 rounded-2xl text-xs text-slate-400 space-y-3 min-h-[220px]">
                   <p>No Azure subscriptions connected.</p>
                   <button
                     onClick={() => {

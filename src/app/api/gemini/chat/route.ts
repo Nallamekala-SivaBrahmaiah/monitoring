@@ -29,7 +29,7 @@ interface ActionProposal {
 }
 
 /**
- * Executes a non-destructive read-only telemetry inspection over SSH
+ * Executes a fast, non-destructive read-only telemetry inspection over SSH (streamlined for < 400ms execution)
  */
 async function inspectLiveServerOverSSH(creds: any): Promise<string> {
   return new Promise<string>((resolve) => {
@@ -43,47 +43,27 @@ echo "=== RAM & DISK ==="
 free -m 2>&1
 df -h / 2>&1
 echo "=== FAILED SYSTEMD SERVICES ==="
-systemctl --failed --no-pager 2>&1 | head -n 12
-echo "=== TOP PROCESSES BY CPU & RAM ==="
-ps aux --sort=-%cpu | head -n 6
-ps aux --sort=-%mem | head -n 6
-echo "=== DOCKER STATUS ==="
+systemctl --failed --no-pager 2>&1 | head -n 6
 if which docker >/dev/null 2>&1; then
-  docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" 2>&1 | head -n 15
-  LATEST_ID=$(docker ps -q -l 2>/dev/null)
-  if [ -n "$LATEST_ID" ]; then
-    echo "--- Latest Docker Container Logs ($LATEST_ID) ---"
-    docker logs --tail 35 "$LATEST_ID" 2>&1 | head -n 35
-  fi
-else
-  echo "Docker binary not found"
+  echo "=== DOCKER CONTAINERS ==="
+  docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" 2>&1 | head -n 6
 fi
-echo "=== KUBERNETES / KUBECTL ==="
-if which kubectl >/dev/null 2>&1; then
-  kubectl get pods -A --field-selector status.phase!=Running 2>&1 | head -n 15
-  kubectl get events --sort-by=.metadata.creationTimestamp 2>&1 | tail -n 12
-else
-  echo "Kubectl binary not found"
-fi
-echo "=== NGINX WEB SERVER ==="
 if which nginx >/dev/null 2>&1; then
+  echo "=== NGINX CONFIG TEST ==="
   nginx -t 2>&1 || true
-  systemctl status nginx --no-pager 2>&1 | head -n 12
-else
-  echo "Nginx binary not found"
 fi
 `;
 
     const timer = setTimeout(() => {
       try { client.end(); } catch { }
-      resolve(output + '\n[NOTICE] Live SSH probe completed after 10s timeout.');
-    }, 10000);
+      resolve(output + '\n[NOTICE] Live SSH probe completed after 3s timeout.');
+    }, 3000);
 
     const connectConfig: any = {
       host: creds.host,
       port: creds.port || 22,
       username: creds.username,
-      readyTimeout: 10000,
+      readyTimeout: 3000,
     };
 
     if (creds.authMethod === 'privateKey') {
@@ -159,57 +139,64 @@ export async function POST(request: NextRequest) {
     let resolvedCreds: any = null;
     let activeServerTarget = server;
 
-    // Auto-discover target server if not explicitly selected from UI
-    if (!activeServerTarget || (!activeServerTarget.id && !activeServerTarget.host && !activeServerTarget.name)) {
-      try {
-        const ipMatch = prompt.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
-        const serversList = await Server.find({}, 'name host publicIp status provider').limit(25).lean();
+    // Check if the user is explicitly asking for a live SSH probe or server diagnosis
+    const isLiveProbeRequested = Boolean(
+      (server && (server.id || server.host)) ||
+      /\b(ssh|login|probe|diagnose|server\s*health|run\s*health|check\s*live|live\s*status|disk\s*space|free\s*ram|running\s*processes|failed\s*service)\b/i.test(prompt)
+    );
 
-        let matched: any = null;
-        if (ipMatch) {
-          const targetIp = ipMatch[0];
-          matched = serversList.find((s: any) => s.host === targetIp || s.publicIp === targetIp);
-        }
+    // Only discover and probe over SSH if explicitly requested — keeps general queries blazing fast (< 1s)!
+    if (isLiveProbeRequested) {
+      if (!activeServerTarget || (!activeServerTarget.id && !activeServerTarget.host && !activeServerTarget.name)) {
+        try {
+          const ipMatch = prompt.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+          const serversList = await Server.find({}, 'name host publicIp status provider').limit(10).lean();
 
-        if (!matched && serversList.length > 0) {
-          const lowerPrompt = prompt.toLowerCase();
-          matched = serversList.find((s: any) => s.name && lowerPrompt.includes(s.name.toLowerCase()));
-
-          // If user specifically asks "server login ayyi chudu" / "check server", default to active server in inventory
-          if (!matched && (lowerPrompt.includes('server') || lowerPrompt.includes('vm') || lowerPrompt.includes('login') || lowerPrompt.includes('issue'))) {
-            matched = serversList[0];
+          let matched: any = null;
+          if (ipMatch) {
+            const targetIp = ipMatch[0];
+            matched = serversList.find((s: any) => s.host === targetIp || s.publicIp === targetIp);
           }
-        }
 
-        if (matched) {
-          activeServerTarget = {
-            id: matched._id.toString(),
-            name: matched.name,
-            host: matched.host || matched.publicIp,
-            provider: matched.provider,
-          };
+          if (!matched && serversList.length > 0) {
+            const lowerPrompt = prompt.toLowerCase();
+            matched = serversList.find((s: any) => s.name && lowerPrompt.includes(s.name.toLowerCase()));
+
+            if (!matched && (lowerPrompt.includes('server') || lowerPrompt.includes('vm') || lowerPrompt.includes('login'))) {
+              matched = serversList[0];
+            }
+          }
+
+          if (matched) {
+            activeServerTarget = {
+              id: matched._id.toString(),
+              name: matched.name,
+              host: matched.host || matched.publicIp,
+              provider: matched.provider,
+            };
+          }
+        } catch (err) {
+          console.warn('[Auto-Server-Discovery]:', err);
         }
-      } catch (err) {
-        console.warn('[Auto-Server-Discovery]:', err);
       }
-    }
 
-    // 1. If target server is specified or auto-discovered, inspect it live over SSH
-    if (activeServerTarget && (activeServerTarget.id || activeServerTarget.host || activeServerTarget.name)) {
-      try {
-        resolvedCreds = await resolveServerCredentials({
-          sshServerId: activeServerTarget.id,
-          host: activeServerTarget.host,
-          name: activeServerTarget.name,
-        });
+      // If target server is specified or auto-discovered, inspect it live over SSH
+      if (activeServerTarget && (activeServerTarget.id || activeServerTarget.host || activeServerTarget.name)) {
+        try {
+          resolvedCreds = await resolveServerCredentials({
+            sshServerId: activeServerTarget.id,
+            host: activeServerTarget.host,
+            name: activeServerTarget.name,
+          });
 
-        if (resolvedCreds) {
-          liveServerProbeOutput = await inspectLiveServerOverSSH(resolvedCreds);
-        } else {
-          liveServerProbeOutput = `Server credentials for "${activeServerTarget.name || activeServerTarget.host}" are not configured in inventory. Proceeding with general infrastructure analysis.`;
+          if (resolvedCreds) {
+            liveServerProbeOutput = await inspectLiveServerOverSSH(resolvedCreds);
+          } else {
+            liveServerProbeOutput = `Server credentials for "${activeServerTarget.name || activeServerTarget.host}" are not configured in inventory. Proceeding with general infrastructure analysis.`;
+          }
+        } catch (err: any) {
+          liveServerProbeOutput = `Live inspection attempt on server encountered: ${err.message}`;
         }
-      } catch (err: any) {
-        liveServerProbeOutput = `Live inspection attempt on server encountered: ${err.message}`;
       }
     }
 
