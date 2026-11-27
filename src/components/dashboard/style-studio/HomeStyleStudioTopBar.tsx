@@ -405,10 +405,12 @@ export function HomeStyleStudioTopBar() {
       />
 
       {/* Gemini AI DevOps Assistant Slide-over Drawer */}
-      <GeminiDevOpsDrawer
-        isOpen={isGeminiOpen}
-        onClose={() => setIsGeminiOpen(false)}
-      />
+      <React.Suspense fallback={null}>
+        <GeminiDevOpsDrawer
+          isOpen={isGeminiOpen}
+          onClose={() => setIsGeminiOpen(false)}
+        />
+      </React.Suspense>
     </div>
   );
 }

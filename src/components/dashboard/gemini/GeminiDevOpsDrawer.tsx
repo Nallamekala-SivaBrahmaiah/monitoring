@@ -61,7 +61,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose }: GeminiDevOpsDrawerProps)
       id: 'welcome-msg',
       role: 'assistant',
       text: `Hello! I am your **Gemini AI DevOps & Multi-Cloud Assistant** powered by Google's official Gemini Gen AI engine.\n\nI have real-time visibility into your multi-cloud environment across **AWS EC2**, **Azure Virtual Machines**, **Active Alerts**, and container infrastructure.\n\nHow can I help optimize, troubleshoot, or audit your infrastructure today? You can select a quick prompt below or type your question.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: 'Just now',
     },
   ]);
 
@@ -121,7 +121,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose }: GeminiDevOpsDrawerProps)
       id: `user-${Date.now()}`,
       role: 'user',
       text: prompt,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: 'Just now',
     };
 
     const newMessages = [...messages, userMessage];
@@ -186,7 +186,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose }: GeminiDevOpsDrawerProps)
             role: 'assistant',
             text: data.text,
             model: data.model || 'gemini-4-hydrogen',
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestamp: 'Just now',
           },
         ]);
       } else {
@@ -197,7 +197,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose }: GeminiDevOpsDrawerProps)
             id: `err-${Date.now()}`,
             role: 'assistant',
             text: `⚠️ **Gemini API Notice**:\n\n${errorDetail}\n\n*If you are running the platform, please ensure \`GEMINI_API_KEY\` is set in \`.env.local\` on the server.*`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestamp: 'Just now',
             isError: true,
           },
         ]);
@@ -209,7 +209,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose }: GeminiDevOpsDrawerProps)
           id: `err-${Date.now()}`,
           role: 'assistant',
           text: `⚠️ **Connection Error**: Unable to reach server-side Gemini API route: ${err?.message || 'Network error'}.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: 'Just now',
           isError: true,
         },
       ]);
@@ -224,7 +224,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose }: GeminiDevOpsDrawerProps)
         id: `welcome-${Date.now()}`,
         role: 'assistant',
         text: `Chat history cleared. Live infrastructure telemetry is active. How can I assist you with AWS, Azure, Kubernetes, or server troubleshooting?`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: 'Just now',
       },
     ]);
   };
