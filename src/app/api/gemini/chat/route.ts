@@ -139,11 +139,12 @@ export async function POST(request: NextRequest) {
 
     await connectToDatabase();
     const body = await request.json();
-    const { prompt, server, history = [], context = {} } = body as {
+    const { prompt, server, history = [], context = {}, model } = body as {
       prompt: string;
       server?: ServerTarget;
       history?: ChatMessage[];
       context?: any;
+      model?: string;
     };
 
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
@@ -235,7 +236,7 @@ CONVERSATIONAL WORKFLOW RULES:
       parts: [{ text: prompt.trim() }],
     });
 
-    const targetModel = process.env.GEMINI_MODEL || 'gemini-4-hydrogen';
+    const targetModel = model || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
     let responseText = '';
     let finalModel = targetModel;
 
@@ -254,6 +255,7 @@ CONVERSATIONAL WORKFLOW RULES:
         targetModel === 'gemini-4-hydrogen'
       ) {
         const fallbackModel = 'gemini-2.5-flash';
+        console.log(`[Gemini API] Retrying with high-speed fallback model: ${fallbackModel}`);
         const fallbackResult = await ai.models.generateContent({
           model: fallbackModel,
           contents,

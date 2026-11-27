@@ -5,30 +5,32 @@ import { createPortal } from 'react-dom';
 import {
   Sparkles,
   X,
-  Send,
   RotateCcw,
   Copy,
   Check,
-  AlertTriangle,
   Server,
-  Cloud,
-  Layers,
   Terminal,
   ShieldAlert,
-  Cpu,
-  Activity,
   Bot,
   User,
-  ExternalLink,
-  ChevronRight,
   Flame,
   Play,
   CheckCircle2,
   XCircle,
-  HelpCircle,
-  ShieldCheck,
   RefreshCw,
-  SlidersHorizontal,
+  Maximize2,
+  Minimize2,
+  Plus,
+  Trash2,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Zap,
+  Brain,
+  Clock,
+  ChevronDown,
+  Layers,
+  Save,
 } from 'lucide-react';
 import { useMonitoring } from '@/context/MonitoringContext';
 
@@ -57,11 +59,51 @@ export interface Message {
   rollbackOutput?: string;
 }
 
+export interface SavedSession {
+  id: string;
+  title: string;
+  model: string;
+  serverName?: string;
+  messageCount: number;
+  messages: Message[];
+  updatedAt: string;
+}
+
 export interface GeminiDevOpsDrawerProps {
   isOpen?: boolean;
   onClose?: () => void;
   targetServer?: { id?: string; name?: string; host?: string; provider?: string } | null;
 }
+
+const AVAILABLE_MODELS = [
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    shortName: 'Flash 2.5',
+    badge: 'Ultra Fast',
+    icon: Zap,
+    desc: 'Real-time telemetry & lowest latency',
+    color: 'from-amber-400 to-yellow-500',
+  },
+  {
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    shortName: 'Flash 2.0',
+    badge: 'Fast & Solid',
+    icon: Sparkles,
+    desc: 'Balanced speed and DevOps reasoning',
+    color: 'from-cyan-400 to-blue-500',
+  },
+  {
+    id: 'gemini-4-hydrogen',
+    name: 'Gemini Deep Engine',
+    shortName: 'Deep Engine',
+    badge: 'Deep RCA',
+    icon: Brain,
+    desc: 'Deep multi-cloud root cause analysis',
+    color: 'from-purple-400 to-indigo-500',
+  },
+];
 
 const QUICK_PROMPT_CHIPS = [
   { label: 'Diagnose Selected Server', prompt: 'Run a complete health diagnosis on this server. Inspect CPU, memory pressure, running Docker containers, failed systemd units, and Nginx reverse proxy.' },
@@ -72,13 +114,19 @@ const QUICK_PROMPT_CHIPS = [
   { label: 'AWS vs Azure Fleet Health', prompt: 'Review my multi-cloud fleet across AWS and Azure. Provide architectural optimization recommendations for high availability.' },
 ];
 
+const INITIAL_WELCOME_MESSAGE: Message = {
+  id: 'welcome-msg',
+  role: 'assistant',
+  text: `Hello! I am your **Gemini AI DevOps Copilot & Auto-Remediation Engine** powered by Google's official Gemini API.\n\n⚡ **Gemini Flash** is active for ultra-fast, real-time telemetry diagnostics.\n\nI can inspect live servers over SSH, diagnose Docker/Kubernetes/Nginx/CI-CD failures, propose safe fixes, and execute verified remediations with automatic rollback.\n\nHow can I help optimize or troubleshoot your infrastructure today?`,
+  timestamp: 'Just now',
+};
+
 export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevOpsDrawerProps) {
   const {
     cloudProvider,
     filteredEC2Instances,
     filteredAzureVMs,
     filteredAlerts,
-    overviewMetrics,
     isGeminiDrawerOpen,
     closeGeminiDrawer,
     geminiTargetServer,
@@ -89,26 +137,43 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
   const effectiveOnClose = onClose || closeGeminiDrawer;
   const effectiveServer = targetServer || geminiTargetServer;
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome-msg',
-      role: 'assistant',
-      text: `Hello! I am your **Gemini AI DevOps Copilot & Auto-Remediation Engine** powered by Google's official Gemini Gen AI engine.\n\nI can inspect live servers over SSH, diagnose Docker/Kubernetes/Nginx/CI-CD failures, propose safe fixes, and execute verified remediations with automatic rollback.\n\nHow can I help optimize or troubleshoot your infrastructure today?`,
-      timestamp: 'Just now',
-    },
-  ]);
-
+  const [messages, setMessages] = useState<Message[]>([INITIAL_WELCOME_MESSAGE]);
   const [inputPrompt, setInputPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [activeAlertsCount, setActiveAlertsCount] = useState<number>(0);
   const [mounted, setMounted] = useState<boolean>(false);
 
+  // Layout expansion states
+  const [isMaximized, setIsMaximized] = useState<boolean>(false);
+  const [showHistorySidebar, setShowHistorySidebar] = useState<boolean>(true);
+
+  // Model selection state
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState<boolean>(false);
+
+  // Chat Sessions state
+  const [sessions, setSessions] = useState<SavedSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isLoadingSessions, setIsLoadingSessions] = useState<boolean>(false);
+
   // Dedicated server selection for targeted diagnosis
   const [selectedServer, setSelectedServer] = useState<{ id?: string; name?: string; host?: string; provider?: string } | null>(null);
 
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setMounted(true);
+    // Load saved model preference if available
+    try {
+      const savedModel = localStorage.getItem('gemini_preferred_model');
+      if (savedModel && AVAILABLE_MODELS.some((m) => m.id === savedModel)) {
+        setSelectedModel(savedModel);
+      }
+    } catch {}
   }, []);
 
   // Sync selectedServer when effectiveServer changes
@@ -118,15 +183,48 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
     }
   }, [effectiveServer]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const drawerRef = useRef<HTMLDivElement>(null);
-
   // Compute live active alert count
   useEffect(() => {
     const count = filteredAlerts.filter((a) => a.status === 'active').length;
     setActiveAlertsCount(count);
   }, [filteredAlerts]);
+
+  // Fetch saved sessions on mount or drawer open
+  const fetchSessions = async () => {
+    setIsLoadingSessions(true);
+    try {
+      // First try localStorage cache for instant UI rendering
+      const localCached = localStorage.getItem('gemini_chat_sessions');
+      if (localCached) {
+        try {
+          const parsed = JSON.parse(localCached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSessions(parsed);
+          }
+        } catch {}
+      }
+
+      // Then fetch from database API
+      const res = await fetch('/api/gemini/sessions');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.sessions)) {
+        setSessions(data.sessions);
+        try {
+          localStorage.setItem('gemini_chat_sessions', JSON.stringify(data.sessions));
+        } catch {}
+      }
+    } catch (err) {
+      console.warn('[Gemini Sessions Fetch]:', err);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (effectiveIsOpen) {
+      fetchSessions();
+    }
+  }, [effectiveIsOpen]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -142,21 +240,184 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
     }
   }, [effectiveIsOpen]);
 
-  // Close on Escape key
+  // Close on Escape key & close dropdown on outside click
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape' && effectiveIsOpen) {
-        effectiveOnClose();
+        if (isModelDropdownOpen) {
+          setIsModelDropdownOpen(false);
+        } else {
+          effectiveOnClose();
+        }
+      }
+    }
+    function handleClickOutside(e: MouseEvent) {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setIsModelDropdownOpen(false);
       }
     }
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [effectiveIsOpen, effectiveOnClose]);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [effectiveIsOpen, isModelDropdownOpen, effectiveOnClose]);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedCodeId(id);
     setTimeout(() => setCopiedCodeId(null), 2000);
+  };
+
+  const handleSelectModel = (modelId: string) => {
+    setSelectedModel(modelId);
+    setIsModelDropdownOpen(false);
+    try {
+      localStorage.setItem('gemini_preferred_model', modelId);
+    } catch {}
+  };
+
+  /**
+   * Save or update conversation session in MongoDB + localStorage
+   */
+  const persistSession = async (updatedMessages: Message[], activeModel: string) => {
+    const userMsgs = updatedMessages.filter((m) => m.role === 'user');
+    if (userMsgs.length === 0) return;
+
+    const firstUserText = userMsgs[0]?.text || 'DevOps Troubleshooting';
+    const title = firstUserText.length > 36 ? firstUserText.slice(0, 36) + '...' : firstUserText;
+
+    try {
+      const res = await fetch('/api/gemini/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: currentSessionId || 'new',
+          title,
+          model: activeModel,
+          serverName: selectedServer?.name || selectedServer?.host || undefined,
+          messages: updatedMessages,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.sessionId) {
+        if (!currentSessionId) {
+          setCurrentSessionId(data.sessionId);
+        }
+        // Update local session list
+        setSessions((prev) => {
+          const exists = prev.find((s) => s.id === data.sessionId);
+          let nextSessions: SavedSession[];
+          if (exists) {
+            nextSessions = prev.map((s) =>
+              s.id === data.sessionId
+                ? {
+                    ...s,
+                    title,
+                    model: activeModel,
+                    messageCount: updatedMessages.length,
+                    messages: updatedMessages,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : s
+            );
+          } else {
+            nextSessions = [
+              {
+                id: data.sessionId,
+                title,
+                model: activeModel,
+                serverName: selectedServer?.name || selectedServer?.host,
+                messageCount: updatedMessages.length,
+                messages: updatedMessages,
+                updatedAt: new Date().toISOString(),
+              },
+              ...prev,
+            ];
+          }
+          try {
+            localStorage.setItem('gemini_chat_sessions', JSON.stringify(nextSessions));
+          } catch {}
+          return nextSessions;
+        });
+      }
+    } catch (err) {
+      console.warn('[Gemini Auto-Save Failed]:', err);
+    }
+  };
+
+  /**
+   * Create New Chat
+   */
+  const handleNewChat = () => {
+    setCurrentSessionId(null);
+    setMessages([
+      {
+        id: `welcome-${Date.now()}`,
+        role: 'assistant',
+        text: `New conversation started! ⚡ **${
+          AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.name || 'Gemini Flash'
+        }** is ready.\n\nAsk any question about AWS, Azure, Docker, Kubernetes, Nginx, CI/CD, or click a quick prompt below.`,
+        timestamp: 'Just now',
+      },
+    ]);
+    setTimeout(() => inputRef.current?.focus(), 100);
+  };
+
+  /**
+   * Load Saved Session
+   */
+  const handleLoadSession = (session: SavedSession) => {
+    setCurrentSessionId(session.id);
+    if (session.messages && Array.isArray(session.messages) && session.messages.length > 0) {
+      setMessages(session.messages);
+    } else {
+      setMessages([INITIAL_WELCOME_MESSAGE]);
+    }
+    if (session.model && AVAILABLE_MODELS.some((m) => m.id === session.model)) {
+      setSelectedModel(session.model);
+    }
+  };
+
+  /**
+   * Delete Saved Session
+   */
+  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/gemini/sessions?id=${sessionId}`, { method: 'DELETE' });
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== sessionId);
+        try {
+          localStorage.setItem('gemini_chat_sessions', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      if (currentSessionId === sessionId) {
+        handleNewChat();
+      }
+    } catch (err) {
+      console.error('[Delete Session Error]:', err);
+    }
+  };
+
+  /**
+   * Clear All Sessions
+   */
+  const handleClearAllSessions = async () => {
+    if (!window.confirm('Clear all saved chat history? This cannot be undone.')) return;
+    try {
+      await fetch('/api/gemini/sessions?id=all', { method: 'DELETE' });
+      setSessions([]);
+      try {
+        localStorage.removeItem('gemini_chat_sessions');
+      } catch {}
+      handleNewChat();
+    } catch (err) {
+      console.error('[Clear All Sessions Error]:', err);
+    }
   };
 
   const handleSendMessage = async (textToSend?: string) => {
@@ -212,7 +473,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
           text: m.text,
         }));
 
-      // Call conversational endpoint with live SSH probe
+      // Call conversational endpoint with model selection & live SSH probe
       const res = await fetch('/api/gemini/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -221,25 +482,28 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
           server: selectedServer || undefined,
           history: historyPayload,
           context: contextPayload,
+          model: selectedModel,
         }),
       });
 
       const data = await res.json();
 
       if (data.success && data.text) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `assistant-${Date.now()}`,
-            role: 'assistant',
-            text: data.text,
-            model: data.model || 'gemini-4-hydrogen',
-            timestamp: 'Just now',
-            actionProposal: data.actionProposal || null,
-            logId: data.logId || null,
-            actionStatus: data.actionProposal ? 'pending' : undefined,
-          },
-        ]);
+        const assistantMessage: Message = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          text: data.text,
+          model: data.model || selectedModel,
+          timestamp: 'Just now',
+          actionProposal: data.actionProposal || null,
+          logId: data.logId || null,
+          actionStatus: data.actionProposal ? 'pending' : undefined,
+        };
+
+        const updatedHistory = [...newMessages, assistantMessage];
+        setMessages(updatedHistory);
+        // Persist session to MongoDB & localStorage automatically
+        persistSession(updatedHistory, data.model || selectedModel);
       } else {
         const errorDetail = data.error || 'Failed to get response from Gemini API.';
         setMessages((prev) => [
@@ -247,7 +511,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
           {
             id: `err-${Date.now()}`,
             role: 'assistant',
-            text: `⚠️ **Gemini API Notice**:\n\n${errorDetail}\n\n*If you are running the platform, please ensure \`GEMINI_API_KEY\` is set in \`.env.local\` on the server.*`,
+            text: `⚠️ **Gemini API Notice**:\n\n${errorDetail}\n\n*If you are running the platform, please ensure \`GEMINI_API_KEY\` is configured in \`.env.local\` on the server.*`,
             timestamp: 'Just now',
             isError: true,
           },
@@ -300,14 +564,14 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
 
       const data = await res.json();
 
-      setMessages((prev) =>
-        prev.map((m) => {
+      setMessages((prev) => {
+        const updated = prev.map((m) => {
           if (m.id !== messageId) return m;
 
           if (action === 'reject') {
             return {
               ...m,
-              actionStatus: 'rejected',
+              actionStatus: 'rejected' as const,
               actionOutput: 'User rejected the proposed remediation. No commands were executed.',
             };
           }
@@ -315,7 +579,7 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
           if (action === 'rollback') {
             return {
               ...m,
-              actionStatus: 'rolled_back',
+              actionStatus: 'rolled_back' as const,
               rollbackOutput: data.output || 'Manual rollback executed.',
             };
           }
@@ -324,14 +588,14 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
           if (data.executionStatus === 'success') {
             return {
               ...m,
-              actionStatus: 'success',
+              actionStatus: 'success' as const,
               actionOutput: data.fixOutput,
               verifyOutput: data.verifyOutput,
             };
           } else if (data.rollbackTriggered) {
             return {
               ...m,
-              actionStatus: 'rolled_back',
+              actionStatus: 'rolled_back' as const,
               actionOutput: data.fixOutput,
               verifyOutput: data.verifyOutput,
               rollbackOutput: data.rollbackOutput,
@@ -339,12 +603,16 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
           } else {
             return {
               ...m,
-              actionStatus: 'failed',
+              actionStatus: 'failed' as const,
               actionOutput: data.fixOutput || data.error,
             };
           }
-        })
-      );
+        });
+
+        // Sync with persisted session
+        persistSession(updated, selectedModel);
+        return updated;
+      });
     } catch (err: any) {
       setMessages((prev) =>
         prev.map((m) =>
@@ -356,274 +624,517 @@ export function GeminiDevOpsDrawer({ isOpen, onClose, targetServer }: GeminiDevO
     }
   };
 
-  const handleClearChat = () => {
-    setMessages([
-      {
-        id: `welcome-${Date.now()}`,
-        role: 'assistant',
-        text: `Chat history cleared. Live infrastructure telemetry is active. How can I assist you with AWS, Azure, Kubernetes, or server troubleshooting?`,
-        timestamp: 'Just now',
-      },
-    ]);
+  const handleClearCurrentChat = () => {
+    setMessages([INITIAL_WELCOME_MESSAGE]);
   };
 
   if (!mounted || !effectiveIsOpen) return null;
+
+  const currentModelObj = AVAILABLE_MODELS.find((m) => m.id === selectedModel) || AVAILABLE_MODELS[0];
+  const ModelIcon = currentModelObj.icon;
 
   return createPortal(
     <div className="fixed inset-0 z-[999999] overflow-hidden flex justify-end">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
         onClick={effectiveOnClose}
         aria-hidden="true"
       />
 
-      {/* Slide-over Drawer */}
+      {/* Main Container: Wide/Maximized Layout with Left History Sidebar */}
       <div
         ref={drawerRef}
-        className="relative w-full max-w-2xl bg-[#080E1C] border-l-2 border-cyan-500/50 shadow-2xl shadow-cyan-500/30 text-slate-100 flex flex-col h-full z-10 animate-in slide-in-from-right duration-300 ease-out"
+        className={`relative bg-[#080E1C] border-l-2 border-cyan-500/50 shadow-2xl shadow-cyan-500/30 text-slate-100 flex h-full z-10 transition-all duration-300 ease-out animate-in slide-in-from-right ${
+          isMaximized
+            ? 'w-full max-w-full'
+            : 'w-full max-w-5xl xl:max-w-6xl'
+        }`}
       >
         {/* Holographic Glowing Header Line */}
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-purple-500 via-cyan-400 to-indigo-500 animate-pulse pointer-events-none" />
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-purple-500 via-cyan-400 to-amber-400 animate-pulse pointer-events-none z-30" />
 
-        {/* Drawer Header */}
-        <div className="px-5 py-4 bg-[#0B1224] border-b border-[#1E293B] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600/30 via-indigo-600/20 to-cyan-500/30 border border-cyan-500/50 flex items-center justify-center text-cyan-300 shadow-lg shadow-cyan-500/20 shrink-0">
-              <Sparkles className="w-5 h-5 text-cyan-300 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-white text-base tracking-tight flex items-center gap-1.5">
-                  <span>Gemini AI DevOps Copilot</span>
-                </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-cyan-300 border border-cyan-500/40 tracking-wider">
-                  Auto-Remediation Engine
+        {/* ============================================================== */}
+        {/* LEFT SIDEBAR: SAVED CHAT HISTORY & NEW CHAT                    */}
+        {/* ============================================================== */}
+        {showHistorySidebar && (
+          <aside className="w-64 sm:w-72 md:w-80 bg-[#060A16] border-r border-[#1E293B] flex flex-col h-full shrink-0 z-20">
+            {/* Sidebar Top: New Chat Button */}
+            <div className="p-3.5 border-b border-[#1E293B] bg-[#090E1F]/80">
+              <button
+                type="button"
+                onClick={handleNewChat}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600/30 via-indigo-600/30 to-cyan-600/30 hover:from-purple-600/50 hover:to-cyan-600/50 border border-cyan-500/40 hover:border-cyan-400 text-white font-semibold text-xs transition shadow-md shadow-cyan-500/10 cursor-pointer group"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-md bg-cyan-500/20 flex items-center justify-center text-cyan-300 group-hover:scale-110 transition">
+                    <Plus className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="tracking-wide">New Chat</span>
+                </div>
+                <span className="text-[10px] text-cyan-400/80 font-mono uppercase bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-500/30">
+                  Ctrl+N
                 </span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-medium flex items-center gap-2 mt-0.5">
-                <span>Safe SSH Execution • Automatic Rollback</span>
-                <span className="inline-block w-1 h-1 rounded-full bg-emerald-400"></span>
-                <span className="text-emerald-400 font-semibold">Active</span>
-              </p>
+              </button>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleClearChat}
-              className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition border border-slate-700/60 cursor-pointer"
-              title="Clear Conversation"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={effectiveOnClose}
-              className="p-2 rounded-lg bg-slate-800/80 hover:bg-red-500/20 hover:text-red-400 text-slate-400 transition border border-slate-700/60 cursor-pointer"
-              title="Close Drawer (Esc)"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Selected Server Diagnostic Banner */}
-        {selectedServer ? (
-          <div className="px-5 py-2.5 bg-gradient-to-r from-[#0C152B] via-[#091122] to-[#0C152B] border-b border-cyan-500/30 flex items-center justify-between text-xs shrink-0">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-              <div className="flex items-center gap-1.5 truncate">
-                <span className="text-slate-400 font-medium">Diagnosing Server:</span>
-                <span className="font-extrabold text-cyan-300 font-mono">
-                  {selectedServer.name || selectedServer.host}
+            {/* Sidebar Middle: Saved Conversations List */}
+            <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+              <div className="px-2 py-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <span className="flex items-center gap-1.5">
+                  <Clock className="w-3 h-3 text-cyan-400" />
+                  Chat History ({sessions.length})
                 </span>
-                {selectedServer.host && (
-                  <span className="text-slate-500 font-mono text-[11px]">
-                    ({selectedServer.host})
-                  </span>
-                )}
-                {selectedServer.provider && (
-                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
-                    {selectedServer.provider}
-                  </span>
+                {sessions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={fetchSessions}
+                    disabled={isLoadingSessions}
+                    className="text-slate-500 hover:text-cyan-300 transition"
+                    title="Refresh History"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isLoadingSessions ? 'animate-spin' : ''}`} />
+                  </button>
                 )}
               </div>
+
+              {sessions.length === 0 ? (
+                <div className="p-4 text-center text-slate-500 text-xs rounded-xl bg-[#080D1A] border border-slate-800/60 mt-2">
+                  <MessageSquare className="w-6 h-6 mx-auto mb-2 text-slate-600" />
+                  <p className="font-medium text-slate-400">No saved chats yet</p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Your conversations and remediation plans are automatically saved here.
+                  </p>
+                </div>
+              ) : (
+                sessions.map((sess) => {
+                  const isActive = currentSessionId === sess.id;
+                  const isFlash = (sess.model || '').toLowerCase().includes('flash');
+
+                  return (
+                    <div
+                      key={sess.id}
+                      onClick={() => handleLoadSession(sess)}
+                      className={`group relative flex items-center justify-between p-2.5 rounded-xl text-xs transition cursor-pointer border ${
+                        isActive
+                          ? 'bg-gradient-to-r from-cyan-950/70 to-indigo-950/70 border-cyan-500/60 text-white shadow-md shadow-cyan-500/10'
+                          : 'bg-[#090F20]/50 hover:bg-[#0E162B] border-slate-800/80 hover:border-slate-700 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0 pr-2">
+                        <div
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                            isActive
+                              ? 'bg-cyan-500/30 text-cyan-300'
+                              : 'bg-slate-800/80 text-slate-400 group-hover:text-cyan-300'
+                          }`}
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate text-[11px] text-slate-200 group-hover:text-white">
+                            {sess.title}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400">
+                            <span
+                              className={`px-1 rounded text-[9px] font-mono uppercase ${
+                                isFlash
+                                  ? 'bg-amber-950/60 text-amber-300 border border-amber-500/30'
+                                  : 'bg-purple-950/60 text-purple-300 border border-purple-500/30'
+                              }`}
+                            >
+                              {isFlash ? '⚡ Flash' : '🧠 Deep'}
+                            </span>
+                            <span>•</span>
+                            <span>{sess.messageCount} msgs</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Delete session button */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteSession(e, sess.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 transition shrink-0"
+                        title="Delete Chat"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => setSelectedServer(null)}
-              className="text-[10px] text-slate-400 hover:text-cyan-300 underline font-semibold shrink-0 cursor-pointer"
-            >
-              Clear Server
-            </button>
-          </div>
-        ) : (
-          <div className="px-5 py-2 bg-[#070D1B] border-b border-[#1E293B]/60 flex items-center justify-between text-xs shrink-0">
-            <span className="text-[10px] text-slate-400 flex items-center gap-1">
-              <Server className="w-3 h-3 text-cyan-400" />
-              General Multi-Cloud Scope (Tip: Click any server node in heatmap to focus SSH diagnostics)
-            </span>
-            <span className="text-[10px] text-slate-400">
-              Alerts: <strong className="text-white">{activeAlertsCount}</strong>
-            </span>
-          </div>
+
+            {/* Sidebar Bottom: Storage & Clear */}
+            <div className="p-3 border-t border-[#1E293B] bg-[#070B18] flex items-center justify-between text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                MongoDB Auto-Save
+              </span>
+              {sessions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllSessions}
+                  className="text-slate-500 hover:text-rose-400 text-[10px] font-medium transition cursor-pointer"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
+          </aside>
         )}
 
-        {/* Messages Scroll Area */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex items-start gap-3 ${
-                msg.role === 'user' ? 'justify-end' : 'justify-start'
-              }`}
-            >
-              {msg.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600/30 via-indigo-600/20 to-cyan-500/30 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shrink-0 mt-0.5 shadow-sm">
-                  <Sparkles className="w-4 h-4 text-cyan-300" />
-                </div>
-              )}
-
-              <div
-                className={`max-w-[90%] rounded-2xl p-4 text-xs leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-none shadow-md shadow-blue-600/20'
-                    : msg.isError
-                    ? 'bg-red-950/40 border border-red-500/40 text-red-200 rounded-tl-none'
-                    : 'bg-[#0E162B] border border-cyan-500/30 text-slate-200 rounded-tl-none shadow-lg shadow-black/40'
-                }`}
+        {/* ============================================================== */}
+        {/* RIGHT MAIN CHAT AREA                                           */}
+        {/* ============================================================== */}
+        <main className="flex-1 flex flex-col h-full min-w-0 bg-[#080E1C] overflow-hidden">
+          {/* Main Top Header Bar */}
+          <header className="px-4 py-3 bg-[#0B1224] border-b border-[#1E293B] flex items-center justify-between shrink-0 gap-3">
+            {/* Left: Sidebar Toggle + Title */}
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                type="button"
+                onClick={() => setShowHistorySidebar(!showHistorySidebar)}
+                className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 transition border border-slate-700/60 cursor-pointer shrink-0"
+                title={showHistorySidebar ? 'Hide Chat History' : 'Show Chat History'}
               >
-                {/* Markdown content */}
-                <FormattedMarkdownContent
-                  content={msg.text}
-                  onCopyCode={(code) => copyToClipboard(code, msg.id)}
-                  copiedCodeId={copiedCodeId}
-                  messageId={msg.id}
-                />
-
-                {/* Interactive Action Approval Card if Gemini proposed a remediation */}
-                {msg.actionProposal && msg.logId && (
-                  <ActionApprovalCard
-                    proposal={msg.actionProposal}
-                    logId={msg.logId}
-                    messageId={msg.id}
-                    status={msg.actionStatus || 'pending'}
-                    actionOutput={msg.actionOutput}
-                    verifyOutput={msg.verifyOutput}
-                    rollbackOutput={msg.rollbackOutput}
-                    onExecute={(action, cmd) => handleExecuteAction(msg.id, msg.logId!, action, cmd)}
-                    onModifyPrompt={(promptToEdit) => {
-                      setInputPrompt(promptToEdit);
-                      inputRef.current?.focus();
-                    }}
-                  />
+                {showHistorySidebar ? (
+                  <PanelLeftClose className="w-4 h-4" />
+                ) : (
+                  <PanelLeftOpen className="w-4 h-4" />
                 )}
+              </button>
 
-                <div
-                  className={`mt-2.5 pt-2 border-t text-[10px] flex items-center justify-between ${
-                    msg.role === 'user'
-                      ? 'border-blue-400/30 text-blue-200'
-                      : 'border-slate-800 text-slate-400'
-                  }`}
-                >
-                  <span>{msg.role === 'user' ? 'You' : msg.model || 'Gemini AI'}</span>
-                  <span>{msg.timestamp}</span>
-                </div>
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600/30 via-indigo-600/20 to-cyan-500/30 border border-cyan-500/50 flex items-center justify-center text-cyan-300 shadow-lg shadow-cyan-500/20 shrink-0">
+                <Sparkles className="w-4 h-4 text-cyan-300 animate-pulse" />
               </div>
 
-              {msg.role === 'user' && (
-                <div className="w-8 h-8 rounded-lg bg-blue-600/40 border border-blue-400/40 flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
-                  <User className="w-4 h-4" />
+              <div className="min-w-0 truncate">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-extrabold text-white text-sm sm:text-base tracking-tight truncate">
+                    Gemini AI DevOps Copilot
+                  </h3>
+                  <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-gradient-to-r from-purple-500/20 to-cyan-500/20 text-cyan-300 border border-cyan-500/40 tracking-wider">
+                    Auto-Remediation Engine
+                  </span>
                 </div>
-              )}
+                <p className="text-[11px] text-slate-400 font-medium flex items-center gap-2 mt-0.5">
+                  <span>Safe SSH Execution • Automatic Rollback</span>
+                  <span className="inline-block w-1 h-1 rounded-full bg-emerald-400"></span>
+                  <span className="text-emerald-400 font-semibold">Live Telemetry</span>
+                </p>
+              </div>
             </div>
-          ))}
 
-          {/* Loading Animation */}
-          {isLoading && (
-            <div className="flex items-start gap-3 justify-start animate-in fade-in duration-200">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600/30 to-cyan-500/30 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shrink-0">
-                <Sparkles className="w-4 h-4 text-cyan-300 animate-spin" />
+            {/* Right: Model Selector + Maximize + Clear + Close */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Model Selector Dropdown */}
+              <div className="relative" ref={modelDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#0C152B] to-[#0A1020] hover:from-[#111C38] hover:to-[#0D152A] border border-cyan-500/40 hover:border-cyan-400 text-xs font-semibold text-slate-200 shadow-md shadow-cyan-500/10 transition cursor-pointer"
+                >
+                  <ModelIcon className="w-3.5 h-3.5 text-cyan-300" />
+                  <span className="hidden md:inline font-mono text-cyan-300 font-bold">
+                    {currentModelObj.name}
+                  </span>
+                  <span className="md:hidden font-mono text-cyan-300 font-bold">
+                    {currentModelObj.shortName}
+                  </span>
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    {currentModelObj.badge}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown Menu */}
+                {isModelDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-[#090F22] border-2 border-cyan-500/50 shadow-2xl shadow-cyan-500/30 p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                      Select Gemini Model Engine:
+                    </div>
+                    <div className="space-y-1 mt-1">
+                      {AVAILABLE_MODELS.map((m) => {
+                        const Icon = m.icon;
+                        const isSelected = selectedModel === m.id;
+
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => handleSelectModel(m.id)}
+                            className={`w-full flex items-start gap-2.5 p-2 rounded-xl text-left transition cursor-pointer ${
+                              isSelected
+                                ? 'bg-cyan-500/20 border border-cyan-500/50 text-white'
+                                : 'hover:bg-slate-800/60 border border-transparent text-slate-300'
+                            }`}
+                          >
+                            <div className="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center text-cyan-300 shrink-0 mt-0.5">
+                              <Icon className="w-4 h-4 text-cyan-300" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-xs text-white">{m.name}</span>
+                                <span className="text-[9px] font-extrabold uppercase px-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                  {m.badge}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 mt-0.5">{m.desc}</p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="bg-[#0E162B] border border-cyan-500/30 text-slate-300 rounded-2xl rounded-tl-none p-4 text-xs shadow-lg max-w-[85%]">
-                <div className="flex items-center gap-2 text-cyan-300 font-semibold mb-1">
-                  <span>Gemini Copilot is inspecting live server telemetry...</span>
-                </div>
-                <div className="flex items-center gap-1.5 py-1">
-                  <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></div>
-                  <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse delay-100"></div>
-                  <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse delay-200"></div>
-                  <span className="text-[11px] text-slate-400 ml-2">Running non-destructive SSH probes on Docker, K8s, Nginx, and system services...</span>
+
+              {/* Maximize / Restore Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsMaximized(!isMaximized)}
+                className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 transition border border-slate-700/60 cursor-pointer"
+                title={isMaximized ? 'Restore View' : 'Maximize Full Screen'}
+              >
+                {isMaximized ? (
+                  <Minimize2 className="w-4 h-4" />
+                ) : (
+                  <Maximize2 className="w-4 h-4" />
+                )}
+              </button>
+
+              {/* Clear Current Chat */}
+              <button
+                type="button"
+                onClick={handleClearCurrentChat}
+                className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition border border-slate-700/60 cursor-pointer"
+                title="Clear Current Screen"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+
+              {/* Close Drawer */}
+              <button
+                type="button"
+                onClick={effectiveOnClose}
+                className="p-2 rounded-lg bg-slate-800/80 hover:bg-red-500/20 hover:text-red-400 text-slate-400 transition border border-slate-700/60 cursor-pointer"
+                title="Close (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </header>
+
+          {/* Selected Server Diagnostic Banner */}
+          {selectedServer ? (
+            <div className="px-5 py-2.5 bg-gradient-to-r from-[#0C152B] via-[#091122] to-[#0C152B] border-b border-cyan-500/30 flex items-center justify-between text-xs shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping shrink-0" />
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="text-slate-400 font-medium">Diagnosing Server:</span>
+                  <span className="font-extrabold text-cyan-300 font-mono">
+                    {selectedServer.name || selectedServer.host}
+                  </span>
+                  {selectedServer.host && (
+                    <span className="text-slate-500 font-mono text-[11px]">
+                      ({selectedServer.host})
+                    </span>
+                  )}
+                  {selectedServer.provider && (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
+                      {selectedServer.provider}
+                    </span>
+                  )}
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setSelectedServer(null)}
+                className="text-[10px] text-slate-400 hover:text-cyan-300 underline font-semibold shrink-0 cursor-pointer"
+              >
+                Clear Server
+              </button>
+            </div>
+          ) : (
+            <div className="px-5 py-2 bg-[#070D1B] border-b border-[#1E293B]/60 flex items-center justify-between text-xs shrink-0">
+              <span className="text-[10px] text-slate-400 flex items-center gap-1 truncate">
+                <Server className="w-3 h-3 text-cyan-400 shrink-0" />
+                Multi-Cloud Fleet Scope (AWS EC2 & Azure VMs • Click any server in heatmap for dedicated SSH probe)
+              </span>
+              <span className="text-[10px] text-slate-400 shrink-0 ml-2">
+                Active Alerts: <strong className="text-white">{activeAlertsCount}</strong>
+              </span>
             </div>
           )}
 
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Quick Prompt Chips */}
-        <div className="px-5 py-2.5 bg-[#070D1B] border-t border-[#1E293B]/70 shrink-0">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
-            <Flame className="w-3 h-3 text-cyan-400" />
-            Quick Copilot Prompts:
-          </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-            {QUICK_PROMPT_CHIPS.map((chip, idx) => (
-              <button
-                key={idx}
-                type="button"
-                disabled={isLoading}
-                onClick={() => handleSendMessage(chip.prompt)}
-                className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-[#0E172E] hover:bg-cyan-950/60 text-slate-300 hover:text-cyan-200 border border-slate-700/60 hover:border-cyan-500/50 text-[11px] font-medium transition cursor-pointer shrink-0 disabled:opacity-50"
+          {/* Messages Scroll Area */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex items-start gap-3 ${
+                  msg.role === 'user' ? 'justify-end' : 'justify-start'
+                }`}
               >
-                {chip.label}
-              </button>
+                {msg.role === 'assistant' && (
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600/30 via-indigo-600/20 to-cyan-500/30 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shrink-0 mt-0.5 shadow-sm">
+                    <Sparkles className="w-4 h-4 text-cyan-300" />
+                  </div>
+                )}
+
+                <div
+                  className={`max-w-[92%] sm:max-w-[85%] rounded-2xl p-4 text-xs leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-none shadow-md shadow-blue-600/20'
+                      : msg.isError
+                      ? 'bg-red-950/40 border border-red-500/40 text-red-200 rounded-tl-none'
+                      : 'bg-[#0E162B] border border-cyan-500/30 text-slate-200 rounded-tl-none shadow-lg shadow-black/40'
+                  }`}
+                >
+                  {/* Markdown content */}
+                  <FormattedMarkdownContent
+                    content={msg.text}
+                    onCopyCode={(code) => copyToClipboard(code, msg.id)}
+                    copiedCodeId={copiedCodeId}
+                    messageId={msg.id}
+                  />
+
+                  {/* Interactive Action Approval Card if Gemini proposed a remediation */}
+                  {msg.actionProposal && msg.logId && (
+                    <ActionApprovalCard
+                      proposal={msg.actionProposal}
+                      logId={msg.logId}
+                      messageId={msg.id}
+                      status={msg.actionStatus || 'pending'}
+                      actionOutput={msg.actionOutput}
+                      verifyOutput={msg.verifyOutput}
+                      rollbackOutput={msg.rollbackOutput}
+                      onExecute={(action, cmd) => handleExecuteAction(msg.id, msg.logId!, action, cmd)}
+                      onModifyPrompt={(promptToEdit) => {
+                        setInputPrompt(promptToEdit);
+                        inputRef.current?.focus();
+                      }}
+                    />
+                  )}
+
+                  <div
+                    className={`mt-2.5 pt-2 border-t text-[10px] flex items-center justify-between ${
+                      msg.role === 'user'
+                        ? 'border-blue-400/30 text-blue-200'
+                        : 'border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span>{msg.role === 'user' ? 'You' : msg.model || selectedModel}</span>
+                      {msg.role === 'assistant' && (
+                        <span className="px-1 rounded text-[8px] font-mono uppercase bg-cyan-950/80 text-cyan-300 border border-cyan-500/30">
+                          Verified
+                        </span>
+                      )}
+                    </span>
+                    <span>{msg.timestamp}</span>
+                  </div>
+                </div>
+
+                {msg.role === 'user' && (
+                  <div className="w-8 h-8 rounded-lg bg-blue-600/40 border border-blue-400/40 flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
+                    <User className="w-4 h-4" />
+                  </div>
+                )}
+              </div>
             ))}
+
+            {/* Loading Animation */}
+            {isLoading && (
+              <div className="flex items-start gap-3 justify-start animate-in fade-in duration-200">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600/30 to-cyan-500/30 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shrink-0">
+                  <Sparkles className="w-4 h-4 text-cyan-300 animate-spin" />
+                </div>
+                <div className="bg-[#0E162B] border border-cyan-500/30 text-slate-300 rounded-2xl rounded-tl-none p-4 text-xs shadow-lg max-w-[85%]">
+                  <div className="flex items-center gap-2 text-cyan-300 font-semibold mb-1">
+                    <span>Gemini AI ({currentModelObj.name}) is inspecting infrastructure telemetry...</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 py-1">
+                    <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></div>
+                    <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse delay-100"></div>
+                    <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse delay-200"></div>
+                    <span className="text-[11px] text-slate-400 ml-2">Running live SSH probes on Docker, K8s, Nginx, and system services...</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
           </div>
-        </div>
 
-        {/* Input Box Area */}
-        <div className="p-4 bg-[#0B1224] border-t border-[#1E293B] shrink-0">
-          <div className="relative rounded-xl bg-[#070B16] border border-cyan-500/40 focus-within:border-cyan-400 focus-within:shadow-lg focus-within:shadow-cyan-500/20 transition-all">
-            <textarea
-              ref={inputRef}
-              rows={2}
-              value={inputPrompt}
-              onChange={(e) => setInputPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              placeholder={
-                selectedServer
-                  ? `Ask Gemini to diagnose "${selectedServer.name || selectedServer.host}" (e.g. check failing pods, restart nginx)...`
-                  : 'Ask Gemini about AWS, Azure, Docker logs, K8s pods, active alerts...'
-              }
-              className="w-full bg-transparent px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 resize-none focus:outline-none"
-            />
-
-            <div className="flex items-center justify-between px-3 py-1.5 border-t border-slate-800/80 bg-[#060912]">
-              <span className="text-[10px] text-slate-400 font-mono">
-                Press <strong>Enter</strong> to send • <strong>Shift+Enter</strong> for newline
-              </span>
-
-              <button
-                type="button"
-                disabled={!inputPrompt.trim() || isLoading}
-                onClick={() => handleSendMessage()}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-bold text-xs transition shadow-md shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Send</span>
-              </button>
+          {/* Quick Prompt Chips */}
+          <div className="px-4 py-2.5 bg-[#070D1B] border-t border-[#1E293B]/70 shrink-0">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
+              <Flame className="w-3 h-3 text-cyan-400" />
+              Quick DevOps Prompts:
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {QUICK_PROMPT_CHIPS.map((chip, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  disabled={isLoading}
+                  onClick={() => handleSendMessage(chip.prompt)}
+                  className="whitespace-nowrap px-3 py-1 rounded-lg bg-[#0E172E] hover:bg-cyan-950/60 text-slate-300 hover:text-cyan-200 border border-slate-700/60 hover:border-cyan-500/50 text-[11px] font-medium transition cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  {chip.label}
+                </button>
+              ))}
             </div>
           </div>
-        </div>
+
+          {/* Input Box Area */}
+          <div className="p-3.5 sm:p-4 bg-[#0B1224] border-t border-[#1E293B] shrink-0">
+            <div className="relative rounded-xl bg-[#070B16] border border-cyan-500/40 focus-within:border-cyan-400 focus-within:shadow-lg focus-within:shadow-cyan-500/20 transition-all">
+              <textarea
+                ref={inputRef}
+                rows={2}
+                value={inputPrompt}
+                onChange={(e) => setInputPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder={
+                  selectedServer
+                    ? `Ask Gemini to diagnose "${selectedServer.name || selectedServer.host}" (e.g. check failing pods, restart nginx)...`
+                    : 'Ask Gemini about AWS, Azure, Docker logs, K8s pods, active alerts...'
+                }
+                className="w-full bg-transparent px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 resize-none focus:outline-none"
+              />
+
+              <div className="flex items-center justify-between px-3 py-1.5 border-t border-slate-800/80 bg-[#060912]">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
+                    Press <strong>Enter</strong> to send • <strong>Shift+Enter</strong> for newline
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-cyan-950 text-cyan-300 border border-cyan-500/30">
+                    ⚡ {currentModelObj.shortName}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={!inputPrompt.trim() || isLoading}
+                  onClick={() => handleSendMessage()}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-bold text-xs transition shadow-md shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Send</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
     </div>,
     document.body
@@ -701,7 +1212,7 @@ function ActionApprovalCard({
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
             <span className="text-emerald-400 font-bold uppercase">Proposed Fix Command:</span>
-            <span>Requires Permission</span>
+            <span>Requires Explicit Approval</span>
           </div>
           <div className="p-2.5 rounded bg-[#03060E] border border-emerald-500/40 font-mono text-emerald-300 text-[11px] overflow-x-auto">
             <code>{proposal.fix_command}</code>
