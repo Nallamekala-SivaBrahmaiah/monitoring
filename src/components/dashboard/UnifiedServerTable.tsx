@@ -100,18 +100,18 @@ export function UnifiedServerTable({
   const defaultTitle = isAzure
     ? 'Microsoft Azure Virtual Machines'
     : isAws
-    ? 'Amazon Web Services (AWS EC2)'
-    : isOnPrem
-    ? 'On-Premises Infrastructure Servers'
-    : 'Infrastructure Servers';
+      ? 'Amazon Web Services (AWS EC2)'
+      : isOnPrem
+        ? 'On-Premises Infrastructure Servers'
+        : 'Infrastructure Servers';
 
   const defaultSubtitle = isAzure
     ? 'High-performance cloud virtual machines managed via Microsoft Azure Resource Manager (ARM)'
     : isAws
-    ? 'Elastic Compute Cloud instances managed via AWS EC2 API across global regions'
-    : isOnPrem
-    ? 'Bare-metal, physical nodes, and datacenter virtual servers with live telemetry'
-    : 'Multi-cloud compute instances with live guest and cloud telemetry';
+      ? 'Elastic Compute Cloud instances managed via AWS EC2 API across global regions'
+      : isOnPrem
+        ? 'Bare-metal, physical nodes, and datacenter virtual servers with live telemetry'
+        : 'Multi-cloud compute instances with live guest and cloud telemetry';
 
   const defaultIcon = isAzure ? (
     <AzureLogo className="w-4 h-4" />
@@ -126,26 +126,26 @@ export function UnifiedServerTable({
   const headerBg = isAzure
     ? 'bg-gradient-to-r from-[#0089D6]/20 via-[#0089D6]/5 to-transparent'
     : isAws
-    ? 'bg-gradient-to-r from-amber-500/20 via-amber-500/5 to-transparent'
-    : isOnPrem
-    ? 'bg-gradient-to-r from-emerald-500/20 via-emerald-500/5 to-transparent'
-    : 'bg-gradient-to-r from-blue-900/15 via-blue-900/5 to-transparent';
+      ? 'bg-gradient-to-r from-amber-500/20 via-amber-500/5 to-transparent'
+      : isOnPrem
+        ? 'bg-gradient-to-r from-emerald-500/20 via-emerald-500/5 to-transparent'
+        : 'bg-gradient-to-r from-blue-900/15 via-blue-900/5 to-transparent';
 
   const borderAccent = isAzure
     ? 'border-[#0089D6]/30'
     : isAws
-    ? 'border-amber-500/30'
-    : isOnPrem
-    ? 'border-emerald-500/30'
-    : 'border-[#1E293B]';
+      ? 'border-amber-500/30'
+      : isOnPrem
+        ? 'border-emerald-500/30'
+        : 'border-[#1E293B]';
 
   const badgeStyle = isAzure
     ? 'bg-[#0089D6]/20 text-[#5EA0EF] border border-[#0089D6]/30'
     : isAws
-    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-    : isOnPrem
-    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-    : 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
+      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+      : isOnPrem
+        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+        : 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
 
   // Available unique regions
   const availableRegions = useMemo(() => {
@@ -333,13 +333,12 @@ export function UnifiedServerTable({
       {/* Toast Notification */}
       {feedbackToast && (
         <div
-          className={`p-3.5 border-b flex items-center justify-between gap-3 animate-fade-in transition-all text-xs ${
-            feedbackToast.type === 'success'
-              ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-200'
-              : feedbackToast.type === 'error'
+          className={`p-3.5 border-b flex items-center justify-between gap-3 animate-fade-in transition-all text-xs ${feedbackToast.type === 'success'
+            ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-200'
+            : feedbackToast.type === 'error'
               ? 'bg-rose-950/80 border-rose-500/40 text-rose-200'
               : 'bg-sky-950/80 border-sky-500/40 text-sky-200'
-          }`}
+            }`}
         >
           <div className="flex items-center gap-2.5">
             {feedbackToast.type === 'success' ? (
@@ -364,31 +363,31 @@ export function UnifiedServerTable({
       )}
 
       {/* Card Header */}
-      <div className={`px-5 py-3.5 border-b border-[#1E293B] ${headerBg} flex flex-col xl:flex-row xl:items-center justify-between gap-3.5`}>
-        <div className="flex items-center gap-3">
+      <div className={`px-5 py-3.5 border-b border-[#1E293B] ${headerBg} flex flex-col lg:flex-row lg:items-center justify-between gap-3.5`}>
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-[#0D1526]/90 border border-[#1E293B] flex items-center justify-center shrink-0">
             {icon || defaultIcon}
           </div>
-          <div>
+          <div className="min-w-0">
             <h3 className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
-              <span>{title || defaultTitle}</span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${badgeStyle}`}>
+              <span className="whitespace-nowrap">{title || defaultTitle}</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${badgeStyle}`}>
                 {servers.length} {servers.length === 1 ? 'instance' : 'instances'}
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-semibold">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 font-semibold shrink-0">
                 {onlineCount} Online
               </span>
             </h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-sm sm:max-w-md xl:max-w-lg" title={subtitle || defaultSubtitle}>
               {subtitle || defaultSubtitle}
             </p>
           </div>
         </div>
 
         {/* Toolbar: Search, Filters & Action buttons */}
-        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
           {showToolbar && (
-            <div className="flex flex-wrap items-center gap-2">
+            <>
               {/* Search */}
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -397,7 +396,7 @@ export function UnifiedServerTable({
                   placeholder={isAzure ? 'Search Azure VM...' : isAws ? 'Search EC2 instance...' : isOnPrem ? 'Search on-premises server...' : 'Search servers...'}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 text-xs bg-[#0D1526] border border-[#1E293B] rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-28 sm:w-36 md:w-44"
+                  className="pl-8 pr-3 py-1.5 text-xs bg-[#0D1526] border border-[#1E293B] rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 w-28 sm:w-36 md:w-40"
                 />
               </div>
 
@@ -406,7 +405,7 @@ export function UnifiedServerTable({
                 <select
                   value={regionFilter}
                   onChange={(e) => setRegionFilter(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs bg-[#0D1526] border border-[#1E293B] rounded-lg text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  className="px-2.5 py-1.5 text-xs bg-[#0D1526] border border-[#1E293B] rounded-lg text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer shrink-0"
                 >
                   <option value="all">All Regions</option>
                   {availableRegions.map((reg) => (
@@ -421,51 +420,49 @@ export function UnifiedServerTable({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-2.5 py-1.5 text-xs bg-[#0D1526] border border-[#1E293B] rounded-lg text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer"
+                className="px-2.5 py-1.5 text-xs bg-[#0D1526] border border-[#1E293B] rounded-lg text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer shrink-0"
               >
                 <option value="all">All Statuses</option>
                 <option value="running">Online / Running</option>
                 <option value="stopped">Offline / Stopped</option>
               </select>
-            </div>
+            </>
           )}
 
           {/* Action Buttons: Add Server/VM followed by View All on the right side */}
-          <div className="flex items-center gap-2 shrink-0 ml-auto">
-            {addLabel && (
-              <button
-                type="button"
-                onClick={onAddClick}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer shadow-sm shrink-0 whitespace-nowrap ${
-                  isOnPrem
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
-                    : 'bg-[#0D1526] hover:bg-[#15203A] text-slate-200 border border-[#1E293B]'
-                }`}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{addLabel}</span>
-              </button>
-            )}
+          {addLabel && (
+            <button
+              type="button"
+              onClick={onAddClick}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer shadow-sm shrink-0 whitespace-nowrap ${
+                isOnPrem
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
+                  : 'bg-[#0D1526] hover:bg-[#15203A] text-slate-200 border border-[#1E293B]'
+              }`}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{addLabel}</span>
+            </button>
+          )}
 
-            {/* View All Button on the right side of Add Server / VM */}
-            {showViewAllButton && viewAllHref && (
-              <Link
-                href={viewAllHref}
-                className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-colors shadow-sm shrink-0 whitespace-nowrap ${
-                  isAzure
-                    ? 'bg-[#0089D6] hover:bg-[#0078D4]'
-                    : isAws
-                    ? 'bg-[#FF9900] hover:bg-[#E68A00] text-black font-bold'
-                    : isOnPrem
-                    ? 'bg-emerald-600 hover:bg-emerald-500'
-                    : 'bg-blue-600 hover:bg-blue-500'
-                }`}
-              >
-                <span>View All</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </Link>
-            )}
-          </div>
+          {/* View All Button on the right side of Add Server / VM */}
+          {showViewAllButton && viewAllHref && (
+            <Link
+              href={viewAllHref}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-colors shadow-sm shrink-0 whitespace-nowrap ${
+                isAzure
+                  ? 'bg-[#0089D6] hover:bg-[#0078D4]'
+                  : isAws
+                  ? 'bg-[#FF9900] hover:bg-[#E68A00] text-black font-bold'
+                  : isOnPrem
+                  ? 'bg-emerald-600 hover:bg-emerald-500'
+                  : 'bg-blue-600 hover:bg-blue-500'
+              }`}
+            >
+              <span>View All</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          )}
         </div>
       </div>
 
