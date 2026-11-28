@@ -70,7 +70,16 @@ const LAYOUT_MODELS: LayoutModelOption[] = [
 
 export default function RegionsPage() {
   const router = useRouter();
-  const { cloudProvider, regions, toggleRegion, triggerRefresh, isRefreshing } = useMonitoring();
+  const { cloudProvider, regions, toggleRegion, triggerRefresh, isRefreshing, awsAccounts = [], azureSubscriptions = [] } = useMonitoring();
+
+  const connectedAwsCount = useMemo(
+    () => (awsAccounts || []).filter((a) => a.status === 'Connected').length,
+    [awsAccounts]
+  );
+  const connectedAzureCount = useMemo(
+    () => (azureSubscriptions || []).filter((s) => s.status === 'Connected').length,
+    [azureSubscriptions]
+  );
 
   // Layout Design Model (persisted to localStorage)
   const [layoutModel, setLayoutModel] = useState<LayoutModelId>('model1');
@@ -140,6 +149,11 @@ export default function RegionsPage() {
   // Filtered Dynamic Regions
   const filteredDynamicRegions = useMemo(() => {
     return dynamicRegions.filter((r) => {
+      // Hide AWS regions if no connected AWS account
+      if (r.cloud === 'aws' && connectedAwsCount === 0) return false;
+      // Hide Azure regions if no connected Azure account
+      if (r.cloud === 'azure' && connectedAzureCount === 0) return false;
+
       // Global provider override from context or page filter
       const effectiveProvider = providerFilter !== 'all' ? providerFilter : cloudProvider;
       if (effectiveProvider === 'aws' && r.cloud !== 'aws') return false;
@@ -155,12 +169,17 @@ export default function RegionsPage() {
       }
       return true;
     });
-  }, [dynamicRegions, cloudProvider, providerFilter, statusFilter, searchQuery]);
+  }, [dynamicRegions, cloudProvider, providerFilter, statusFilter, searchQuery, connectedAwsCount, connectedAzureCount]);
 
   // Catalog regions
   const displayedCatalogRegions = useMemo(() => {
     return regions
       .filter((r) => {
+        // If AWS is not connected, hide AWS catalog regions when filtering by AWS or active
+        if (r.cloud === 'aws' && connectedAwsCount === 0 && (statusFilter === 'active' || providerFilter === 'aws')) return false;
+        // If Azure is not connected, hide Azure catalog regions when filtering by Azure or active
+        if (r.cloud === 'azure' && connectedAzureCount === 0 && (statusFilter === 'active' || providerFilter === 'azure')) return false;
+
         const effectiveProvider = providerFilter !== 'all' ? providerFilter : cloudProvider;
         if (effectiveProvider === 'aws' && r.cloud !== 'aws') return false;
         if (effectiveProvider === 'azure' && r.cloud !== 'azure') return false;
@@ -180,45 +199,28 @@ export default function RegionsPage() {
         }
         return a.displayName.localeCompare(b.displayName);
       });
-  }, [regions, cloudProvider, providerFilter, statusFilter, searchQuery]);
+  }, [regions, cloudProvider, providerFilter, statusFilter, searchQuery, connectedAwsCount, connectedAzureCount]);
 
   // Summary Metrics calculations from real application data
-  const totalRegionsCount = regions.length;
+  const totalRegionsCount = displayedCatalogRegions.length;
   const activeRegionsCount = useMemo(() => {
     const set = new Set<string>();
-    dynamicRegions.forEach((r) => {
-      if (r.resourceCount > 0) set.add(r.region);
-    });
-    regions.forEach((r) => {
+    filteredDynamicRegions.forEach((r) => {
       if (r.resourceCount > 0) set.add(r.region);
     });
     return set.size;
-  }, [dynamicRegions, regions]);
+  }, [filteredDynamicRegions]);
 
   const totalComputeInstances = useMemo(() => {
-    let sum = 0;
-    if (dynamicRegions.length > 0) {
-      dynamicRegions.forEach((r) => {
-        sum += r.resourceCount || 0;
-      });
-    } else {
-      regions.forEach((r) => {
-        sum += r.resourceCount || 0;
-      });
-    }
-    return sum;
-  }, [dynamicRegions, regions]);
+    return filteredDynamicRegions.reduce((sum, r) => sum + (r.resourceCount || 0), 0);
+  }, [filteredDynamicRegions]);
 
   const runningComputeInstances = useMemo(() => {
-    let sum = 0;
-    dynamicRegions.forEach((r) => {
-      sum += r.runningCount || 0;
-    });
-    return sum;
-  }, [dynamicRegions]);
+    return filteredDynamicRegions.reduce((sum, r) => sum + (r.runningCount || 0), 0);
+  }, [filteredDynamicRegions]);
 
-  const awsActiveCount = dynamicRegions.filter((r) => r.cloud === 'aws').reduce((a, b) => a + (b.resourceCount || 0), 0);
-  const azureActiveCount = dynamicRegions.filter((r) => r.cloud === 'azure').reduce((a, b) => a + (b.resourceCount || 0), 0);
+  const awsActiveCount = connectedAwsCount === 0 ? 0 : dynamicRegions.filter((r) => r.cloud === 'aws').reduce((a, b) => a + (b.resourceCount || 0), 0);
+  const azureActiveCount = connectedAzureCount === 0 ? 0 : dynamicRegions.filter((r) => r.cloud === 'azure').reduce((a, b) => a + (b.resourceCount || 0), 0);
   const monitoredCount = regions.filter((r) => r.enabled).length;
 
   const currentModelOption = LAYOUT_MODELS.find((m) => m.id === layoutModel) || LAYOUT_MODELS[0];
@@ -520,12 +522,26 @@ export default function RegionsPage() {
                   <p className="text-xs">Discovering cloud regions with active compute resources...</p>
                 </div>
               ) : filteredDynamicRegions.length === 0 ? (
-                <div className="p-12 text-center text-slate-400 space-y-2 bg-[#0D1526] border border-[#1E293B] rounded-xl">
-                  <Globe className="w-8 h-8 text-slate-600 mx-auto" />
-                  <p className="text-sm font-semibold text-white">No Active Regions Found</p>
-                  <p className="text-xs text-slate-400">
-                    No active compute instances were found matching the selected provider or search criteria.
+                <div className="p-12 text-center text-slate-400 space-y-3 bg-[#0D1526] border border-[#1E293B] rounded-xl">
+                  <Globe className="w-9 h-9 text-slate-600 mx-auto" />
+                  <p className="text-sm font-semibold text-white">
+                    {connectedAwsCount === 0 && connectedAzureCount === 0
+                      ? 'No Cloud Accounts Connected'
+                      : 'No Active Regions Found'}
                   </p>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    {connectedAwsCount === 0 && connectedAzureCount === 0
+                      ? 'No AWS accounts or Azure subscriptions are currently connected. Connect a cloud account in Cloud Accounts to monitor regional compute instances.'
+                      : 'No active compute instances were found matching the selected provider or search criteria.'}
+                  </p>
+                  {connectedAwsCount === 0 && connectedAzureCount === 0 && (
+                    <Link
+                      href="/dashboard/cloud-accounts"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-sm cursor-pointer mt-1"
+                    >
+                      <span>Connect Cloud Account</span>
+                    </Link>
+                  )}
                 </div>
               ) : (
                 <>

@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import CloudAccount from '@/models/CloudAccount';
 import CloudResource from '@/models/CloudResource';
+import Server from '@/models/Server';
 import Alert from '@/models/Alert';
 
 const DATA_DIR = path.join(process.cwd(), '.data');
@@ -130,10 +131,11 @@ export async function fetchAccounts(provider?: string): Promise<any[]> {
 
 export async function removeAccount(provider: string, identifier: string): Promise<void> {
   const isMongoValidId = mongoose.Types.ObjectId.isValid(identifier);
-  
+  const cleanId = identifier.replace(/^acc-aws-|^sub-|^reg-/, '');
+
   // 1. Resolve all aliases (subscriptionId, accountId, _id)
-  let subId = identifier;
-  let accId = identifier;
+  let subId = cleanId;
+  let accId = cleanId;
   let objId: mongoose.Types.ObjectId | null = isMongoValidId ? new mongoose.Types.ObjectId(identifier) : null;
 
   // Check file store to resolve all aliases
@@ -141,7 +143,12 @@ export async function removeAccount(provider: string, identifier: string): Promi
   const existingAcc = store.accounts.find(
     (a) =>
       (provider === 'all' || a.provider === provider) &&
-      (a.subscriptionId === identifier || a.accountId === identifier || a._id === identifier || a.id === identifier)
+      (a.subscriptionId === identifier ||
+        a.subscriptionId === cleanId ||
+        a.accountId === identifier ||
+        a.accountId === cleanId ||
+        a._id === identifier ||
+        a.id === identifier)
   );
 
   if (existingAcc) {
@@ -156,7 +163,14 @@ export async function removeAccount(provider: string, identifier: string): Promi
   const hasMongo = await checkMongo();
   if (hasMongo) {
     try {
-      const orFind: any[] = [{ subscriptionId: identifier }, { accountId: identifier }];
+      const orFind: any[] = [
+        { subscriptionId: identifier },
+        { subscriptionId: cleanId },
+        { subscriptionId: subId },
+        { accountId: identifier },
+        { accountId: cleanId },
+        { accountId: accId },
+      ];
       if (isMongoValidId) orFind.push({ _id: objId });
 
       const foundInMongo: any = await (CloudAccount as any).findOne({
@@ -172,11 +186,11 @@ export async function removeAccount(provider: string, identifier: string): Promi
         }
       }
 
+      const allIds = Array.from(new Set([subId, accId, cleanId, identifier].filter(Boolean)));
+
       const orAccountDelete: any[] = [
-        { subscriptionId: subId },
-        { subscriptionId: identifier },
-        { accountId: accId },
-        { accountId: identifier },
+        ...allIds.map((id) => ({ subscriptionId: id })),
+        ...allIds.map((id) => ({ accountId: id })),
       ];
       if (objId) {
         orAccountDelete.push({ _id: objId });
@@ -187,36 +201,84 @@ export async function removeAccount(provider: string, identifier: string): Promi
         $or: orAccountDelete,
       });
 
+      // Cascade delete from CloudResource (EC2, VMs, disks, NICs, public IPs)
       await (CloudResource as any).deleteMany({
         ...(provider !== 'all' ? { provider: provider as any } : {}),
         $or: [
-          { subscriptionId: subId },
-          { subscriptionId: identifier },
-          { accountId: accId },
-          { accountId: identifier },
+          ...allIds.map((id) => ({ subscriptionId: id })),
+          ...allIds.map((id) => ({ accountId: id })),
         ],
       });
+
+      // Cascade delete from Server collection (any registered instances from this account)
+      try {
+        const Server = (await import('@/models/Server')).default;
+        await (Server as any).deleteMany({
+          $or: [
+            ...allIds.map((id) => ({ cloudResourceId: { $regex: id, $options: 'i' } })),
+            ...allIds.map((id) => ({ instanceId: { $regex: id, $options: 'i' } })),
+            ...(provider !== 'all' ? [{ cloudProvider: provider }] : []),
+          ],
+        });
+      } catch (srvErr) {
+        console.warn('[Storage] Server cascade delete note:', srvErr);
+      }
+
+      // Check if any other connected account exists for this provider
+      const remainingAccounts = await (CloudAccount as any).countDocuments({
+        provider: provider as any,
+        status: 'Connected',
+        accountId: { $nin: allIds },
+        subscriptionId: { $nin: allIds },
+      });
+
+      if (remainingAccounts === 0 && provider !== 'all') {
+        // Zero remaining accounts for this provider! Completely purge all resources & servers for this cloud
+        await (CloudResource as any).deleteMany({ provider: provider as any });
+        try {
+          const Server = (await import('@/models/Server')).default;
+          await (Server as any).deleteMany({ cloudProvider: provider });
+        } catch { }
+      }
+
+      // Cascade delete related alerts
+      try {
+        const Alert = (await import('@/models/Alert')).default;
+        await (Alert as any).deleteMany({
+          ...(provider !== 'all' ? { provider: provider as any } : {}),
+        });
+      } catch { }
+
+
     } catch (err) {
       console.error('[Storage] MongoDB removeAccount error:', err);
     }
   }
 
   // 3. Remove from local file store
+  const allIds = Array.from(new Set([subId, accId, cleanId, identifier].filter(Boolean)));
+
   store.accounts = store.accounts.filter((a) => {
     if (provider !== 'all' && a.provider !== provider) return true;
-    if (a.subscriptionId && (a.subscriptionId === subId || a.subscriptionId === identifier)) return false;
-    if (a.accountId && (a.accountId === accId || a.accountId === identifier)) return false;
-    if (a._id && (a._id === identifier || (objId && a._id === objId.toString()))) return false;
-    if (a.id && (a.id === identifier || (objId && a.id === objId.toString()))) return false;
+    if (a.subscriptionId && allIds.includes(a.subscriptionId)) return false;
+    if (a.accountId && allIds.includes(a.accountId)) return false;
+    if (a._id && (allIds.includes(a._id) || (objId && a._id === objId.toString()))) return false;
+    if (a.id && (allIds.includes(a.id) || (objId && a.id === objId.toString()))) return false;
     return true;
   });
 
   store.resources = store.resources.filter((r) => {
     if (provider !== 'all' && r.provider !== provider) return true;
-    if (r.subscriptionId && (r.subscriptionId === subId || r.subscriptionId === identifier)) return false;
-    if (r.accountId && (r.accountId === accId || r.accountId === identifier)) return false;
+    if (r.subscriptionId && allIds.includes(r.subscriptionId)) return false;
+    if (r.accountId && allIds.includes(r.accountId)) return false;
     return true;
   });
+
+  // If zero remaining accounts in file store for this provider, purge all its resources
+  const remainingFileAccounts = store.accounts.filter((a) => (provider === 'all' || a.provider === provider) && a.status === 'Connected');
+  if (remainingFileAccounts.length === 0 && provider !== 'all') {
+    store.resources = store.resources.filter((r) => r.provider !== provider);
+  }
 
   saveFileStore(store);
 }
@@ -258,13 +320,48 @@ export async function updateAccountStatus(provider: string, identifier: string, 
 export async function bulkUpsertResources(resources: any[]): Promise<void> {
   if (resources.length === 0) return;
 
+  // Filter out any resources belonging to disconnected or deleted accounts
+  let filteredResources = resources;
+  try {
+    const hasMongo = await checkMongo();
+    if (hasMongo) {
+      const connectedAccounts = await (CloudAccount as any).find({ status: 'Connected' }).lean();
+      const connectedAwsIds = new Set<string>(
+        connectedAccounts
+          .filter((a: any) => a.provider === 'aws')
+          .flatMap((a: any) => [a.accountId, a._id?.toString(), a.id])
+          .filter(Boolean)
+      );
+      const connectedAzureIds = new Set<string>(
+        connectedAccounts
+          .filter((a: any) => a.provider === 'azure')
+          .flatMap((a: any) => [a.subscriptionId, a._id?.toString(), a.id])
+          .filter(Boolean)
+      );
+
+      filteredResources = resources.filter((r) => {
+        if (r.provider === 'aws') {
+          return connectedAwsIds.size > 0 && (!r.accountId || connectedAwsIds.has(r.accountId));
+        }
+        if (r.provider === 'azure') {
+          return connectedAzureIds.size > 0 && (!r.subscriptionId || connectedAzureIds.has(r.subscriptionId));
+        }
+        return true;
+      });
+    }
+  } catch (chkErr) {
+    console.warn('[Storage] bulkUpsertResources account check note:', chkErr);
+  }
+
+  if (filteredResources.length === 0) return;
+
   // Always mirror to local file store
   const store = getFileStore();
   const resMap = new Map<string, any>();
   for (const r of store.resources) {
     resMap.set(`${r.provider}:${r.resourceId}`, r);
   }
-  for (const r of resources) {
+  for (const r of filteredResources) {
     resMap.set(`${r.provider}:${r.resourceId}`, {
       _id: r._id || `res-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       ...r,
@@ -277,7 +374,7 @@ export async function bulkUpsertResources(resources: any[]): Promise<void> {
   const hasMongo = await checkMongo();
   if (hasMongo) {
     try {
-      const bulkOps = resources.map((r) => ({
+      const bulkOps = filteredResources.map((r) => ({
         updateOne: {
           filter: { resourceId: r.resourceId, provider: r.provider },
           update: { $set: r },

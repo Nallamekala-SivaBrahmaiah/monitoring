@@ -4,6 +4,7 @@ import os from 'os';
 import mongoose from 'mongoose';
 import connectToDatabase from '@/lib/mongodb';
 import Server from '@/models/Server';
+import CloudAccount from '@/models/CloudAccount';
 import CloudResource from '@/models/CloudResource';
 import AnsibleHost from '@/models/AnsibleHost';
 import { encryptSecret, generateAgentToken } from '@/lib/serverMonitoring/crypto';
@@ -34,7 +35,19 @@ export async function GET(request: NextRequest) {
       .sort({ createdAt: -1 })
       .lean();
 
-    const servers = rawServers.map((s: any) => {
+    // Check which cloud providers currently have active, connected accounts
+    const connectedAccounts = await CloudAccount.find({ status: 'Connected' }).lean();
+    const hasConnectedAws = connectedAccounts.some((a: any) => a.provider === 'aws');
+    const hasConnectedAzure = connectedAccounts.some((a: any) => a.provider === 'azure');
+
+    // Strict Rule: If no connected account exists for a cloud provider, hide its servers completely
+    const validRawServers = rawServers.filter((s: any) => {
+      if (s.cloudProvider === 'aws' && !hasConnectedAws) return false;
+      if (s.cloudProvider === 'azure' && !hasConnectedAzure) return false;
+      return true;
+    });
+
+    const servers = validRawServers.map((s: any) => {
       const hasSavedKey = Boolean(s.encryptedAuthSecret);
       delete s.encryptedAuthSecret;
       delete s.authSecretIv;
@@ -45,12 +58,18 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Cross-reconcile server status with live cloud compute resource status
-    const cloudResources = (await CloudResource.find({
-      provider: { $in: ['aws', 'azure'] },
-      isDeleted: { $ne: true },
-      status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
-    }).lean()) as any[];
+    // Cross-reconcile server status with live cloud compute resource status ONLY for connected providers
+    const activeProviders: ('aws' | 'azure')[] = [];
+    if (hasConnectedAws) activeProviders.push('aws');
+    if (hasConnectedAzure) activeProviders.push('azure');
+
+    const cloudResources = activeProviders.length > 0
+      ? ((await CloudResource.find({
+          provider: { $in: activeProviders },
+          isDeleted: { $ne: true },
+          status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
+        }).lean()) as any[])
+      : [];
 
     const matchedCloudIds = new Set<string>();
 

@@ -132,7 +132,16 @@ interface RegisteredServer {
 }
 
 export default function ServersPage() {
-  const { cloudProvider, isRefreshing, openGeminiDrawer } = useMonitoring();
+  const { cloudProvider, isRefreshing, openGeminiDrawer, awsAccounts = [], azureSubscriptions = [] } = useMonitoring();
+
+  const connectedAws = useMemo(
+    () => (awsAccounts || []).filter((a) => a.status === 'Connected'),
+    [awsAccounts]
+  );
+  const connectedAzure = useMemo(
+    () => (azureSubscriptions || []).filter((s) => s.status === 'Connected'),
+    [azureSubscriptions]
+  );
 
   // State
   const [servers, setServers] = useState<RegisteredServer[]>([]);
@@ -468,11 +477,16 @@ export default function ServersPage() {
     }
   };
 
-  // Filtered servers
+  // Filtered servers (Strict Rule: Only show cloud servers if cloud account is actively connected)
   const filteredServers = useMemo(() => {
     return servers.filter((s) => {
-      if (fleetFilter === 'azure' && s.cloudProvider !== 'azure') return false;
-      if (fleetFilter === 'aws' && s.cloudProvider !== 'aws') return false;
+      // Hide AWS servers if no connected AWS account
+      if (s.cloudProvider === 'aws' && connectedAws.length === 0) return false;
+      // Hide Azure servers if no connected Azure account
+      if (s.cloudProvider === 'azure' && connectedAzure.length === 0) return false;
+
+      if (fleetFilter === 'azure' && (s.cloudProvider !== 'azure' || connectedAzure.length === 0)) return false;
+      if (fleetFilter === 'aws' && (s.cloudProvider !== 'aws' || connectedAws.length === 0)) return false;
       if (fleetFilter === 'linux' && (s.cloudProvider === 'aws' || s.cloudProvider === 'azure')) return false;
       if (fleetFilter === 'online' && s.status !== 'Online') return false;
       if (fleetFilter === 'offline' && s.status === 'Online') return false;
@@ -494,24 +508,33 @@ export default function ServersPage() {
       }
       return true;
     });
-  }, [servers, fleetFilter, cloudProvider, searchQuery]);
+  }, [servers, fleetFilter, cloudProvider, searchQuery, connectedAws, connectedAzure]);
+
+  // Visible servers base set (taking active cloud accounts into account)
+  const visibleServers = useMemo(() => {
+    return servers.filter((s) => {
+      if (s.cloudProvider === 'aws' && connectedAws.length === 0) return false;
+      if (s.cloudProvider === 'azure' && connectedAzure.length === 0) return false;
+      return true;
+    });
+  }, [servers, connectedAws, connectedAzure]);
 
   // Aggregate stats (6 KPI Metrics)
-  const totalServersCount = servers.length;
-  const onlineServersCount = useMemo(() => servers.filter((s) => s.status === 'Online').length, [servers]);
-  const offlineServersCount = useMemo(() => servers.filter((s) => s.status !== 'Online').length, [servers]);
-  const awsServersCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'aws').length, [servers]);
-  const azureServersCount = useMemo(() => servers.filter((s) => s.cloudProvider === 'azure').length, [servers]);
-  const linuxServersCount = useMemo(() => servers.filter((s) => s.cloudProvider !== 'aws' && s.cloudProvider !== 'azure').length, [servers]);
+  const totalServersCount = visibleServers.length;
+  const onlineServersCount = useMemo(() => visibleServers.filter((s) => s.status === 'Online').length, [visibleServers]);
+  const offlineServersCount = useMemo(() => visibleServers.filter((s) => s.status !== 'Online').length, [visibleServers]);
+  const awsServersCount = useMemo(() => (connectedAws.length === 0 ? 0 : visibleServers.filter((s) => s.cloudProvider === 'aws').length), [visibleServers, connectedAws]);
+  const azureServersCount = useMemo(() => (connectedAzure.length === 0 ? 0 : visibleServers.filter((s) => s.cloudProvider === 'azure').length), [visibleServers, connectedAzure]);
+  const linuxServersCount = useMemo(() => visibleServers.filter((s) => s.cloudProvider !== 'aws' && s.cloudProvider !== 'azure').length, [visibleServers]);
 
   // Cloud-divided server subsets
   const azureFilteredServers = useMemo(
-    () => filteredServers.filter((s) => s.cloudProvider === 'azure'),
-    [filteredServers]
+    () => (connectedAzure.length === 0 ? [] : filteredServers.filter((s) => s.cloudProvider === 'azure')),
+    [filteredServers, connectedAzure]
   );
   const awsFilteredServers = useMemo(
-    () => filteredServers.filter((s) => s.cloudProvider === 'aws'),
-    [filteredServers]
+    () => (connectedAws.length === 0 ? [] : filteredServers.filter((s) => s.cloudProvider === 'aws')),
+    [filteredServers, connectedAws]
   );
   const linuxFilteredServers = useMemo(
     () => filteredServers.filter((s) => s.cloudProvider !== 'aws' && s.cloudProvider !== 'azure'),
@@ -964,7 +987,8 @@ export default function ServersPage() {
           ) : displayMode === 'divided' ? (
             <div className="space-y-6">
               {/* Azure Virtual Machines Section */}
-              {(fleetFilter === 'all' || fleetFilter === 'azure' || fleetFilter === 'online' || fleetFilter === 'offline') &&
+              {connectedAzure.length > 0 &&
+                (fleetFilter === 'all' || fleetFilter === 'azure' || fleetFilter === 'online' || fleetFilter === 'offline') &&
                 (azureFilteredServers.length > 0 || fleetFilter === 'azure') &&
                 renderServerSection({
                   id: 'azure-section',
@@ -979,8 +1003,25 @@ export default function ServersPage() {
                   addLabel: 'Add Azure VM',
                 })}
 
+              {fleetFilter === 'azure' && connectedAzure.length === 0 && (
+                <div className="p-8 text-center text-slate-400 space-y-3 bg-[#111A2E] border border-[#0089D6]/20 rounded-xl">
+                  <AzureLogo className="w-8 h-8 mx-auto" />
+                  <h4 className="text-sm font-semibold text-white">No Connected Azure Accounts</h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Connect an Azure subscription in Cloud Accounts to discover, monitor, and manage Azure Virtual Machines.
+                  </p>
+                  <Link
+                    href="/dashboard/cloud-accounts"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#0089D6]/20 text-[#5EA0EF] hover:bg-[#0089D6]/30 border border-[#0089D6]/30 transition-all cursor-pointer"
+                  >
+                    <span>Connect Azure Subscription</span>
+                  </Link>
+                </div>
+              )}
+
               {/* AWS EC2 Instances Section */}
-              {(fleetFilter === 'all' || fleetFilter === 'aws' || fleetFilter === 'online' || fleetFilter === 'offline') &&
+              {connectedAws.length > 0 &&
+                (fleetFilter === 'all' || fleetFilter === 'aws' || fleetFilter === 'online' || fleetFilter === 'offline') &&
                 (awsFilteredServers.length > 0 || fleetFilter === 'aws') &&
                 renderServerSection({
                   id: 'aws-section',
@@ -994,6 +1035,22 @@ export default function ServersPage() {
                   addProvider: 'aws',
                   addLabel: 'Add AWS Server',
                 })}
+
+              {fleetFilter === 'aws' && connectedAws.length === 0 && (
+                <div className="p-8 text-center text-slate-400 space-y-3 bg-[#111A2E] border border-amber-500/20 rounded-xl">
+                  <AwsLogo className="w-8 h-8 mx-auto" />
+                  <h4 className="text-sm font-semibold text-white">No Connected AWS Accounts</h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Connect an AWS account in Cloud Accounts to discover, monitor, and manage EC2 instances.
+                  </p>
+                  <Link
+                    href="/dashboard/cloud-accounts"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 transition-all cursor-pointer"
+                  >
+                    <span>Connect AWS Account</span>
+                  </Link>
+                </div>
+              )}
 
               {/* Linux / Bare Metal Section (if custom linux servers exist or linux filter active) */}
               {(fleetFilter === 'all' || fleetFilter === 'linux' || fleetFilter === 'online' || fleetFilter === 'offline') &&

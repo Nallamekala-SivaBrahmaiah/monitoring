@@ -1,5 +1,6 @@
 import connectToDatabase from '@/lib/mongodb';
 import Server, { IServer } from '@/models/Server';
+import CloudAccount from '@/models/CloudAccount';
 import CloudResource, { ICloudResource } from '@/models/CloudResource';
 import { getLiveGuestOSMetrics } from '@/lib/serverMonitoring/osMetricsEngine';
 
@@ -81,15 +82,30 @@ export async function getUnifiedServerInventory(filter?: {
 }): Promise<UnifiedServerResource[]> {
   await connectToDatabase();
 
-  // 1. Fetch all registered SSH servers
-  const servers = await Server.find().lean();
+  // Check active connected cloud accounts
+  const connectedAccounts = await CloudAccount.find({ status: 'Connected' }).lean();
+  const hasConnectedAws = connectedAccounts.some((a: any) => a.provider === 'aws');
+  const hasConnectedAzure = connectedAccounts.some((a: any) => a.provider === 'azure');
 
-  // 2. Fetch all cloud compute resources (Azure VMs & AWS EC2)
-  const cloudResources = await CloudResource.find({
-    resourceType: { $in: ['vm', 'ec2'] },
-    isDeleted: { $ne: true },
-    status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
-  }).lean();
+  const allowedProviders: ('aws' | 'azure' | 'gcp' | 'on-premise' | 'other')[] = ['on-premise', 'other'];
+  if (hasConnectedAws) allowedProviders.push('aws');
+  if (hasConnectedAzure) allowedProviders.push('azure');
+
+  // 1. Fetch registered SSH servers for connected providers only
+  const servers = (await Server.find({
+    cloudProvider: { $in: allowedProviders },
+  }).lean()) as any[];
+
+  // 2. Fetch cloud compute resources (Azure VMs & AWS EC2) ONLY for connected providers
+  const activeCloudProviders = allowedProviders.filter((p) => p === 'aws' || p === 'azure') as ('aws' | 'azure')[];
+  const cloudResources = activeCloudProviders.length > 0
+    ? await CloudResource.find({
+        provider: { $in: activeCloudProviders },
+        resourceType: { $in: ['vm', 'ec2'] },
+        isDeleted: { $ne: true },
+        status: { $nin: ['Terminated', 'terminated', 'deleted', 'Deleted'] },
+      }).lean()
+    : [];
 
   const unifiedList: UnifiedServerResource[] = [];
   const matchedServerIds = new Set<string>();
