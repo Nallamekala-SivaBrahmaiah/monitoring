@@ -80,7 +80,7 @@ export default function OnPremisesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-transparent text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[#0B1120] text-slate-100 flex flex-col">
       <Sidebar />
       <div className="lg:pl-64 flex flex-col flex-1 min-w-0">
         <Header />
