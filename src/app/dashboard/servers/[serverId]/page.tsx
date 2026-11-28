@@ -57,16 +57,49 @@ function ServerDetailContent({ params }: ServerDetailProps) {
   const fetchServerDetails = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/servers/${serverId}`);
+      const cleanId = (serverId || '').replace(/^srv-/, '');
+
+      // Check if this ID is an AWS EC2 instance ID
+      if (cleanId.startsWith('i-')) {
+        router.replace(`/dashboard/ec2/${cleanId}`);
+        return;
+      }
+
+      const res = await fetch(`/api/servers/${encodeURIComponent(cleanId)}`);
       if (res.ok) {
         const data = await res.json();
         setServer(data.server);
         setRecentMetrics(data.recentMetrics || []);
-      } else {
-        router.push('/dashboard/servers');
+        return;
       }
+
+      // If not found in /api/servers, check if it's an Azure VM
+      try {
+        const azRes = await fetch('/api/azure/vms');
+        if (azRes.ok) {
+          const azList = await azRes.json();
+          if (Array.isArray(azList)) {
+            const azFound = azList.find(
+              (v: any) =>
+                (v.name && v.name.toLowerCase() === cleanId.toLowerCase()) ||
+                v.id === cleanId ||
+                v.vmId === cleanId ||
+                (v.vmId && v.vmId.toLowerCase().endsWith('/' + cleanId.toLowerCase()))
+            );
+            if (azFound) {
+              router.replace(`/dashboard/azure-vms/${encodeURIComponent(azFound.name || cleanId)}`);
+              return;
+            }
+          }
+        }
+      } catch (azErr) {
+        console.warn('Azure fallback check note:', azErr);
+      }
+
+      setServer(null);
     } catch (e) {
       console.warn('Error fetching server:', e);
+      setServer(null);
     } finally {
       setLoading(false);
     }

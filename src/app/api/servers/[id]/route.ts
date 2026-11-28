@@ -17,9 +17,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     await connectToDatabase();
     const { id } = await context.params;
+    const cleanId = id.replace(/^srv-/, '');
 
     let server: any = null;
-    if (mongoose.isValidObjectId(id)) {
+    if (mongoose.isValidObjectId(cleanId)) {
+      server = await Server.findById(cleanId)
+        .select('-encryptedAuthSecret -authSecretIv -authSecretTag')
+        .lean();
+    }
+    if (!server && mongoose.isValidObjectId(id)) {
       server = await Server.findById(id)
         .select('-encryptedAuthSecret -authSecretIv -authSecretTag')
         .lean();
@@ -28,13 +34,61 @@ export async function GET(request: NextRequest, context: RouteContext) {
       server = await Server.findOne({
         $or: [
           { cloudResourceId: id },
+          { cloudResourceId: cleanId },
           { instanceId: id },
+          { instanceId: cleanId },
           { resourceId: id },
+          { resourceId: cleanId },
           { name: id },
+          { name: cleanId },
+          { host: id },
+          { host: cleanId },
         ],
       })
         .select('-encryptedAuthSecret -authSecretIv -authSecretTag')
         .lean();
+    }
+
+    // Fallback: check CloudResource collection if this is a discovered cloud instance
+    if (!server) {
+      const cr = await CloudResource.findOne({
+        $or: [
+          ...(mongoose.isValidObjectId(cleanId) ? [{ _id: cleanId }] : []),
+          ...(mongoose.isValidObjectId(id) ? [{ _id: id }] : []),
+          { resourceId: id },
+          { resourceId: cleanId },
+          { name: id },
+          { name: cleanId },
+          { publicIp: id },
+          { privateIp: id },
+        ],
+      }).lean();
+
+      if (cr) {
+        const anyCr = cr as any;
+        server = {
+          _id: anyCr._id.toString(),
+          name: anyCr.name,
+          host: anyCr.publicIp || anyCr.privateIp || '-',
+          publicIp: anyCr.publicIp,
+          privateIp: anyCr.privateIp,
+          cloudResourceId: anyCr.resourceId,
+          cloudProvider: anyCr.provider || 'other',
+          region: anyCr.region || 'default',
+          port: 22,
+          username: anyCr.provider === 'azure' ? 'siva' : 'ubuntu',
+          authMethod: 'privateKey',
+          status: (anyCr.status || '').toLowerCase().includes('run') ? 'Online' : 'Offline',
+          tags: anyCr.tags ? (Array.isArray(anyCr.tags) ? anyCr.tags : Object.values(anyCr.tags)) : [],
+          os: { name: anyCr.os || anyCr.metadata?.os || 'Linux', version: '', kernel: '', arch: 'x86_64', uptimeSeconds: 3600, uptimeFormatted: '1h' },
+          hardware: { cpuCores: 2, cpuModel: anyCr.size || 'Cloud vCPU', totalMemoryBytes: 4294967296, totalDiskBytes: 32212254720 },
+          metrics: {
+            cpu: { usagePercent: anyCr.metrics?.cpuUtilization ?? 0 },
+            memory: { usagePercent: anyCr.metrics?.memoryUtilization ?? 0 },
+            disks: [{ mount: '/', usagePercent: anyCr.metrics?.diskUtilization ?? 0 }],
+          },
+        };
+      }
     }
 
     if (!server) {
@@ -42,7 +96,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     // Also fetch recent metric trends for this server
-    const recentMetrics = await Metric.find({ resourceId: `srv-${id}` })
+    const recentMetrics = await Metric.find({
+      $or: [
+        { resourceId: `srv-${cleanId}` },
+        { resourceId: `srv-${id}` },
+        { resourceId: cleanId },
+        { resourceId: id },
+      ],
+    })
       .sort({ timestamp: -1 })
       .limit(30)
       .lean();

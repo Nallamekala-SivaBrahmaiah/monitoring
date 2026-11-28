@@ -157,7 +157,7 @@ export function OnPremisesServersTable({
       showViewAllButton={showViewAllButton}
       viewAllHref="/dashboard/on-premises"
       limit={limit}
-      detailUrlPrefix="/dashboard/on-premises"
+      detailUrlPrefix="/dashboard/servers"
       isLoading={isLoading}
       onRefresh={() => {
         fetchDirectServers();

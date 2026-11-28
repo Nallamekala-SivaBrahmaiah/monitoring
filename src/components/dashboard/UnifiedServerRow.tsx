@@ -184,12 +184,12 @@ export function UnifiedServerRow({
     typeof server.os === 'string'
       ? server.os
       : server.os?.name
-      ? `${server.os.name} ${server.os.version || ''}`.trim()
-      : isAzure
-      ? 'Ubuntu 24.04.5 LTS'
-      : isAws
-      ? 'Ubuntu 26.04.1 LTS'
-      : 'Linux';
+        ? `${server.os.name} ${server.os.version || ''}`.trim()
+        : isAzure
+          ? 'Ubuntu 24.04.5 LTS'
+          : isAws
+            ? 'Ubuntu 26.04.1 LTS'
+            : 'Linux';
 
   const username = server.username || (isAzure ? 'siva' : isAws ? 'ubuntu' : 'ubuntu');
   const port = server.port || 22;
@@ -197,10 +197,27 @@ export function UnifiedServerRow({
   // Last connected time
   const lastConnectedTime = server.lastConnectedAt || server.lastHeartbeatAt;
 
-  // Detail URL
-  const defaultPrefix = isAzure ? '/dashboard/azure-vms' : isAws ? '/dashboard/ec2' : '/dashboard/servers';
-  const prefix = detailUrlPrefix || defaultPrefix;
-  const detailUrl = `${prefix}/${server.resourceId || server.serverId || server.id}`;
+  // Detail URL computation with strict provider & clean ID mapping
+  let detailUrl = '';
+  if (isAzure) {
+    const rawAzureId =
+      server.name ||
+      (server.resourceId && server.resourceId.includes('/') ? server.resourceId.split('/').pop()! : server.resourceId) ||
+      server.id;
+    const azureId = encodeURIComponent(rawAzureId);
+    const prefix = detailUrlPrefix && detailUrlPrefix.includes('azure') ? detailUrlPrefix : '/dashboard/azure-vms';
+    detailUrl = `${prefix}/${azureId}`;
+  } else if (isAws) {
+    const rawAwsId = server.resourceId || (server as any).instanceId || server.id;
+    const awsId = encodeURIComponent(rawAwsId);
+    const prefix = detailUrlPrefix && detailUrlPrefix.includes('ec2') ? detailUrlPrefix : '/dashboard/ec2';
+    detailUrl = `${prefix}/${awsId}`;
+  } else {
+    const rawId = (server.serverId || server.id || server.resourceId || '').replace(/^srv-/, '');
+    const cleanId = encodeURIComponent(rawId);
+    const prefix = detailUrlPrefix || '/dashboard/servers';
+    detailUrl = `${prefix}/${cleanId}`;
+  }
 
   const isVerifiedSSH = Boolean(server.isSSHConnected || server.hasSavedKey || isOnline);
 
@@ -259,13 +276,12 @@ export function UnifiedServerRow({
       {/* 3. Cloud Provider & Region */}
       <td className="py-3.5 px-4 whitespace-nowrap">
         <span
-          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-            isAzure
-              ? 'bg-[#0089D6]/15 text-[#5EA0EF] border-[#0089D6]/30'
-              : isAws
+          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${isAzure
+            ? 'bg-[#0089D6]/15 text-[#5EA0EF] border-[#0089D6]/30'
+            : isAws
               ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
               : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
-          }`}
+            }`}
         >
           {isAzure ? (
             <AzureLogo className="w-3.5 h-3.5 shrink-0" />
@@ -293,22 +309,20 @@ export function UnifiedServerRow({
       <td className="py-3.5 px-4 whitespace-nowrap">
         <div className="flex items-center gap-1.5">
           <span
-            className={`w-2 h-2 rounded-full ${
-              isOnline
-                ? 'bg-emerald-400 animate-pulse'
-                : isConnecting
+            className={`w-2 h-2 rounded-full ${isOnline
+              ? 'bg-emerald-400 animate-pulse'
+              : isConnecting
                 ? 'bg-blue-400'
                 : 'bg-rose-500'
-            }`}
+              }`}
           />
           <span
-            className={`font-semibold ${
-              isOnline
-                ? 'text-emerald-400'
-                : isConnecting
+            className={`font-semibold ${isOnline
+              ? 'text-emerald-400'
+              : isConnecting
                 ? 'text-blue-400'
                 : 'text-rose-400'
-            }`}
+              }`}
           >
             {statusDisplay}
           </span>
@@ -330,9 +344,8 @@ export function UnifiedServerRow({
             </div>
             <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-300 ${
-                  (cpuVal || 0) > 85 ? 'bg-rose-500' : (cpuVal || 0) > 60 ? 'bg-amber-400' : 'bg-emerald-400'
-                }`}
+                className={`h-full rounded-full transition-all duration-300 ${(cpuVal || 0) > 85 ? 'bg-rose-500' : (cpuVal || 0) > 60 ? 'bg-amber-400' : 'bg-emerald-400'
+                  }`}
                 style={{ width: `${Math.min(100, Math.max(0, cpuVal || 0))}%` }}
               />
             </div>
@@ -354,9 +367,8 @@ export function UnifiedServerRow({
             </div>
             <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-300 ${
-                  (memVal || 0) > 90 ? 'bg-rose-500' : (memVal || 0) > 70 ? 'bg-amber-400' : 'bg-blue-400'
-                }`}
+                className={`h-full rounded-full transition-all duration-300 ${(memVal || 0) > 90 ? 'bg-rose-500' : (memVal || 0) > 70 ? 'bg-amber-400' : 'bg-blue-400'
+                  }`}
                 style={{ width: `${Math.min(100, Math.max(0, memVal || 0))}%` }}
               />
             </div>
@@ -378,9 +390,8 @@ export function UnifiedServerRow({
             </div>
             <div className="w-full bg-[#0D1526] rounded-full h-1.5 overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-300 ${
-                  (diskVal || 0) > 85 ? 'bg-rose-500' : 'bg-teal-400'
-                }`}
+                className={`h-full rounded-full transition-all duration-300 ${(diskVal || 0) > 85 ? 'bg-rose-500' : 'bg-teal-400'
+                  }`}
                 style={{ width: `${Math.min(100, Math.max(0, diskVal || 0))}%` }}
               />
             </div>
@@ -404,11 +415,10 @@ export function UnifiedServerRow({
               type="button"
               onClick={() => onPowerAction && onPowerAction(server, 'start')}
               disabled={isPowerRunning || powerActionLoadingId === server.id}
-              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
-                isPowerRunning
-                  ? 'text-slate-500 cursor-not-allowed opacity-40'
-                  : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
-              }`}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${isPowerRunning
+                ? 'text-slate-500 cursor-not-allowed opacity-40'
+                : 'bg-emerald-600/25 text-emerald-400 hover:bg-emerald-600/40 border border-emerald-500/30 cursor-pointer shadow-sm'
+                }`}
               title={isPowerRunning ? 'Server is already running in cloud' : 'Start Server in Cloud'}
             >
               <Play className={`w-3 h-3 fill-current ${powerActionLoadingId === server.id ? 'animate-spin' : ''}`} />
@@ -418,11 +428,10 @@ export function UnifiedServerRow({
               type="button"
               onClick={() => onPowerAction && onPowerAction(server, 'stop')}
               disabled={!isPowerRunning || powerActionLoadingId === server.id}
-              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
-                !isPowerRunning
-                  ? 'text-slate-500 cursor-not-allowed opacity-40'
-                  : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
-              }`}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${!isPowerRunning
+                ? 'text-slate-500 cursor-not-allowed opacity-40'
+                : 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/35 border border-rose-500/30 cursor-pointer shadow-sm'
+                }`}
               title={!isPowerRunning ? 'Server is currently stopped' : 'Stop Server in Cloud (AWS / Azure)'}
             >
               <Power className={`w-3 h-3 ${powerActionLoadingId === server.id ? 'animate-spin' : ''}`} />
