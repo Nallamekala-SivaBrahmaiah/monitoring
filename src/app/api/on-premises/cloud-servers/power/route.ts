@@ -4,8 +4,6 @@ import CloudAccount from '@/models/CloudAccount';
 import CloudResource from '@/models/CloudResource';
 import { executeAWSPowerAction, executeAzurePowerAction, PowerAction } from '@/lib/cloudPowerService';
 
-export const dynamic = 'force-dynamic';
-
 /**
  * POST /api/on-premises/cloud-servers/power
  * Dispatches real AWS EC2 Start / Stop and Azure VM Start / Deallocate commands

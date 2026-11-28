@@ -4,8 +4,6 @@ import CloudAccount from '@/models/CloudAccount';
 import CloudResource from '@/models/CloudResource';
 import { getUnifiedServerInventory } from '@/lib/serverMonitoring/inventoryService';
 
-export const dynamic = 'force-dynamic';
-
 /**
  * GET /api/on-premises/cloud-servers
  * Dedicated endpoint for On-Premises module to manage servers via configured cloud accounts.
