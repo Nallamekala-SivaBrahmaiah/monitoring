@@ -269,7 +269,10 @@ LANGUAGE & COMMUNICATION RULES:
     const baseUrl = process.env.GOOGLE_GEMINI_BASE_URL || 'https://cold-unit-4014.nallasiva552.workers.dev';
     const ai = new GoogleGenAI({
       apiKey,
-      httpOptions: baseUrl ? { baseUrl } : undefined,
+      httpOptions: {
+        baseUrl: baseUrl || undefined,
+        apiVersion: 'v1beta',
+      },
     });
 
     // Format chat contents
@@ -291,18 +294,18 @@ LANGUAGE & COMMUNICATION RULES:
       parts: [{ text: prompt.trim() }],
     });
 
-    const targetModel = model || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+    const targetModel = model || process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
     let responseText = '';
     let finalModel = targetModel;
 
-    // Bulletproof candidate fallback list of verified models
+    // Bulletproof candidate fallback list of verified active models on v1beta
     const candidateModels = Array.from(new Set([
+      'gemini-flash-lite-latest',
+      'gemini-flash-latest',
       targetModel,
-      'gemini-3.5-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-4-hydrogen',
       'gemini-3.8-flash',
-    ]));
+      'gemini-3.5-flash',
+    ].filter(Boolean)));
 
     let lastError: any = null;
 
