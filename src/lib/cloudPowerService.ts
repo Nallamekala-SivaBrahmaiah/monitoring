@@ -612,12 +612,25 @@ export async function executeUnifiedPowerAction(
       }
     }
 
-    // Case B: Azure Virtual Machine Server (e.g. vm01, vm02, vm03, vm01-schule)
-    if (server.cloudProvider === 'azure') {
-      const hostTrim = (server.host || '').trim();
-      const serverNameTrim = (server.name || '').trim();
+    // Check if this server matches a known Azure VM or AWS EC2 resource in CloudResource
+    const hostTrim = (server.host || '').trim();
+    const serverNameTrim = (server.name || '').trim();
 
-      const cr = await CloudResource.findOne({
+    const matchedCloud = await CloudResource.findOne({
+      $or: [
+        { name: serverNameTrim },
+        { resourceId: serverNameTrim },
+        { publicIp: hostTrim },
+        { privateIp: hostTrim },
+        { 'metadata.sshServerId': server._id.toString() },
+        { 'tags.sshServerId': server._id.toString() },
+      ],
+      isDeleted: { $ne: true },
+    }).lean();
+
+    // Case B: Azure Virtual Machine Server (e.g. vm01, vm02, vm03, vm01-schule, azure-vm)
+    if (server.cloudProvider === 'azure' || matchedCloud?.provider === 'azure') {
+      const cr = matchedCloud || await CloudResource.findOne({
         provider: 'azure',
         $or: [
           { name: serverNameTrim },
@@ -636,7 +649,7 @@ export async function executeUnifiedPowerAction(
       }
       const subscriptionId = cr?.subscriptionId;
 
-      console.log(`[PowerService] Executing Azure VM ${action} for ${vmName} (Target RG: "${resourceGroup || 'auto-resolving'}")`);
+      console.log(`[PowerService] Executing real Azure VM ${action} for ${vmName} (Target RG: "${resourceGroup || 'auto-resolving'}")`);
       const result = await executeAzurePowerAction({
         vmName,
         resourceGroup,
@@ -645,6 +658,7 @@ export async function executeUnifiedPowerAction(
       });
 
       server.status = action === 'stop' ? 'Offline' : 'Online';
+      server.cloudPowerState = action === 'stop' ? 'Stopped' : 'Running';
       server.lastError = action === 'stop' ? 'Server stopped by operator' : null;
       await server.save();
 
@@ -658,7 +672,91 @@ export async function executeUnifiedPowerAction(
       };
     }
 
+    // Case B2: AWS EC2 Server
+    if (server.cloudProvider === 'aws' || matchedCloud?.provider === 'aws') {
+      const cr = matchedCloud;
+      const ec2InstanceId = cr?.resourceId || serverNameTrim;
+      const targetRegion = cr?.region || server.region || 'ap-southeast-2';
+
+      console.log(`[PowerService] Executing real AWS EC2 ${action} for ${server.name} (${ec2InstanceId}) in ${targetRegion}`);
+      const result = await executeAWSPowerAction({
+        instanceId: ec2InstanceId,
+        region: targetRegion,
+        accountId: cr?.accountId,
+        action,
+      });
+
+      server.status = action === 'stop' ? 'Offline' : 'Online';
+      server.cloudPowerState = action === 'stop' ? 'Stopped' : 'Running';
+      server.lastError = action === 'stop' ? 'Server stopped by operator' : null;
+      await server.save();
+
+      if (action === 'start') {
+        syncSingleServer(server._id.toString()).catch(() => null);
+      }
+
+      return {
+        ...result,
+        message: `AWS EC2 "${server.name}" (${ec2InstanceId}) ${action === 'stop' ? 'stopped' : 'started'} in AWS successfully.`,
+      };
+    }
+
     // Case C: Standard registered Linux host without direct cloud API
+    // If stopping, execute real SSH shutdown on the host
+    if (action === 'stop') {
+      try {
+        const { resolveServerCredentials } = await import('@/lib/terminal/serverResolver');
+        const creds = await resolveServerCredentials({ sshServerId: server._id.toString() });
+        if (creds && creds.host && (creds.authSecret || creds.authMethod)) {
+          const { Client } = await import('ssh2');
+          const conn = new Client();
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(() => {
+              try { conn.end(); } catch {}
+              resolve();
+            }, 6000);
+
+            conn.on('ready', () => {
+              conn.exec('sudo shutdown -h now || sudo poweroff || shutdown -h now', (err, stream) => {
+                if (err) {
+                  clearTimeout(timer);
+                  try { conn.end(); } catch {}
+                  resolve();
+                  return;
+                }
+                stream.on('close', () => {
+                  clearTimeout(timer);
+                  try { conn.end(); } catch {}
+                  resolve();
+                });
+              });
+            });
+
+            conn.on('error', () => {
+              clearTimeout(timer);
+              resolve();
+            });
+
+            try {
+              conn.connect({
+                host: creds.host,
+                port: creds.port || 22,
+                username: creds.username || 'root',
+                password: creds.authMethod === 'password' ? creds.authSecret : undefined,
+                privateKey: creds.authMethod === 'privateKey' ? creds.authSecret : undefined,
+                readyTimeout: 5000,
+              });
+            } catch {
+              clearTimeout(timer);
+              resolve();
+            }
+          });
+        }
+      } catch (sshErr) {
+        console.warn(`[PowerService] SSH shutdown dispatch note:`, sshErr);
+      }
+    }
+
     server.status = action === 'stop' ? 'Offline' : 'Online';
     server.cloudPowerState = action === 'stop' ? 'Stopped' : 'Running';
     server.lastError = action === 'stop' ? 'Server stopped by operator' : null;
