@@ -21,6 +21,12 @@ import {
   AlertCircle,
   Clock,
   Globe,
+  Plus,
+  Eye,
+  EyeOff,
+  RotateCw,
+  Key,
+  Shield,
 } from 'lucide-react';
 import { AwsLogo, AzureLogo } from '@/components/icons/CloudIcons';
 
@@ -76,6 +82,38 @@ export function OnPremisesCloudAccountManager() {
   // Power operation loading tracking
   const [powerLoadingId, setPowerLoadingId] = useState<string | null>(null);
   const [singleSyncId, setSingleSyncId] = useState<string | null>(null);
+
+  // Connect Cloud Account Modals
+  const [activeModal, setActiveModal] = useState<'none' | 'aws' | 'azure'>('none');
+
+  // AWS Connection Form State
+  const [awsForm, setAwsForm] = useState({
+    accountName: 'Production AWS Account',
+    accountId: '',
+    accessKeyId: '',
+    secretAccessKey: '',
+    regions: ['ap-southeast-2', 'us-east-1'],
+  });
+  const [showAwsSecret, setShowAwsSecret] = useState(false);
+  const [awsTesting, setAwsTesting] = useState(false);
+  const [awsTestResult, setAwsTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [awsSubmitting, setAwsSubmitting] = useState(false);
+  const [awsSubmitError, setAwsSubmitError] = useState<string | null>(null);
+
+  // Azure Connection Form State
+  const [azureForm, setAzureForm] = useState({
+    subscriptionName: 'Primary Azure Subscription',
+    subscriptionId: '',
+    tenantId: '',
+    clientId: '',
+    clientSecret: '',
+    regions: ['eastus', 'westeurope'],
+  });
+  const [showAzureSecret, setShowAzureSecret] = useState(false);
+  const [azureTesting, setAzureTesting] = useState(false);
+  const [azureTestResult, setAzureTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [azureSubmitting, setAzureSubmitting] = useState(false);
+  const [azureSubmitError, setAzureSubmitError] = useState<string | null>(null);
 
   // Toast feedback
   const [toast, setToast] = useState<{
@@ -287,6 +325,180 @@ export function OnPremisesCloudAccountManager() {
     }
   };
 
+  // ==================== CONNECT AWS ACCOUNT HANDLERS ====================
+  const handleTestAwsConnection = async () => {
+    if (!awsForm.accessKeyId.trim() || !awsForm.secretAccessKey.trim()) {
+      setAwsTestResult({ success: false, message: 'AWS Access Key ID and Secret Access Key are required.' });
+      return;
+    }
+    try {
+      setAwsTesting(true);
+      setAwsTestResult(null);
+      setAwsSubmitError(null);
+
+      const res = await fetch('/api/aws/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessKeyId: awsForm.accessKeyId.trim(),
+          secretAccessKey: awsForm.secretAccessKey.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAwsTestResult({
+          success: true,
+          message: `✓ AWS Credentials Verified! Connected Account ID: ${data.accountId || 'Verified'}. Regions discovered: ${data.regionsCount || 31}.`,
+        });
+        if (data.accountId && !awsForm.accountId) {
+          setAwsForm((prev) => ({ ...prev, accountId: data.accountId }));
+        }
+      } else {
+        setAwsTestResult({
+          success: false,
+          message: data.error || 'AWS verification failed. Please check your credentials.',
+        });
+      }
+    } catch (err: any) {
+      setAwsTestResult({ success: false, message: err.message || 'AWS connection test failed' });
+    } finally {
+      setAwsTesting(false);
+    }
+  };
+
+  const handleSaveAwsAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!awsForm.accountName.trim() || !awsForm.accessKeyId.trim() || !awsForm.secretAccessKey.trim()) {
+      setAwsSubmitError('Account Name, Access Key ID, and Secret Access Key are required.');
+      return;
+    }
+
+    try {
+      setAwsSubmitting(true);
+      setAwsSubmitError(null);
+
+      const res = await fetch('/api/cloud-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'aws',
+          accountName: awsForm.accountName.trim(),
+          accountId: awsForm.accountId.trim() || undefined,
+          accessKeyId: awsForm.accessKeyId.trim(),
+          secretAccessKey: awsForm.secretAccessKey.trim(),
+          regions: awsForm.regions,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setAwsSubmitError(data.error || 'Failed to connect AWS Account.');
+        return;
+      }
+
+      showToast('success', `AWS Account "${awsForm.accountName}" connected successfully! Instances are now active.`);
+      setActiveModal('none');
+      if (data.accountId) {
+        setSelectedAccountIds((prev) => new Set([...Array.from(prev), data.accountId]));
+      }
+      await fetchData(true);
+    } catch (err: any) {
+      setAwsSubmitError(err.message || 'Failed to save AWS Account.');
+    } finally {
+      setAwsSubmitting(false);
+    }
+  };
+
+  // ==================== CONNECT AZURE ACCOUNT HANDLERS ====================
+  const handleTestAzureConnection = async () => {
+    if (!azureForm.subscriptionId.trim() || !azureForm.tenantId.trim() || !azureForm.clientId.trim() || !azureForm.clientSecret.trim()) {
+      setAzureTestResult({ success: false, message: 'Subscription ID, Tenant ID, Client ID, and Client Secret are required.' });
+      return;
+    }
+
+    try {
+      setAzureTesting(true);
+      setAzureTestResult(null);
+      setAzureSubmitError(null);
+
+      const res = await fetch('/api/azure/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscriptionId: azureForm.subscriptionId.trim(),
+          tenantId: azureForm.tenantId.trim(),
+          clientId: azureForm.clientId.trim(),
+          clientSecret: azureForm.clientSecret.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAzureTestResult({
+          success: true,
+          message: `✓ Azure ARM Connection Verified! Subscription: ${data.subscriptionName || azureForm.subscriptionId}.`,
+        });
+        if (data.subscriptionName && !azureForm.subscriptionName) {
+          setAzureForm((prev) => ({ ...prev, subscriptionName: data.subscriptionName }));
+        }
+      } else {
+        setAzureTestResult({
+          success: false,
+          message: data.error || 'Azure verification failed. Please verify your Service Principal details.',
+        });
+      }
+    } catch (err: any) {
+      setAzureTestResult({ success: false, message: err.message || 'Azure connection test failed' });
+    } finally {
+      setAzureTesting(false);
+    }
+  };
+
+  const handleSaveAzureSubscription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!azureForm.subscriptionName.trim() || !azureForm.subscriptionId.trim() || !azureForm.tenantId.trim() || !azureForm.clientId.trim() || !azureForm.clientSecret.trim()) {
+      setAzureSubmitError('All Azure credentials (Subscription Name, Subscription ID, Tenant ID, Client ID, Secret) are required.');
+      return;
+    }
+
+    try {
+      setAzureSubmitting(true);
+      setAzureSubmitError(null);
+
+      const res = await fetch('/api/cloud-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'azure',
+          subscriptionName: azureForm.subscriptionName.trim(),
+          subscriptionId: azureForm.subscriptionId.trim(),
+          tenantId: azureForm.tenantId.trim(),
+          clientId: azureForm.clientId.trim(),
+          clientSecret: azureForm.clientSecret.trim(),
+          regions: azureForm.regions,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setAzureSubmitError(data.error || 'Failed to connect Azure Subscription.');
+        return;
+      }
+
+      showToast('success', `Azure Subscription "${azureForm.subscriptionName}" connected successfully! VMs are now active.`);
+      setActiveModal('none');
+      if (data.subscriptionId) {
+        setSelectedAccountIds((prev) => new Set([...Array.from(prev), data.subscriptionId]));
+      }
+      await fetchData(true);
+    } catch (err: any) {
+      setAzureSubmitError(err.message || 'Failed to save Azure Subscription.');
+    } finally {
+      setAzureSubmitting(false);
+    }
+  };
+
   const awsAccountsCount = accounts.filter((a) => a.provider === 'aws').length;
   const azureAccountsCount = accounts.filter((a) => a.provider === 'azure').length;
 
@@ -314,7 +526,38 @@ export function OnPremisesCloudAccountManager() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+        {/* Action Buttons: Add AWS, Add Azure, Clear, Sync */}
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+          {/* + Connect AWS Account Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveModal('aws');
+              setAwsTestResult(null);
+              setAwsSubmitError(null);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 transition-all shadow-sm cursor-pointer"
+            title="Connect AWS Account directly from On-Premises"
+          >
+            <AwsLogo className="w-3.5 h-3.5" />
+            <span>+ Connect AWS</span>
+          </button>
+
+          {/* + Connect Azure Account Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveModal('azure');
+              setAzureTestResult(null);
+              setAzureSubmitError(null);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/35 transition-all shadow-sm cursor-pointer"
+            title="Connect Azure Subscription directly from On-Premises"
+          >
+            <AzureLogo className="w-3.5 h-3.5" />
+            <span>+ Connect Azure</span>
+          </button>
+
           {selectedAccountIds.size > 0 && (
             <button
               type="button"
@@ -323,7 +566,7 @@ export function OnPremisesCloudAccountManager() {
               title="Clear all selections"
             >
               <X className="w-3.5 h-3.5 text-slate-400" />
-              <span>Clear Selection</span>
+              <span>Clear</span>
             </button>
           )}
 
@@ -335,7 +578,7 @@ export function OnPremisesCloudAccountManager() {
             title="Synchronize live state across cloud accounts"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            <span>{refreshing ? 'Syncing...' : 'Sync Cloud State'}</span>
+            <span>{refreshing ? 'Syncing...' : 'Sync'}</span>
           </button>
         </div>
       </div>
@@ -467,12 +710,15 @@ export function OnPremisesCloudAccountManager() {
           </div>
 
           {filteredAccounts.length === 0 ? (
-            <div className="p-3 bg-[#090D16] border border-[#1E293B] rounded-lg text-xs text-slate-400 text-center">
-              No connected {selectedProvider.toUpperCase()} accounts found. Configure an account in{' '}
-              <Link href="/dashboard/cloud-accounts" className="text-blue-400 underline hover:text-blue-300">
-                Cloud Accounts
-              </Link>{' '}
-              to manage its instances here.
+            <div className="p-3 bg-[#090D16] border border-[#1E293B] rounded-lg text-xs text-slate-400 text-center flex items-center justify-center gap-3">
+              <span>No connected {selectedProvider.toUpperCase()} accounts found.</span>
+              <button
+                type="button"
+                onClick={() => setActiveModal(selectedProvider === 'azure' ? 'azure' : 'aws')}
+                className="text-blue-400 font-semibold underline hover:text-blue-300 cursor-pointer"
+              >
+                Connect {selectedProvider === 'azure' ? 'Azure' : 'AWS'} Account Now
+              </button>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
@@ -801,6 +1047,285 @@ export function OnPremisesCloudAccountManager() {
           </div>
         )}
       </div>
+
+      {/* ==================== MODAL: CONNECT AWS ACCOUNT ==================== */}
+      {activeModal === 'aws' && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-black/80 backdrop-blur-sm flex justify-center items-center animate-fade-in">
+          <div className="bg-[#0F172A] border border-[#1E293B] rounded-2xl w-full max-w-xl p-6 space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-[#1E293B] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
+                  <AwsLogo className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Connect AWS Account</h3>
+                  <p className="text-[11px] text-slate-400">Authenticate securely using AWS IAM Access Keys</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveModal('none')}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-[#1E293B] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAwsAccount} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Account Display Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={awsForm.accountName}
+                  onChange={(e) => setAwsForm({ ...awsForm, accountName: e.target.value })}
+                  placeholder="e.g. Production AWS Account"
+                  className="w-full bg-[#090D16] border border-[#1E293B] rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">AWS Account ID (Optional)</label>
+                <input
+                  type="text"
+                  value={awsForm.accountId}
+                  onChange={(e) => setAwsForm({ ...awsForm, accountId: e.target.value })}
+                  placeholder="e.g. 123456789012 (auto-discovered if left blank)"
+                  className="w-full bg-[#090D16] border border-[#1E293B] rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">AWS Access Key ID *</label>
+                <input
+                  type="text"
+                  required
+                  value={awsForm.accessKeyId}
+                  onChange={(e) => setAwsForm({ ...awsForm, accessKeyId: e.target.value })}
+                  placeholder="AKIAIOSFODNN7EXAMPLE"
+                  className="w-full bg-[#090D16] border border-[#1E293B] rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">AWS Secret Access Key *</label>
+                <div className="relative">
+                  <input
+                    type={showAwsSecret ? 'text' : 'password'}
+                    required
+                    value={awsForm.secretAccessKey}
+                    onChange={(e) => setAwsForm({ ...awsForm, secretAccessKey: e.target.value })}
+                    placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                    className="w-full bg-[#090D16] border border-[#1E293B] rounded-lg px-3 py-2 pr-10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAwsSecret(!showAwsSecret)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
+                  >
+                    {showAwsSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Test Connection Diagnostics Feedback */}
+              {awsTestResult && (
+                <div
+                  className={`p-3 rounded-lg text-xs border ${
+                    awsTestResult.success
+                      ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                      : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+                  }`}
+                >
+                  {awsTestResult.message}
+                </div>
+              )}
+
+              {awsSubmitError && (
+                <div className="p-3 bg-rose-950/60 border border-rose-500/40 rounded-lg text-xs text-rose-300">
+                  {awsSubmitError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-3 border-t border-[#1E293B]">
+                <button
+                  type="button"
+                  onClick={handleTestAwsConnection}
+                  disabled={awsTesting}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-amber-400 border border-amber-500/30 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${awsTesting ? 'animate-spin' : ''}`} />
+                  <span>{awsTesting ? 'Testing...' : 'Test Connection'}</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal('none')}
+                    className="px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={awsSubmitting}
+                    className="px-4 py-2 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {awsSubmitting ? 'Connecting...' : 'Connect AWS Account'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL: CONNECT AZURE SUBSCRIPTION ==================== */}
+      {activeModal === 'azure' && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-black/80 backdrop-blur-sm flex justify-center items-center animate-fade-in">
+          <div className="bg-[#0F172A] border border-[#1E293B] rounded-2xl w-full max-w-xl p-6 space-y-4 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-[#1E293B] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center">
+                  <AzureLogo className="w-5 h-5 text-sky-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Connect Azure Subscription</h3>
+                  <p className="text-[11px] text-slate-400">Authenticate securely via Azure AD Service Principal</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveModal('none')}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-[#1E293B] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAzureSubscription} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Subscription Display Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={azureForm.subscriptionName}
+                  onChange={(e) => setAzureForm({ ...azureForm, subscriptionName: e.target.value })}
+                  placeholder="e.g. Primary Azure Subscription"
+                  className="w-full bg-[#090D16] border border-[#1E293B] rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Azure Subscription ID *</label>
+                <input
+                  type="text"
+                  required
+                  value={azureForm.subscriptionId}
+                  onChange={(e) => setAzureForm({ ...azureForm, subscriptionId: e.target.value })}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  className="w-full bg-[#090D16] border border-[#1E293B] rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Directory (Tenant) ID *</label>
+                  <input
+                    type="text"
+                    required
+                    value={azureForm.tenantId}
+                    onChange={(e) => setAzureForm({ ...azureForm, tenantId: e.target.value })}
+                    placeholder="Tenant GUID"
+                    className="w-full bg-[#090D16] border border-[#1E293B] rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Application (Client) ID *</label>
+                  <input
+                    type="text"
+                    required
+                    value={azureForm.clientId}
+                    onChange={(e) => setAzureForm({ ...azureForm, clientId: e.target.value })}
+                    placeholder="App/Client GUID"
+                    className="w-full bg-[#090D16] border border-[#1E293B] rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Client Secret (Value) *</label>
+                <div className="relative">
+                  <input
+                    type={showAzureSecret ? 'text' : 'password'}
+                    required
+                    value={azureForm.clientSecret}
+                    onChange={(e) => setAzureForm({ ...azureForm, clientSecret: e.target.value })}
+                    placeholder="Client Secret Value"
+                    className="w-full bg-[#090D16] border border-[#1E293B] rounded-lg px-3 py-2 pr-10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAzureSecret(!showAzureSecret)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
+                  >
+                    {showAzureSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Test Connection Diagnostics Feedback */}
+              {azureTestResult && (
+                <div
+                  className={`p-3 rounded-lg text-xs border ${
+                    azureTestResult.success
+                      ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                      : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+                  }`}
+                >
+                  {azureTestResult.message}
+                </div>
+              )}
+
+              {azureSubmitError && (
+                <div className="p-3 bg-rose-950/60 border border-rose-500/40 rounded-lg text-xs text-rose-300">
+                  {azureSubmitError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-3 border-t border-[#1E293B]">
+                <button
+                  type="button"
+                  onClick={handleTestAzureConnection}
+                  disabled={azureTesting}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-[#111A2E] hover:bg-[#18233C] text-sky-400 border border-sky-500/30 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${azureTesting ? 'animate-spin' : ''}`} />
+                  <span>{azureTesting ? 'Testing...' : 'Test Connection'}</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal('none')}
+                    className="px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={azureSubmitting}
+                    className="px-4 py-2 text-xs font-bold rounded-lg bg-sky-600 hover:bg-sky-500 text-white shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {azureSubmitting ? 'Connecting...' : 'Connect Azure Subscription'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
