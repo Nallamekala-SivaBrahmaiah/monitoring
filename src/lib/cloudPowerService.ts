@@ -660,6 +660,7 @@ export async function executeUnifiedPowerAction(
 
     // Case C: Standard registered Linux host without direct cloud API
     server.status = action === 'stop' ? 'Offline' : 'Online';
+    server.cloudPowerState = action === 'stop' ? 'Stopped' : 'Running';
     server.lastError = action === 'stop' ? 'Server stopped by operator' : null;
     await server.save();
 
