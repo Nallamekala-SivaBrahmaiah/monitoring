@@ -266,7 +266,11 @@ LANGUAGE & COMMUNICATION RULES:
 \`\`\`
 4. NEVER propose dangerous or destructive commands (rm -rf /, mkfs, shutdown, dd). All remediation commands must be production-safe.`;
 
-    const ai = new GoogleGenAI({ apiKey });
+    const baseUrl = process.env.GOOGLE_GEMINI_BASE_URL || 'https://cold-unit-4014.nallasiva552.workers.dev';
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: baseUrl ? { baseUrl } : undefined,
+    });
 
     // Format chat contents
     const contents: any[] = [];

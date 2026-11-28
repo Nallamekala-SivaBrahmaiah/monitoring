@@ -95,7 +95,11 @@ GUIDELINES:
 4. If a problem or alert is mentioned, explain the root cause, immediate remediation commands, verification steps, and long-term prevention.
 5. Answer in English, Telugu, or Hindi if the user queries in that language.`;
 
-    const ai = new GoogleGenAI({ apiKey });
+    const baseUrl = process.env.GOOGLE_GEMINI_BASE_URL || 'https://cold-unit-4014.nallasiva552.workers.dev';
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: baseUrl ? { baseUrl } : undefined,
+    });
 
     // Format chat contents
     const contents: any[] = [];
